@@ -42,7 +42,7 @@ namespace GustosApp.API.Controllers
         private readonly EnviarMensajeGrupoUseCase _enviarMensajeGrupoUseCase;
         private readonly IMapper _mapper;
         private readonly ObtenerRestaurantesAleatoriosGrupoUseCase _obtenerRestaurantesAleatorios;
-        private readonly ConstruirPreferenciasUseCase _construirPreferencias;
+        private readonly ConstruirPreferenciasGrupoUseCase _grupoPreferencias;
         private readonly ActualizarNombreGrupoUseCase _actualizarNombreGrupoUseCase;
         private readonly RegistrarTop3GrupoRestaurantesUseCase _registrarTop3GrupoRestaurantesUseCase;
 
@@ -68,7 +68,7 @@ namespace GustosApp.API.Controllers
             ActualizarGustosAGrupoUseCase actualizarGustosAGrupoUseCase,
             IMapper mapper,
             ObtenerRestaurantesAleatoriosGrupoUseCase obtenerRestaurantesAleatorios,
-           ConstruirPreferenciasUseCase construirPreferencias,
+           ConstruirPreferenciasGrupoUseCase grupoPreferencias,
             ActualizarNombreGrupoUseCase actualizarNombreGrupoUseCase,
             RegistrarTop3GrupoRestaurantesUseCase registrarTop3GrupoRestaurantesUseCase
 
@@ -93,7 +93,7 @@ namespace GustosApp.API.Controllers
             _verificacionMiembroGrupo = verificacionMiembroGrupo;
             _mapper = mapper;
             _obtenerRestaurantesAleatorios = obtenerRestaurantesAleatorios;
-            _construirPreferencias = construirPreferencias;
+            _grupoPreferencias = grupoPreferencias;
             _servicioPreferenciasGrupos = servicioPreferenciasGrupos;
             _actualizarNombreGrupoUseCase = actualizarNombreGrupoUseCase;
             _registrarTop3GrupoRestaurantesUseCase = registrarTop3GrupoRestaurantesUseCase;
@@ -425,11 +425,8 @@ namespace GustosApp.API.Controllers
 
 
             // Obtener preferencias del grupo
-            var preferencias = await _construirPreferencias.HandleAsync(
-            firebaseUid,
-            null,
-             grupoId,
-             null,
+            var preferencias = await _grupoPreferencias.HandleAsync(
+            firebaseUid, grupoId,
              ct);
 
 

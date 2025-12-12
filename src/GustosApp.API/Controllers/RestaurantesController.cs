@@ -5,26 +5,11 @@ using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Application.UseCases.UsuarioUseCases;
 using GustosApp.Domain.Model;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO;
-using System.Linq;
-using System.Security.Claims;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Http.HttpResults;
-using System.Security.Cryptography;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Common;
 using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
-using System.Threading.Tasks;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
-
 using System.Globalization;
 using GustosApp.Application.Common.Exceptions;
 
@@ -42,7 +27,8 @@ namespace GustosApp.API.Controllers
         private readonly ObtenerUsuarioUseCase _obtenerUsuario;
         private readonly SugerirGustosSobreUnRadioUseCase _sugerirGustos;
 
-        private readonly ConstruirPreferenciasUseCase _construirPreferencias;
+        private readonly ConstruirPreferenciasUsuarioIndividualUseCase _construirPreferenciasUsuario;
+        private readonly ConstruirPreferenciasUsuarioConAmigoCase _construirPreferenciasConAmigo;
         private readonly CrearSolicitudRestauranteUseCase _solicitudesRestaurantes;
         private readonly BuscarRestaurantesUseCase _buscarRestaurante;
         private readonly IFileStorageService _firebaseStorage;
@@ -66,7 +52,8 @@ namespace GustosApp.API.Controllers
      IServicioRestaurantes servicio,
       ObtenerUsuarioUseCase obtenerUsuario,
      SugerirGustosSobreUnRadioUseCase sugerirGustos,
-     ConstruirPreferenciasUseCase construirPreferencias,
+     ConstruirPreferenciasUsuarioIndividualUseCase construirPreferencias,
+      ConstruirPreferenciasUsuarioConAmigoCase construirPreferenciasConAmigo,
     IFileStorageService firebaseStorage,
       CrearSolicitudRestauranteUseCase solicitudesRestaurantes,
       ObtenerDatosRegistroRestauranteUseCase getDatosRegistroRestaurante,
@@ -82,7 +69,8 @@ namespace GustosApp.API.Controllers
             _servicio = servicio;
             _obtenerUsuario = obtenerUsuario;
             _sugerirGustos = sugerirGustos;
-            _construirPreferencias = construirPreferencias;
+            _construirPreferenciasUsuario = construirPreferencias;
+            _construirPreferenciasConAmigo = construirPreferenciasConAmigo;
             _solicitudesRestaurantes = solicitudesRestaurantes;
             _getDatosRegistroRestaurante = getDatosRegistroRestaurante;
             _firebaseStorage = firebaseStorage;
@@ -119,10 +107,10 @@ namespace GustosApp.API.Controllers
         {
             var firebaseUid = GetFirebaseUid();
 
-            var preferencias = await _construirPreferencias.HandleAsync(
+            var preferencias = await _construirPreferenciasUsuario.HandleAsync(
                 firebaseUid,
                 amigoUsername: amigoUsername,
-                grupoId: null,
+          
                 gustosDelFiltro: gustos,
                 ct);
 

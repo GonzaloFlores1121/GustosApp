@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
+using GustosApp.Domain.Common;
 
 namespace GustosApp.Domain.Interfaces
 {
@@ -29,5 +30,11 @@ namespace GustosApp.Domain.Interfaces
         Task UpdateAsync(Usuario user, CancellationToken ct);
         Task MarcarRestauranteComoVisitadoAsync(Guid id, Guid restauranteId, CancellationToken cancellationToken);
         Task<Usuario?> GetByUsernameWithRestaurantesVisitadosAsync(string? username, CancellationToken ct);
+
+        Task<UsuarioPreferencias> HandleAsync(string firebaseUid, CancellationToken ct = default, List<string> gustos = null);
+
+
     }
 }
+
+
