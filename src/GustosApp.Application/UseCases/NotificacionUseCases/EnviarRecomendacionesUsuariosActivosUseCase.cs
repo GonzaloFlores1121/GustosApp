@@ -16,28 +16,23 @@ namespace GustosApp.Application.UseCases.NotificacionUseCases
     {
         private readonly IUsuariosActivosService _usuariosActivos;
         private readonly ICacheService _cache;
-        private readonly IRecomendadorRestaurantes _recomendador;
-        private readonly IConstruirPreferencias _construirPreferencias;
+        private readonly IBuscarRestaurantesRecomendadosOrquestador _orquestador;   
         private readonly IEmailService _email;
         private readonly IUsuarioRepository _usuariosRepo;
-        private readonly IServicioRestaurantes _serviceRestaurante;
+        
 
         public EnviarRecomendacionesUsuariosActivosUseCase(
             IUsuariosActivosService usuariosActivos,
             ICacheService cache,
-            IRecomendadorRestaurantes recomendador,
-            IConstruirPreferencias construirPreferencias,
+            IBuscarRestaurantesRecomendadosOrquestador orquestador,
             IEmailService email,
-            IUsuarioRepository usuariosRepo,
-            IServicioRestaurantes serviceRestaurante)
+            IUsuarioRepository usuariosRepo)
         {
             _usuariosActivos = usuariosActivos;
             _cache = cache;
-            _recomendador = recomendador;
-            _construirPreferencias = construirPreferencias;
+            _orquestador = orquestador;
             _email = email;
             _usuariosRepo = usuariosRepo;
-            _serviceRestaurante = serviceRestaurante;
         }
 
 
@@ -57,29 +52,19 @@ namespace GustosApp.Application.UseCases.NotificacionUseCases
                 if (usuario == null)
                     continue;
 
-                var restaurantes = await _serviceRestaurante.BuscarAsync(
-                    rating: 3.5,
-                    tipo: null,
-                    plato: "",
-                    lat: ubicacion.Lat,
-                    lng: ubicacion.Lng,
-                    radioMetros: ubicacion.Radio
-                );
-
-                var preferencias = await _construirPreferencias.HandleAsync(
-                    uid, null, null, null, ct);
-
-                var recomendaciones = await _recomendador.Handle(
-                    preferencias,
-                    restaurantes,
+               var recomendaciones= await _orquestador.HandleAsync(
+                    uid,
+                    null,
+                    null,
+                    ubicacion.Lat,
+                    ubicacion.Lng,
+                    ubicacion.Radio,
                     1,
+                    4.0,
                     ct
                 );
 
-                if (!recomendaciones.Any())
-                    continue;
 
-                
                 await _email.EnviarEmailAsync(
                     usuario.Email,
                     "Recomendación personalizada",

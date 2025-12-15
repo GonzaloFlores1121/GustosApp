@@ -15,8 +15,7 @@
             if (string.IsNullOrWhiteSpace(apiKey))
                 logger.LogError("❌ GeminiSettings.ApiKey falta o está vacía");
 
-            if (string.IsNullOrWhiteSpace(baseUrl))
-                logger.LogError("❌ GeminiSettings.BaseUrl falta o está vacía");
+  
 
             logger.LogInformation("GeminiSettings validados correctamente (sin mostrar valores sensibles).");
         }

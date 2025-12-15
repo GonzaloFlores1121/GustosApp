@@ -7,6 +7,7 @@ using GustosApp.API.Hubs.Services;
 using GustosApp.API.Middleware;
 using GustosApp.API.Templates.Email;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Services;
 using GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases;
 using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Domain.Interfaces;
@@ -73,6 +74,9 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<IServicioRestaurantes, ServicioRestaurantes>();
             services.AddScoped<ISolicitudAmistadRepository, SolicitudAmistadRepositoryEF>();
             services.AddScoped<IPagoService, MercadoPagoService>();
+            services.AddScoped<IBuscarRestaurantesRecomendadosOrquestador, BuscarRestaurantesRecomendadosOrquestador>();
+            services.AddScoped<IUsuarioPreferenciasService, UsuarioPreferenciasService>();
+
 
             return services;
         }

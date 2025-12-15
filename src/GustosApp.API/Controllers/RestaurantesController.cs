@@ -26,16 +26,13 @@ namespace GustosApp.API.Controllers
         private readonly IServicioRestaurantes _servicio;
         private readonly ObtenerUsuarioUseCase _obtenerUsuario;
         private readonly SugerirGustosSobreUnRadioUseCase _sugerirGustos;
-
         private readonly ConstruirPreferenciasUsuarioIndividualUseCase _construirPreferenciasUsuario;
         private readonly ConstruirPreferenciasUsuarioConAmigoCase _construirPreferenciasConAmigo;
         private readonly CrearSolicitudRestauranteUseCase _solicitudesRestaurantes;
         private readonly BuscarRestaurantesUseCase _buscarRestaurante;
         private readonly IFileStorageService _firebaseStorage;
-
         private readonly IFileStorageService _firebase;
         private readonly GustosApp.Infraestructure.GustosDbContext _db;
-
         private readonly ObtenerDatosRegistroRestauranteUseCase _getDatosRegistroRestaurante;
         private readonly ICacheService _cache;
         private readonly IMapper _mapper;
@@ -44,8 +41,9 @@ namespace GustosApp.API.Controllers
         private readonly RegistrarVisitaPerfilRestauranteUseCase _registrarVisitaPerfilUseCase;
         private readonly ObtenerMetricasRestauranteUseCase _obtenerMetricasRestauranteUseCase;
         private readonly ActualizarRestauranteDashboardUseCase _actualizarRestauranteDashboardUseCase;
-
         private readonly ObtenerRestauranteDetalleUseCase _obtenerRestauranteDetalle;
+        private readonly IBuscarRestaurantesRecomendadosOrquestador _buscarRestauranteRecomendado;
+
 
 
         public RestaurantesController(
@@ -107,71 +105,21 @@ namespace GustosApp.API.Controllers
         {
             var firebaseUid = GetFirebaseUid();
 
-            var preferencias = await _construirPreferenciasUsuario.HandleAsync(
+            var recommendations = await _buscarRestauranteRecomendado.HandleAsync(
                 firebaseUid,
-                amigoUsername: amigoUsername,
-          
-                gustosDelFiltro: gustos,
-                ct);
-
-            // Filtrar restaurantes cercanos
-            var res = await _servicio.BuscarAsync(
-                rating: rating,
-                lat: lat,
-                lng: lng,
-                radioMetros: radius,
-                gustos: preferencias.Gustos,
-                restricciones: preferencias.Restricciones
-              );
-
-
-            if (res == null || !res.Any())
-            {
-                throw new KeyNotFoundException("no se encontraron restaurantes para esa ubicacion");
-            }
-
-            await _cache.SetAsync(
-             $"usuario:{firebaseUid}:location",
-             new UserLocation
-             (
-                lat ?? 0,
-                lng ?? 0,
-                radius ?? 3000,
-                DateTime.UtcNow
-             ),
-              TimeSpan.FromMinutes(10));
-
-            if (preferencias.Gustos == null || !preferencias.Gustos.Any())
-            {
-                throw new ArgumentException("los gustos que quiere buscar no son validos");
-            }
-
-            //  Algoritmo combinado
-            var recommendations = await _sugerirGustos.Handle(
-                preferencias,
-                res,
+                gustos,
+                amigoUsername,
+                lat,
+                lng,
+                radius,
                 top,
-                ct
-            );
-
-            if (recommendations == null || !recommendations.Any())
-            {
-                throw new KeyNotFoundException("no existen coincidencias con sus gustos y preferencias en la zona");
-            }
+                rating,
+                ct);
 
             // DTO
             var response = _mapper.Map<List<RestauranteDTO>>(recommendations);
 
-            //registrar cuantos restaurantes salieron en el top 3 individual
-            var top3Ids = response
-                .Take(3)
-                .Select(r => r.Id)
-                .ToList();
-
-            if (top3Ids.Count > 0)
-            {
-                await _registrarTop3IndividualUseCase.HandleAsync(top3Ids, ct);
-            }
+     
 
             return Ok(new
             {
