@@ -5,26 +5,11 @@ using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Application.UseCases.UsuarioUseCases;
 using GustosApp.Domain.Model;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO;
-using System.Linq;
-using System.Security.Claims;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Http.HttpResults;
-using System.Security.Cryptography;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Common;
 using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
-using System.Threading.Tasks;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
-
 using System.Globalization;
 using GustosApp.Application.Common.Exceptions;
 
@@ -41,15 +26,13 @@ namespace GustosApp.API.Controllers
         private readonly IServicioRestaurantes _servicio;
         private readonly ObtenerUsuarioUseCase _obtenerUsuario;
         private readonly SugerirGustosSobreUnRadioUseCase _sugerirGustos;
-
-        private readonly ConstruirPreferenciasUseCase _construirPreferencias;
+        private readonly ConstruirPreferenciasUsuarioIndividualUseCase _construirPreferenciasUsuario;
+        private readonly ConstruirPreferenciasUsuarioConAmigoCase _construirPreferenciasConAmigo;
         private readonly CrearSolicitudRestauranteUseCase _solicitudesRestaurantes;
         private readonly BuscarRestaurantesUseCase _buscarRestaurante;
         private readonly IFileStorageService _firebaseStorage;
-
         private readonly IFileStorageService _firebase;
         private readonly GustosApp.Infraestructure.GustosDbContext _db;
-
         private readonly ObtenerDatosRegistroRestauranteUseCase _getDatosRegistroRestaurante;
         private readonly ICacheService _cache;
         private readonly IMapper _mapper;
@@ -58,15 +41,17 @@ namespace GustosApp.API.Controllers
         private readonly RegistrarVisitaPerfilRestauranteUseCase _registrarVisitaPerfilUseCase;
         private readonly ObtenerMetricasRestauranteUseCase _obtenerMetricasRestauranteUseCase;
         private readonly ActualizarRestauranteDashboardUseCase _actualizarRestauranteDashboardUseCase;
-
         private readonly ObtenerRestauranteDetalleUseCase _obtenerRestauranteDetalle;
+        private readonly IBuscarRestaurantesRecomendadosOrquestador _buscarRestauranteRecomendado;
+
 
 
         public RestaurantesController(
      IServicioRestaurantes servicio,
       ObtenerUsuarioUseCase obtenerUsuario,
      SugerirGustosSobreUnRadioUseCase sugerirGustos,
-     ConstruirPreferenciasUseCase construirPreferencias,
+     ConstruirPreferenciasUsuarioIndividualUseCase construirPreferencias,
+      ConstruirPreferenciasUsuarioConAmigoCase construirPreferenciasConAmigo,
     IFileStorageService firebaseStorage,
       CrearSolicitudRestauranteUseCase solicitudesRestaurantes,
       ObtenerDatosRegistroRestauranteUseCase getDatosRegistroRestaurante,
@@ -82,7 +67,8 @@ namespace GustosApp.API.Controllers
             _servicio = servicio;
             _obtenerUsuario = obtenerUsuario;
             _sugerirGustos = sugerirGustos;
-            _construirPreferencias = construirPreferencias;
+            _construirPreferenciasUsuario = construirPreferencias;
+            _construirPreferenciasConAmigo = construirPreferenciasConAmigo;
             _solicitudesRestaurantes = solicitudesRestaurantes;
             _getDatosRegistroRestaurante = getDatosRegistroRestaurante;
             _firebaseStorage = firebaseStorage;
@@ -119,71 +105,21 @@ namespace GustosApp.API.Controllers
         {
             var firebaseUid = GetFirebaseUid();
 
-            var preferencias = await _construirPreferencias.HandleAsync(
+            var recommendations = await _buscarRestauranteRecomendado.HandleAsync(
                 firebaseUid,
-                amigoUsername: amigoUsername,
-                grupoId: null,
-                gustosDelFiltro: gustos,
-                ct);
-
-            // Filtrar restaurantes cercanos
-            var res = await _servicio.BuscarAsync(
-                rating: rating,
-                lat: lat,
-                lng: lng,
-                radioMetros: radius,
-                gustos: preferencias.Gustos,
-                restricciones: preferencias.Restricciones
-              );
-
-
-            if (res == null || !res.Any())
-            {
-                throw new KeyNotFoundException("no se encontraron restaurantes para esa ubicacion");
-            }
-
-            await _cache.SetAsync(
-             $"usuario:{firebaseUid}:location",
-             new UserLocation
-             (
-                lat ?? 0,
-                lng ?? 0,
-                radius ?? 3000,
-                DateTime.UtcNow
-             ),
-              TimeSpan.FromMinutes(10));
-
-            if (preferencias.Gustos == null || !preferencias.Gustos.Any())
-            {
-                throw new ArgumentException("los gustos que quiere buscar no son validos");
-            }
-
-            //  Algoritmo combinado
-            var recommendations = await _sugerirGustos.Handle(
-                preferencias,
-                res,
+                gustos,
+                amigoUsername,
+                lat,
+                lng,
+                radius,
                 top,
-                ct
-            );
-
-            if (recommendations == null || !recommendations.Any())
-            {
-                throw new KeyNotFoundException("no existen coincidencias con sus gustos y preferencias en la zona");
-            }
+                rating,
+                ct);
 
             // DTO
             var response = _mapper.Map<List<RestauranteDTO>>(recommendations);
 
-            //registrar cuantos restaurantes salieron en el top 3 individual
-            var top3Ids = response
-                .Take(3)
-                .Select(r => r.Id)
-                .ToList();
-
-            if (top3Ids.Count > 0)
-            {
-                await _registrarTop3IndividualUseCase.HandleAsync(top3Ids, ct);
-            }
+     
 
             return Ok(new
             {
@@ -359,7 +295,7 @@ namespace GustosApp.API.Controllers
             return Ok(restaurante.Id);
         }
 
-
+        [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/destacada")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -419,7 +355,7 @@ namespace GustosApp.API.Controllers
         }
 
 
-
+        [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/logo")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -479,7 +415,7 @@ namespace GustosApp.API.Controllers
         }
 
 
-
+        [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/interior")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -534,7 +470,7 @@ namespace GustosApp.API.Controllers
         }
 
 
-
+        [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/comidas")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -588,7 +524,7 @@ namespace GustosApp.API.Controllers
         }
 
 
-
+        [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/menu")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -644,7 +580,7 @@ namespace GustosApp.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
-
+        
         [HttpDelete("{id:guid}")]
         [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -725,14 +661,15 @@ namespace GustosApp.API.Controllers
         {
             var metricas = await _obtenerMetricasRestauranteUseCase.HandleAsync(id, ct);
 
+            var favUsuario = RestauranteMetricasDashboardResponse.convertidorDeFavoritos(metricas.TotalFavoritos);
+
             var rest = new RestauranteMetricasDashboardResponse
             {
                 RestauranteId = metricas.RestauranteId,
                 TotalTop3Individual = metricas.Estadisticas?.TotalTop3Individual ?? 0,
                 TotalTop3Grupo = metricas.Estadisticas?.TotalTop3Grupo ?? 0,
                 TotalVisitasPerfil = metricas.Estadisticas?.TotalVisitasPerfil ?? 0,
-                TotalFavoritosHistorico = metricas.TotalFavoritos,
-                TotalFavoritosActual = metricas.TotalFavoritos
+                FavoritosPorDia = RestauranteMetricasDashboardResponse.CountFavoritosPorDiaAsync(favUsuario),
             };
 
             return Ok(rest);

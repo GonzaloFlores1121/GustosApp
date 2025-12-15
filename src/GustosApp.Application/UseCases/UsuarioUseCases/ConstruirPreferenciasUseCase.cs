@@ -10,39 +10,33 @@ using GustosApp.Domain.Interfaces;
 
 namespace GustosApp.Application.UseCases.UsuarioUseCases
 {
-    public class ConstruirPreferenciasUseCase : IConstruirPreferencias
+    public class ConstruirPreferenciasUsuarioIndividualUseCase 
     {
-        private readonly ObtenerUsuarioUseCase _obtenerUsuario;
-        private readonly ObtenerGustosUseCase _obtenerGustosUser;
-        private readonly ConfirmarAmistadEntreUsuarios _confirmarAmistad;
+       // private readonly ObtenerUsuarioUseCase _obtenerUsuario;
+      //  private readonly ObtenerGustosUseCase _obtenerGustosUser;
+      //  private readonly ConfirmarAmistadEntreUsuarios _confirmarAmistad;
         private readonly IUsuarioRepository _usuarioRepo;
-        private readonly IGustosGrupoRepository _gustosGrupoRepo;
-        private readonly IMiembroGrupoRepository _miembroGrupoRepository;
+       
 
-        public ConstruirPreferenciasUseCase(
-            ObtenerUsuarioUseCase obtenerUsuario,
-            ObtenerGustosUseCase obtenerGustosUser,
-            ConfirmarAmistadEntreUsuarios confirmarAmistad,
-            IUsuarioRepository usuarioRepo,
-            IGustosGrupoRepository gustosGrupoRepo,
-            IMiembroGrupoRepository miembroGrupoRepository)
+        public ConstruirPreferenciasUsuarioIndividualUseCase(
+            //ObtenerUsuarioUseCase obtenerUsuario,
+           // ObtenerGustosUseCase obtenerGustosUser,
+            //ConfirmarAmistadEntreUsuarios confirmarAmistad,
+            IUsuarioRepository usuarioRepo)
         {
-            _obtenerUsuario = obtenerUsuario;
-            _obtenerGustosUser = obtenerGustosUser;
-            _confirmarAmistad = confirmarAmistad;
+           // _obtenerUsuario = obtenerUsuario;
+            //_obtenerGustosUser = obtenerGustosUser;
+           // _confirmarAmistad = confirmarAmistad;
             _usuarioRepo = usuarioRepo;
-            _gustosGrupoRepo = gustosGrupoRepo;
-            _miembroGrupoRepository = miembroGrupoRepository;
+           
         }
 
         public async Task<UsuarioPreferencias> HandleAsync(
             string firebaseUid,
-            string? amigoUsername,
-            Guid? grupoId,
             List<string>? gustosDelFiltro,
             CancellationToken ct)
         {
-            if (grupoId.HasValue)
+            /*if (grupoId.HasValue)
             {
                 var gustosGrupo = await _gustosGrupoRepo.ObtenerGustosDelGrupo(grupoId.Value);
                 var obtenerPrefDeMiembrosValidos = _miembroGrupoRepository.obtenerMiembrosActivosConSusPreferenciasYCondiciones(grupoId.Value);
@@ -50,10 +44,35 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                     CondicionesMedicas= obtenerPrefDeMiembrosValidos.Result.CondicionesMedicas,
                     Restricciones= obtenerPrefDeMiembrosValidos.Result.Restricciones};
             }
+            */
 
-            // Preferencias del usuario base
-            var prefsUser = await _obtenerGustosUser.HandleAsync(firebaseUid, ct, gustosDelFiltro);
+            var usuario = await _usuarioRepo.GetByFirebaseUidAsync(firebaseUid, ct);
 
+            if (usuario == null)
+                throw new UnauthorizedAccessException("Usuario no encontrado o no registrado.");
+
+            // Usuario no selecciona filtro
+
+            if(gustosDelFiltro == null || gustosDelFiltro.Count == 0)
+            {
+                return new UsuarioPreferencias
+                {
+                    Gustos = usuario.Gustos?.Select(g => g.Nombre).ToList() ?? new List<string>(),
+                    Restricciones = usuario.Restricciones?.Select(r => r.Nombre).ToList() ?? new List<string>(),
+                    CondicionesMedicas = usuario.CondicionesMedicas?.Select(c => c.Nombre).ToList() ?? new List<string>()
+                };
+            }
+            //Selecciona filtro
+            return new UsuarioPreferencias
+            {
+                //validar q los gustos del filtro  existan en db PROXIMAMENTE
+                Gustos = gustosDelFiltro,
+                Restricciones = usuario.Restricciones?.Select(r => r.Nombre).ToList() ?? new List<string>(),
+                CondicionesMedicas = usuario.CondicionesMedicas?.Select(c => c.Nombre).ToList() ?? new List<string>()
+            };
+        }
+
+            /*
             if (!string.IsNullOrWhiteSpace(amigoUsername))
             {
                 //aca trae los gustos y restricciones 
@@ -93,10 +112,10 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                     }
                 }
             }
-
-            return prefsUser;
+            */
+           
         }
     }
 
 
-}
+
