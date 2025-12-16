@@ -34,18 +34,9 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
         public async Task<UsuarioPreferencias> HandleAsync(
             string firebaseUid,
             List<string>? gustosDelFiltro,
-            CancellationToken ct)
+            CancellationToken ct = default)
         {
-            /*if (grupoId.HasValue)
-            {
-                var gustosGrupo = await _gustosGrupoRepo.ObtenerGustosDelGrupo(grupoId.Value);
-                var obtenerPrefDeMiembrosValidos = _miembroGrupoRepository.obtenerMiembrosActivosConSusPreferenciasYCondiciones(grupoId.Value);
-                return new UsuarioPreferencias { Gustos = gustosGrupo,
-                    CondicionesMedicas= obtenerPrefDeMiembrosValidos.Result.CondicionesMedicas,
-                    Restricciones= obtenerPrefDeMiembrosValidos.Result.Restricciones};
-            }
-            */
-
+         
             var usuario = await _usuarioRepo.GetByFirebaseUidAsync(firebaseUid, ct);
 
             if (usuario == null)
@@ -71,51 +62,16 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 CondicionesMedicas = usuario.CondicionesMedicas?.Select(c => c.Nombre).ToList() ?? new List<string>()
             };
         }
-
-            /*
-            if (!string.IsNullOrWhiteSpace(amigoUsername))
-            {
-                //aca trae los gustos y restricciones 
-                var amigo = await _usuarioRepo.GetByUsernameAsync(amigoUsername, ct);
-                if (amigo != null)
-                {
-                    var usuarioActual = await _obtenerUsuario.HandleAsync(FirebaseUid: firebaseUid, ct: ct);
-
-                    var amistad = await _confirmarAmistad
-                        .HandleAsync(usuarioActual.Id , amigo.Id, ct);
-
-                    if (amistad == null)
-                        throw new UnauthorizedAccessException("No hay amistad entre los usuarios.");
-                    {
-                        var prefsAmigo = await _obtenerGustosUser
-                            .HandleAsync(amigo.FirebaseUid, ct, null);
-
-                        var gustosCombinados = prefsUser.Gustos
-                            .Concat(prefsAmigo.Gustos)
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-
-                        var restriccionesCombinadas = prefsUser.Restricciones
-                            .Concat(prefsAmigo.Restricciones)
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-
-                        var condicionesCombinadas = prefsUser.CondicionesMedicas
-                            .Concat(prefsAmigo.CondicionesMedicas)
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-
-
-                        return new UsuarioPreferencias { Gustos = gustosCombinados,
-                                                        Restricciones= restriccionesCombinadas,
-                                                        CondicionesMedicas= condicionesCombinadas};
-                    }
-                }
-            }
-            */
-           
         }
     }
 
 
-
+/*if (grupoId.HasValue)
+         {
+             var gustosGrupo = await _gustosGrupoRepo.ObtenerGustosDelGrupo(grupoId.Value);
+             var obtenerPrefDeMiembrosValidos = _miembroGrupoRepository.obtenerMiembrosActivosConSusPreferenciasYCondiciones(grupoId.Value);
+             return new UsuarioPreferencias { Gustos = gustosGrupo,
+                 CondicionesMedicas= obtenerPrefDeMiembrosValidos.Result.CondicionesMedicas,
+                 Restricciones= obtenerPrefDeMiembrosValidos.Result.Restricciones};
+         }
+         */

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.VotacionUseCases;
 using GustosApp.Domain.Common;
@@ -43,18 +44,71 @@ namespace GustosApp.Application.Tests
         [Fact]
         public async Task HandleAsync_UsuarioNoEncontrado_LanzaUnauthorizedAccessException()
         {
+            //arrange
             var firebaseUid = "firebase123";
 
             _mockUsuarioRepository
                 .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync((Usuario?)null);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-                _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
+
+            //act 
+           var act = async () => await _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid());
+
+
+            //asert
+
+            await act.Should().ThrowAsync<UnauthorizedAccessException>()
+                .WithMessage("Usuario no encontrado");
         }
 
 
-      
+        [Fact]
+        public async Task HandleAsync_Usuario_NoLanzaExcepcion()
+        {
+            //arrange
+            var firebaseUid = "firebase123";
+            var usuario = new Usuario{ Id = Guid.NewGuid() , FirebaseUid = firebaseUid
+            };
+            var grupoId= Guid.NewGuid();
+            var restauranteId = Guid.NewGuid();
+
+            _mockUsuarioRepository
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+
+            var grupo = new Grupo("Test", usuario.Id) { Id = grupoId };
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { afectarRecomendacion = true });
+
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteId));
+
+            _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(),default))
+            .ReturnsAsync(votacion);
+
+            var restaurante= new Restaurante { Id = restauranteId, Nombre = "Rest Test" };
+
+            _mockRestauranteRepository.Setup(r => r.GetRestauranteByIdAsync(restauranteId,default))
+            .ReturnsAsync(restaurante);
+
+            _mockVotacionRepository.Setup(r =>
+                r.ObtenerVotoUsuarioAsync(It.IsAny<Guid>(),usuario.Id, default))
+                .ReturnsAsync((VotoRestaurante?)null);
+
+
+            _mockVotacionRepository.Setup(r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), default))
+                .ReturnsAsync(new VotoRestaurante(votacion.Id, usuario.Id, restauranteId));
+           
+            //act 
+            Func <Task> act =  () =>  _useCase.HandleAsync(firebaseUid, votacion.Id, restauranteId);
+
+
+            //asert
+
+          await act.Should().NotThrowAsync();
+        }
+
+
         [Fact]
         public async Task HandleAsync_VotacionNoEncontrada_LanzaArgumentException()
         {
