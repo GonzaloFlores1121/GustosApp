@@ -12,21 +12,15 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
 {
     public class ConstruirPreferenciasUsuarioIndividualUseCase 
     {
-       // private readonly ObtenerUsuarioUseCase _obtenerUsuario;
-      //  private readonly ObtenerGustosUseCase _obtenerGustosUser;
-      //  private readonly ConfirmarAmistadEntreUsuarios _confirmarAmistad;
+    
         private readonly IUsuarioRepository _usuarioRepo;
        
 
         public ConstruirPreferenciasUsuarioIndividualUseCase(
-            //ObtenerUsuarioUseCase obtenerUsuario,
-           // ObtenerGustosUseCase obtenerGustosUser,
-            //ConfirmarAmistadEntreUsuarios confirmarAmistad,
+        
             IUsuarioRepository usuarioRepo)
         {
-           // _obtenerUsuario = obtenerUsuario;
-            //_obtenerGustosUser = obtenerGustosUser;
-           // _confirmarAmistad = confirmarAmistad;
+          
             _usuarioRepo = usuarioRepo;
            
         }

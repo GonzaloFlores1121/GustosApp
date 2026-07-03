@@ -1,11 +1,13 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Model;
@@ -22,6 +24,7 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IFirebaseAuthService> _firebase;
         private readonly Mock<IEmailService> _email;
         private readonly Mock<IEmailTemplateService> _templates;
+        private readonly Mock<IFileStorageService> _firebaseStorage;
 
         private readonly CrearSolicitudRestauranteUseCase _useCase;
 
@@ -34,6 +37,7 @@ namespace GustosApp.Application.Tests
             _firebase = new Mock<IFirebaseAuthService>();
             _email = new Mock<IEmailService>();
             _templates = new Mock<IEmailTemplateService>();
+            _firebaseStorage = new Mock<IFileStorageService>();
 
             _useCase = new CrearSolicitudRestauranteUseCase(
                 _solicitudesRepo.Object,
@@ -42,7 +46,8 @@ namespace GustosApp.Application.Tests
                 _usuariosRepo.Object,
                 _firebase.Object,
                 _email.Object,
-                _templates.Object
+                _templates.Object,
+                _firebaseStorage.Object
             );
         }
 
@@ -64,16 +69,6 @@ namespace GustosApp.Application.Tests
             return list;
         }
 
-        private List<SolicitudRestauranteImagen> FakeImagenes()
-            => new List<SolicitudRestauranteImagen>
-            {
-            new SolicitudRestauranteImagen
-            {
-                Url = "https://img.com/1.jpg",
-                Tipo = TipoImagenSolicitud.Destacada
-            }
-            };
-
         // =========================================================
         // TESTS
         // =========================================================
@@ -91,12 +86,16 @@ namespace GustosApp.Application.Tests
                 firebaseUid: "uid",
                 nombre: "Mi Resto",
                 direccion: "Calle Falsa 123",
-                latitud: 1.23,
-                longitud: 4.56,
+                latitudStr: "1.23",
+                longitudStr: "4.56",
                 horariosJson: "{}",
                 gustosIds: FakeGuids(3),
                 restriccionesIds: new List<Guid>(),
-                imagenes: FakeImagenes(),
+                imagenDestacada: null,
+                imagenesInterior: null,
+                imagenesComidas: null,
+                imagenMenu: null,
+                logo: null,
                 websiteUrl: "https://web.com"
             );
 
@@ -122,12 +121,16 @@ namespace GustosApp.Application.Tests
                 firebaseUid: "uid",
                 nombre: "Mi Resto",
                 direccion: "Calle Falsa 123",
-                latitud: 1.23,
-                longitud: 4.56,
+                latitudStr: "1.23",
+                longitudStr: "4.56",
                 horariosJson: "{}",
                 gustosIds: FakeGuids(3),
                 restriccionesIds: new List<Guid>(),
-                imagenes: FakeImagenes(),
+                imagenDestacada: null,
+                imagenesInterior: null,
+                imagenesComidas: null,
+                imagenMenu: null,
+                logo: null,
                 websiteUrl: "https://web.com"
             );
 
@@ -146,7 +149,6 @@ namespace GustosApp.Application.Tests
             var user = FakeUsuario(Guid.NewGuid(), RolUsuario.Usuario);
             var gustosIds = FakeGuids(3);
             var restriccionesIds = FakeGuids(2);
-            var imagenes = FakeImagenes();
 
             var gustosResult = new List<Gusto> { new Gusto { Id = gustosIds[0] } };
             var restriccionesResult = new List<Restriccion> { new Restriccion { Id = restriccionesIds[0] } };
@@ -195,12 +197,16 @@ namespace GustosApp.Application.Tests
                 firebaseUid: "uid",
                 nombre: "  Mi Resto  ",
                 direccion: "  Calle Falsa 123  ",
-                latitud: 1.23,
-                longitud: 4.56,
+                latitudStr: "1.23",
+                longitudStr: "4.56",
                 horariosJson: "{\"lunes\":\"10-20\"}",
                 gustosIds: gustosIds,
                 restriccionesIds: restriccionesIds,
-                imagenes: imagenes,
+                imagenDestacada: null,
+                imagenesInterior: null,
+                imagenesComidas: null,
+                imagenMenu: null,
+                logo: null,
                 websiteUrl: "  https://web.com  "
             );
 
@@ -217,7 +223,6 @@ namespace GustosApp.Application.Tests
             solicitudCapturada.HorariosJson.Should().Be("{\"lunes\":\"10-20\"}");
             solicitudCapturada.GustosIds.Should().BeEquivalentTo(gustosIds);
             solicitudCapturada.RestriccionesIds.Should().BeEquivalentTo(restriccionesIds);
-            solicitudCapturada.Imagenes.Should().BeSameAs(imagenes);
             solicitudCapturada.Estado.Should().Be(EstadoSolicitudRestaurante.Pendiente);
             solicitudCapturada.WebsiteUrl.Should().Be("https://web.com");
             solicitudCapturada.FechaCreacion.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
@@ -261,7 +266,6 @@ namespace GustosApp.Application.Tests
             var user = FakeUsuario(Guid.NewGuid(), RolUsuario.Usuario);
             var gustosIds = FakeGuids(3);
             List<Guid>? restriccionesIds = null;
-            var imagenes = FakeImagenes();
 
             var gustosResult = new List<Gusto> { new Gusto { Id = gustosIds[0] } };
 
@@ -296,12 +300,16 @@ namespace GustosApp.Application.Tests
                 firebaseUid: "uid",
                 nombre: "Mi Resto",
                 direccion: "Calle Falsa 123",
-                latitud: 1.23,
-                longitud: 4.56,
+                latitudStr: "1.23",
+                longitudStr: "4.56",
                 horariosJson: null,
                 gustosIds: gustosIds,
                 restriccionesIds: restriccionesIds,
-                imagenes: imagenes,
+                imagenDestacada: null,
+                imagenesInterior: null,
+                imagenesComidas: null,
+                imagenMenu: null,
+                logo: null,
                 websiteUrl: "https://web.com"
             );
 
@@ -313,4 +321,4 @@ namespace GustosApp.Application.Tests
                 Times.Once);
         }
     }
-    }
+}

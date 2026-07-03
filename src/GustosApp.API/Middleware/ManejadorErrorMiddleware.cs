@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.API.DTO;
@@ -54,6 +54,7 @@ namespace GustosApp.API.Middleware
                     
        
                 case KeyNotFoundException:
+                case NotFoundException:
                     status = HttpStatusCode.NotFound;
                     result = new { status = 404, error = "NotFound", message = ex.Message };
                     break;

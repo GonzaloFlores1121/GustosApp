@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,6 +13,7 @@ using GustosApp.Application.UseCases.NotificacionUseCases;
 using GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurantes;
 using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
 using GustosApp.Application.UseCases.RestauranteUseCases;
+using GustosApp.Domain.Interfaces;
 using GustosApp.Application.UseCases.UsuarioUseCases.CondicionesMedicasUseCases;
 using GustosApp.Application.UseCases.UsuarioUseCases.GustoUseCases;
 using GustosApp.Application.UseCases.UsuarioUseCases.RestriccionesUseCases;
@@ -109,7 +110,9 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ObtenerResultadosVotacionUseCase>();
             services.AddScoped<CerrarVotacionUseCase>();
             services.AddScoped<SeleccionarGanadorRuletaUseCase>();
-
+            services.AddScoped<IActualizarImagenesRestauranteUseCase, ActualizarImagenesRestauranteUseCase>();
+            services.AddScoped<EliminarRestauranteUseCase>();
+            services.AddScoped<ObtenerRestauranteIdPorPropietarioUseCase>();
 
             return services;
         }

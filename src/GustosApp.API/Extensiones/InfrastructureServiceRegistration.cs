@@ -78,6 +78,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<IUsuarioPreferenciasService, UsuarioPreferenciasService>();
 
 
+
             return services;
         }
     }
