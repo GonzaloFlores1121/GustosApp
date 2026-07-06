@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -46,6 +46,11 @@ namespace GustosApp.Application.Services
                 ? await _preferenciasConAmigo.HandleAsync(firebaseUid, amigoUsername,gustos,ct)
                 : await _preferenciasSolo.HandleAsync(firebaseUid, gustos,ct);
 
+            if (preferencias.Gustos == null || !preferencias.Gustos.Any())
+            {
+                throw new ArgumentException("No tienes gustos cargados. Debes completar tu perfil para recibir recomendaciones.");
+            }
+
             // 2️⃣ Buscar restaurantes cercanos
             var candidatos = await _buscarRestaurantes.BuscarAsync(
                 rating,
@@ -56,19 +61,22 @@ namespace GustosApp.Application.Services
                 preferencias.Restricciones);
 
             if (candidatos == null || !candidatos.Any())
-                throw new KeyNotFoundException("No se encontraron restaurantes para esa ubicación.");
+                return new List<Restaurante>();
 
-            // 3️⃣ Guardar ubicación del usuario en cache
-            await _cache.SetAsync(
-                $"usuario:{firebaseUid}:location",
-                new UserLocation(lat ?? 0, lng ?? 0, radius ?? 3000, DateTime.UtcNow),
-                TimeSpan.FromMinutes(10));
+            // 3️⃣ Guardar ubicación del usuario en cache solo si hay lat y lng
+            if (lat.HasValue && lng.HasValue)
+            {
+                await _cache.SetAsync(
+                    $"usuario:{firebaseUid}:location",
+                    new UserLocation(lat.Value, lng.Value, radius ?? 3000, DateTime.UtcNow),
+                    TimeSpan.FromMinutes(10));
+            }
 
             // 4️⃣ Algoritmo de recomendación
             var recomendados = await _sugerir.Handle(preferencias, candidatos, top, ct);
 
             if (!recomendados.Any())
-                throw new KeyNotFoundException("No hay coincidencias con tus gustos en esa zona.");
+                return new List<Restaurante>();
 
             // 5️⃣ Registrar top3 individual
             var top3 = recomendados.Take(3).Select(r => r.Id).ToList();
@@ -76,7 +84,6 @@ namespace GustosApp.Application.Services
                 await _registrarTop3.HandleAsync(top3, ct);
 
             return recomendados;
-        
-    }
+        }
     }
 }

@@ -93,7 +93,6 @@ namespace GustosApp.API.Controllers
             [FromQuery] List<string>? gustos,
             [FromQuery] string? amigoUsername,
             CancellationToken ct,
-            [FromQuery] string? tipoDeRestaurante,
             [FromQuery] double rating,
             [FromQuery(Name = "near.lat")] double? lat,
             [FromQuery(Name = "near.lng")] double? lng,
