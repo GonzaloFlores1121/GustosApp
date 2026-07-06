@@ -11,6 +11,7 @@ using GustosApp.Application.Validations.Restaurantes;
 using GustosApp.Infraestructure;
 using GustosApp.Infraestructure.ML;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
 using System.Globalization;
 
@@ -38,7 +39,7 @@ builder.Services.AgregarRedisCache(builder.Configuration);
 // =====================
 //      Automapper
 // =====================
-builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+builder.Services.AddAutoMapper(cfg => {}, AppDomain.CurrentDomain.GetAssemblies());
 
 // ===========================
 //    Autorización explícita

@@ -37,6 +37,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ObtenerGustosUseCase>();
             services.AddScoped<ObtenerRestriccionesUseCase>();
             services.AddScoped<CrearGrupoUseCase>();
+            services.AddScoped<ConstruirPreferenciasGrupoUseCase>();
             services.AddScoped<ActualizarNombreGrupoUseCase>();
             services.AddScoped<InvitarUsuarioGrupoUseCase>();
             services.AddScoped<UnirseGrupoUseCase>();
