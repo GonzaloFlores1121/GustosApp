@@ -1,4 +1,4 @@
-﻿using GustosApp.API.DTO;
+using GustosApp.API.DTO;
 using GustosApp.API.DTO;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
@@ -301,7 +301,7 @@ namespace GustosApp.API.DTO
 
         public List<FavoritosPorDiaDto> FavoritosPorDia { get;set;}
 
-        public static List<FavoritosPorDiaDto> CountFavoritosPorDiaAsync(List<UsuarioRestauranteFavoritoDTO> lista)
+        public static List<FavoritosPorDiaDto> CountFavoritosPorDia(List<UsuarioRestauranteFavoritoDTO> lista)
         {
             var query = lista
                 .GroupBy(x => x.FechaAgregado.Date)
@@ -317,7 +317,7 @@ namespace GustosApp.API.DTO
         }
 
 
-        public static List<UsuarioRestauranteFavoritoDTO> convertidorDeFavoritos(List<UsuarioRestauranteFavorito> entity)
+        public static List<UsuarioRestauranteFavoritoDTO> ConvertidorDeFavoritos(List<UsuarioRestauranteFavorito> entity)
         {
             List<UsuarioRestauranteFavoritoDTO> lista = new List<UsuarioRestauranteFavoritoDTO>();
 

@@ -25,17 +25,11 @@ namespace GustosApp.API.Controllers
     public class RestaurantesController : BaseApiController
     {
         private readonly ObtenerUsuarioUseCase _obtenerUsuario;
-        private readonly SugerirGustosSobreUnRadioUseCase _sugerirGustos;
-        private readonly ConstruirPreferenciasUsuarioIndividualUseCase _construirPreferenciasUsuario;
-        private readonly ConstruirPreferenciasUsuarioConAmigoCase _construirPreferenciasConAmigo;
         private readonly CrearSolicitudRestauranteUseCase _solicitudesRestaurantes;
         private readonly BuscarRestaurantesUseCase _buscarRestaurante;
         private readonly ObtenerDatosRegistroRestauranteUseCase _getDatosRegistroRestaurante;
-        private readonly ICacheService _cache;
         private readonly IMapper _mapper;
         private readonly AgregarUsuarioRestauranteFavoritoUseCase _agregarFavoritoUseCase;
-        private readonly RegistrarTop3IndividualRestaurantesUseCase _registrarTop3IndividualUseCase;
-        private readonly RegistrarVisitaPerfilRestauranteUseCase _registrarVisitaPerfilUseCase;
         private readonly ObtenerMetricasRestauranteUseCase _obtenerMetricasRestauranteUseCase;
         private readonly ActualizarRestauranteDashboardUseCase _actualizarRestauranteDashboardUseCase;
         private readonly ObtenerRestauranteDetalleUseCase _obtenerRestauranteDetalle;
@@ -46,16 +40,11 @@ namespace GustosApp.API.Controllers
 
         public RestaurantesController(
       ObtenerUsuarioUseCase obtenerUsuario,
-     SugerirGustosSobreUnRadioUseCase sugerirGustos,
-     ConstruirPreferenciasUsuarioIndividualUseCase construirPreferencias,
-      ConstruirPreferenciasUsuarioConAmigoCase construirPreferenciasConAmigo,
       CrearSolicitudRestauranteUseCase solicitudesRestaurantes,
       ObtenerDatosRegistroRestauranteUseCase getDatosRegistroRestaurante,
-        ICacheService cache, IMapper mapper, BuscarRestaurantesUseCase buscarRestaurante,
-       AgregarUsuarioRestauranteFavoritoUseCase agregarUsuarioRestauranteFavoritoUseCase,
-      RegistrarTop3IndividualRestaurantesUseCase registrarTop3IndividualUseCase,
-    RegistrarVisitaPerfilRestauranteUseCase registrarVisitaPerfilUseCase,
-    ObtenerMetricasRestauranteUseCase obtenerMetricasRestauranteUseCase,
+      IMapper mapper, BuscarRestaurantesUseCase buscarRestaurante,
+      AgregarUsuarioRestauranteFavoritoUseCase agregarUsuarioRestauranteFavoritoUseCase,
+      ObtenerMetricasRestauranteUseCase obtenerMetricasRestauranteUseCase,
     ActualizarRestauranteDashboardUseCase actualizarRestauranteDashboardUseCase,
     ObtenerRestauranteDetalleUseCase obtenerRestauranteDetalle,
     IBuscarRestaurantesRecomendadosOrquestador buscarRestauranteRecomendado,
@@ -64,17 +53,11 @@ namespace GustosApp.API.Controllers
     ObtenerRestauranteIdPorPropietarioUseCase obtenerRestauranteIdPorPropietario)
         {
             _obtenerUsuario = obtenerUsuario;
-            _sugerirGustos = sugerirGustos;
-            _construirPreferenciasUsuario = construirPreferencias;
-            _construirPreferenciasConAmigo = construirPreferenciasConAmigo;
             _solicitudesRestaurantes = solicitudesRestaurantes;
             _getDatosRegistroRestaurante = getDatosRegistroRestaurante;
-            _cache = cache;
             _mapper = mapper;
             _buscarRestaurante = buscarRestaurante;
             _agregarFavoritoUseCase = agregarUsuarioRestauranteFavoritoUseCase;
-            _registrarTop3IndividualUseCase = registrarTop3IndividualUseCase;
-            _registrarVisitaPerfilUseCase = registrarVisitaPerfilUseCase;
             _obtenerMetricasRestauranteUseCase = obtenerMetricasRestauranteUseCase;
             _actualizarRestauranteDashboardUseCase = actualizarRestauranteDashboardUseCase;
             _obtenerRestauranteDetalle = obtenerRestauranteDetalle;
@@ -178,8 +161,6 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> ObtenerDatosParaRegistro(CancellationToken ct)
         {
-            var guid = GetFirebaseUid();
-
             var (gustos, restricciones) = await _getDatosRegistroRestaurante.HandleAsync(ct);
 
             var dto = new DatosSolicitudRestauranteDto
@@ -390,8 +371,6 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Buscar([FromQuery] string texto, CancellationToken ct)
         {
-            var uid = GetFirebaseUid();
-
             var restaurantes = await _buscarRestaurante.HandleAsync(texto, ct);
 
             var dto = restaurantes.Select(r => new RestauranteResponse
@@ -450,7 +429,7 @@ namespace GustosApp.API.Controllers
         {
             var metricas = await _obtenerMetricasRestauranteUseCase.HandleAsync(id, ct);
 
-            var favUsuario = RestauranteMetricasDashboardResponse.convertidorDeFavoritos(metricas.TotalFavoritos);
+            var favUsuario = RestauranteMetricasDashboardResponse.ConvertidorDeFavoritos(metricas.TotalFavoritos);
 
             var rest = new RestauranteMetricasDashboardResponse
             {
@@ -458,7 +437,7 @@ namespace GustosApp.API.Controllers
                 TotalTop3Individual = metricas.Estadisticas?.TotalTop3Individual ?? 0,
                 TotalTop3Grupo = metricas.Estadisticas?.TotalTop3Grupo ?? 0,
                 TotalVisitasPerfil = metricas.Estadisticas?.TotalVisitasPerfil ?? 0,
-                FavoritosPorDia = RestauranteMetricasDashboardResponse.CountFavoritosPorDiaAsync(favUsuario),
+                FavoritosPorDia = RestauranteMetricasDashboardResponse.CountFavoritosPorDia(favUsuario),
             };
 
             return Ok(rest);

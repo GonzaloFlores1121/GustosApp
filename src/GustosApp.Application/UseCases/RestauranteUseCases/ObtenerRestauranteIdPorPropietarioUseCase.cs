@@ -17,6 +17,12 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
         public async Task<Guid> HandleAsync(Guid propietarioId)
         {
             var restaurante = await _servicio.ObtenerPorPropietarioAsync(propietarioId);
+            
+            if (restaurante == null)
+            {
+                throw new Application.Common.Exceptions.NotFoundException($"No se encontró un restaurante para el propietario con id {propietarioId}");
+            }
+
             return restaurante.Id;
         }
     }
