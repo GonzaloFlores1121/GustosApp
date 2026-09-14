@@ -35,4 +35,16 @@ public sealed class PruebasManejadorErroresApi : IClassFixture<FabricaApiGustosA
         cuerpo.Should().NotContain("detalle-interno-sensible");
         cuerpo.Should().NotContain("causa-interna-sensible");
     }
+
+    [Fact]
+    public async Task AccesoARecursoAjeno_DevuelveProhibido()
+    {
+        var respuesta = await _cliente.GetAsync("/pruebas/errores/prohibido");
+        var cuerpo = await respuesta.Content.ReadAsStringAsync();
+        using var documento = JsonDocument.Parse(cuerpo);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        documento.RootElement.GetProperty("message").GetString()
+            .Should().Be("No tenés permisos para acceder a este recurso.");
+    }
 }

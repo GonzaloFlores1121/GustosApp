@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -16,6 +17,7 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IGustoRepository> _gustoRepositoryMock;
         private readonly Mock<IRestriccionRepository> _restriccionRepositoryMock;
         private readonly ActualizarRestauranteDashboardUseCase _sut;
+        private readonly Guid _usuarioId = Guid.NewGuid();
 
         public ActualizarRestauranteDashboardUseCaseTests()
         {
@@ -36,6 +38,7 @@ namespace GustosApp.Application.Tests
             return new Restaurante
             {
                 Id = id ?? Guid.NewGuid(),
+                DuenoId = _usuarioId,
                 Direccion = "Dirección original",
                 Latitud = -34.0,
                 Longitud = -58.0,
@@ -62,6 +65,7 @@ namespace GustosApp.Application.Tests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 _sut.HandleAsync(
                     restauranteId,
+                    _usuarioId,
                     direccion: "Nueva dirección",
                     latitud: -35.0,
                     longitud: -59.0,
@@ -91,6 +95,7 @@ namespace GustosApp.Application.Tests
             
             var result = await _sut.HandleAsync(
                 restauranteId,
+                _usuarioId,
                 direccion: "Nueva dirección",
                 latitud: -35.123,
                 longitud: -60.456,
@@ -142,6 +147,7 @@ namespace GustosApp.Application.Tests
 
             await _sut.HandleAsync(
                 restauranteId,
+                _usuarioId,
                 direccion: null,
                 latitud: null,
                 longitud: null,
@@ -189,6 +195,7 @@ namespace GustosApp.Application.Tests
             // Act
             await _sut.HandleAsync(
                 restauranteId,
+                _usuarioId,
                 direccion: null,
                 latitud: null,
                 longitud: null,
@@ -233,6 +240,7 @@ namespace GustosApp.Application.Tests
 
             await _sut.HandleAsync(
                 restauranteId,
+                _usuarioId,
                 direccion: null,
                 latitud: null,
                 longitud: null,
@@ -327,6 +335,7 @@ namespace GustosApp.Application.Tests
 
             await _sut.HandleAsync(
                 restauranteId,
+                _usuarioId,
                 direccion: null,
                 latitud: null,
                 longitud: null,
@@ -341,6 +350,40 @@ namespace GustosApp.Application.Tests
                 Times.Never);
 
             Assert.Empty(restaurante.RestriccionesQueRespeta);
+        }
+
+        [Fact]
+        public async Task HandleAsync_RestauranteDeOtroUsuario_LanzaAccesoProhibidoYNoActualiza()
+        {
+            var restauranteId = Guid.NewGuid();
+            var restaurante = CreateRestaurante(restauranteId);
+
+            _restauranteRepositoryMock
+                .Setup(r => r.GetByIdAsync(restauranteId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(restaurante);
+
+            var accion = () => _sut.HandleAsync(
+                restauranteId,
+                Guid.NewGuid(),
+                direccion: "Dirección que no debe aplicarse",
+                latitud: null,
+                longitud: null,
+                horariosJson: null,
+                webUrl: null,
+                gustosQueSirveIds: null,
+                restriccionesQueRespetaIds: null,
+                ct: CancellationToken.None);
+
+            var excepcion = await Assert.ThrowsAsync<AccesoProhibidoException>(accion);
+
+            Assert.Equal("No tenés permisos para actualizar este restaurante.", excepcion.Message);
+            Assert.Equal("Dirección original", restaurante.Direccion);
+            _restauranteRepositoryMock.Verify(
+                r => r.UpdateAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _restauranteRepositoryMock.Verify(
+                r => r.SaveChangesAsync(It.IsAny<CancellationToken>()),
+                Times.Never);
         }
     }
 }

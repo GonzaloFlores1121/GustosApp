@@ -185,15 +185,18 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(RestauranteDetalleDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> ActualizarBasico(
             Guid id,
             [FromBody] ActualizarRestauranteDashboardRequest dto,
             CancellationToken ct)
         {
-
+            var firebaseUid = GetFirebaseUid();
+            var usuario = await _obtenerUsuario.HandleAsync(FirebaseUid: firebaseUid, ct: ct);
             var restauranteActualizado = await _actualizarRestauranteDashboardUseCase.HandleAsync(
                 id,
+                usuario.Id,
                 dto.Direccion,
                 dto.Latitud,
                 dto.Longitud,

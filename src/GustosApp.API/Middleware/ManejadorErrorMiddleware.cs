@@ -47,6 +47,11 @@ namespace GustosApp.API.Middleware
                     result = new { status = 401, error = "Unauthorized", message = ex.Message };
                     break;
 
+                case AccesoProhibidoException:
+                    status = HttpStatusCode.Forbidden;
+                    result = new { status = 403, error = "Forbidden", message = ex.Message };
+                    break;
+
                 case ArgumentException:
                     status = HttpStatusCode.BadRequest;
                     result = new { status = 400, error = "BadRequest", message = ex.Message };
