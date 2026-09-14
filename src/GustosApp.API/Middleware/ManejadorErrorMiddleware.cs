@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.API.DTO;
+using Microsoft.AspNetCore.Mvc;
 
 namespace GustosApp.API.Middleware
 {
@@ -102,12 +103,14 @@ namespace GustosApp.API.Middleware
 
 
                 default:
-                    result = new
+                    response.ContentType = "application/problem+json";
+                    result = new ProblemDetails
                     {
-                        status = 500,
-                        error = "InternalServerError",
-                        message = ex.Message,
-                        detail = ex.InnerException?.Message
+                        Type = "https://tools.ietf.org/html/rfc9110#section-15.6.1",
+                        Title = "Error interno del servidor",
+                        Status = StatusCodes.Status500InternalServerError,
+                        Detail = "Ocurrió un error inesperado. Intente nuevamente más tarde.",
+                        Instance = context.Request.Path
                     };
                     break;
             }

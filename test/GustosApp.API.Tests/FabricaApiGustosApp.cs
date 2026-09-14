@@ -54,6 +54,10 @@ public class FabricaApiGustosApp : WebApplicationFactory<Program>
         });
         constructor.ConfigureTestServices(servicios =>
         {
+            servicios
+                .AddControllers()
+                .AddApplicationPart(typeof(ControladorErroresPrueba).Assembly);
+
             servicios.RemoveAll<IDataProtectionProvider>();
             servicios.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
 
