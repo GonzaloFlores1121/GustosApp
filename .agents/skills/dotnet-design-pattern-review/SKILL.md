@@ -1,42 +1,32 @@
 ---
 name: dotnet-design-pattern-review
-description: 'Review the C#/.NET code for design pattern implementation and suggest improvements.'
+description: Review GustosApp C# code for appropriate architecture and design patterns without requiring patterns the solution does not use or changing code unless asked.
 ---
 
-# .NET/C# Design Pattern Review
+# GustosApp design review
 
-Review the C#/.NET code in ${selection} for design pattern implementation and suggest improvements for the solution/project. Do not make any changes to the code, just provide a review.
+Review the requested scope against the architecture documented in `AGENTS.md`. When the user requests review only, do not edit files.
 
-## Required Design Patterns
+## Patterns actually used
 
-- **Command Pattern**: Generic base classes (`CommandHandler<TOptions>`), `ICommandHandler<TOptions>` interface, `CommandHandlerOptions` inheritance, static `SetupCommand(IHost host)` methods
-- **Factory Pattern**: Complex object creation service provider integration
-- **Dependency Injection**: Primary constructor syntax, `ArgumentNullException` null checks, interface abstractions, proper service lifetimes
-- **Repository Pattern**: Async data access interfaces provider abstractions for connections
-- **Provider Pattern**: External service abstractions (database, AI), clear contracts, configuration handling
-- **Resource Pattern**: ResourceManager for localized messages, separate .resx files (LogMessages, ErrorMessages)
+- Use Case/Application Service for business workflows.
+- Repository for persistence contracts and EF Core implementations.
+- Dependency Injection through ASP.NET Core and `IServiceCollection` extensions.
+- Adapter or provider abstractions for Firebase, Google APIs, Redis, Mercado Pago, email, OCR, Gemini, and ONNX.
+- Middleware for cross-cutting HTTP error handling.
+- SignalR hubs for real-time communication.
 
-## Review Checklist
+These patterns are descriptive, not mandatory everywhere. Do not require any named design pattern or syntax style without a concrete benefit.
 
-- **Design Patterns**: Identify patterns used. Are Command Handler, Factory, Provider, and Repository patterns correctly implemented? Missing beneficial patterns?
-- **Architecture**: Follow namespace conventions (`{Core|Console|App|Service}.{Feature}`)? Proper separation between Core/Console projects? Modular and readable?
-- **.NET Best Practices**: Primary constructors, async/await with Task returns, ResourceManager usage, structured logging, strongly-typed configuration?
-- **GoF Patterns**: Command, Factory, Template Method, Strategy patterns correctly implemented?
-- **SOLID Principles**: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion violations?
-- **Performance**: Proper async/await, resource disposal, ConfigureAwait(false), parallel processing opportunities?
-- **Maintainability**: Clear separation of concerns, consistent error handling, proper configuration usage?
-- **Testability**: Dependencies abstracted via interfaces, mockable components, async testability, AAA pattern compatibility?
-- **Security**: Input validation, secure credential handling, parameterized queries, safe exception handling?
-- **Documentation**: XML docs for public APIs, parameter/return descriptions, resource file organization?
-- **Code Clarity**: Meaningful names reflecting domain concepts, clear intent through patterns, self-explanatory structure?
-- **Clean Code**: Consistent style, appropriate method/class size, minimal complexity, eliminated duplication?
+## Review criteria
 
-## Improvement Focus Areas
+- Dependency direction: Domain remains provider-independent; Application does not depend on API or concrete Infrastructure implementations.
+- Responsibilities: controllers and hubs coordinate transport, use cases own workflows, repositories own persistence, and Domain owns business invariants.
+- Testability: dependencies have useful seams and Domain/Application logic is covered with xUnit, Moq, and FluentAssertions. Flag bug fixes without regression coverage and tests that are commented out or undiscovered.
+- Async correctness: I/O is asynchronous, cancellation flows through calls, and no sync-over-async is introduced.
+- Data access: queries filter and project before materialization, avoid N+1 behavior, and use tracking intentionally.
+- Error handling: expected failures have stable types or codes and HTTP responses are mapped consistently rather than from message text.
+- Security: authorization is explicit, inputs and webhooks are validated, secrets stay out of Git, and detailed errors are environment-aware.
+- Maintainability: abstractions solve observed coupling, large classes have cohesive responsibilities, and duplication or complexity is supported by concrete evidence.
 
-- **Command Handlers**: Validation in base class, consistent error handling, proper resource management
-- **Factories**: Dependency configuration, service provider integration, disposal patterns
-- **Providers**: Connection management, async patterns, exception handling and logging
-- **Configuration**: Data annotations, validation attributes, secure sensitive value handling
-- **AI/ML Integration**: Semantic Kernel patterns, structured output handling, model configuration
-
-Provide specific, actionable recommendations for improvements aligned with the project's architecture and .NET best practices.
+Report findings in priority order with file and line evidence, user impact, and a focused remediation. Distinguish correctness or security problems from optional design improvements. Avoid recommending microservices or additional layers solely for architectural purity.

@@ -1,85 +1,37 @@
 ---
 name: dotnet-best-practices
-description: 'Ensure .NET/C# code meets best practices for the solution/project.'
+description: Implement or improve C# code in the GustosApp .NET 8 solution while preserving its layered architecture, behavior, and xUnit test suite.
 ---
 
-# .NET/C# Best Practices
+# GustosApp .NET best practices
 
-Your task is to ensure .NET/C# code in ${selection} meets the best practices specific to this solution/project. This includes:
+Inspect the surrounding code and project files before editing. Prefer a focused change that follows the local style over a broad rewrite.
 
-## Documentation & Structure
+## Required quality bar
 
-- Create comprehensive XML documentation comments for all public classes, interfaces, methods, and properties
-- Include parameter descriptions and return value descriptions in XML comments
-- Follow the established namespace structure: {Core|Console|App|Service}.{Feature}
+- Follow `AGENTS.md`, especially its test, verification, secret-management, and Git rules.
+- Add or update xUnit tests for every Domain or Application logic change. Use Moq and FluentAssertions where they improve clarity, and keep Arrange, Act, Assert structure.
+- Add a regression test for every bug fix. Never comment out, relax, ignore, or delete a test merely to obtain a passing build.
+- Keep nullable reference types meaningful. Fix warnings with correct initialization, `required`, nullable annotations, or explicit guards rather than suppression by default.
+- Use async I/O end to end and propagate `CancellationToken`. Avoid sync-over-async.
+- Use constructor injection and appropriate service lifetimes. Add an interface only where it creates a useful boundary or test seam.
 
-## Design Patterns & Architecture
+## Architecture and maintainability
 
-- Use primary constructor syntax for dependency injection (e.g., `public class MyClass(IDependency dependency)`)
-- Implement the Command Handler pattern with generic base classes (e.g., `CommandHandler<TOptions>`)
-- Use interface segregation with clear naming conventions (prefix interfaces with 'I')
-- Follow the Factory pattern for complex object creation.
+- Keep Domain provider-independent, Application focused on use cases, Infrastructure responsible for EF Core and external systems, and API responsible for HTTP/SignalR concerns.
+- Patterns such as Repository, Strategy, Factory, or Result are optional tools, not requirements. Apply them only when they reduce coupling or clarify behavior.
+- Keep controllers thin and business decisions in Application or Domain.
+- Prefer focused classes and methods, meaningful domain names, and removal of duplication supported by tests.
+- Preserve public API compatibility unless the requested change explicitly allows a breaking change.
 
-## Dependency Injection & Services
+## Configuration, errors, and security
 
-- Use constructor dependency injection with null checks via ArgumentNullException
-- Register services with appropriate lifetimes (Singleton, Scoped, Transient)
-- Use Microsoft.Extensions.DependencyInjection patterns
-- Implement service interfaces for testability
+- Keep .NET and Microsoft.Extensions/EF Core package major versions compatible with the `net8.0` target.
+- Bind external settings through typed options when practical and validate required values at startup.
+- Use structured `ILogger` messages without credentials or personal data.
+- Represent expected failures with specific exceptions or application results and map them consistently to HTTP `ProblemDetails`.
+- Parameterize data access, validate input at trust boundaries, and keep all secrets outside tracked files.
 
-## Resource Management & Localization
+## Verification
 
-- Use ResourceManager for localized messages and error strings
-- Separate LogMessages and ErrorMessages resource files
-- Access resources via `_resourceManager.GetString("MessageKey")`
-
-## Async/Await Patterns
-
-- Use async/await for all I/O operations and long-running tasks
-- Return Task or Task<T> from async methods
-- Use ConfigureAwait(false) where appropriate
-- Handle async exceptions properly
-
-## Testing Standards
-
-- Use MSTest framework with FluentAssertions for assertions
-- Follow AAA pattern (Arrange, Act, Assert)
-- Use Moq for mocking dependencies
-- Test both success and failure scenarios
-- Include null parameter validation tests
-
-## Configuration & Settings
-
-- Use strongly-typed configuration classes with data annotations
-- Implement validation attributes (Required, NotEmptyOrWhitespace)
-- Use IConfiguration binding for settings
-- Support appsettings.json configuration files
-
-## Semantic Kernel & AI Integration
-
-- Use Microsoft.SemanticKernel for AI operations
-- Implement proper kernel configuration and service registration
-- Handle AI model settings (ChatCompletion, Embedding, etc.)
-- Use structured output patterns for reliable AI responses
-
-## Error Handling & Logging
-
-- Use structured logging with Microsoft.Extensions.Logging
-- Include scoped logging with meaningful context
-- Throw specific exceptions with descriptive messages
-- Use try-catch blocks for expected failure scenarios
-
-## Performance & Security
-
-- Use C# 12+ features and .NET 8 optimizations where applicable
-- Implement proper input validation and sanitization
-- Use parameterized queries for database operations
-- Follow secure coding practices for AI/ML operations
-
-## Code Quality
-
-- Ensure SOLID principles compliance
-- Avoid code duplication through base classes and utilities
-- Use meaningful names that reflect domain concepts
-- Keep methods focused and cohesive
-- Implement proper disposal patterns for resources
+Run the Release build and complete test suite specified in `AGENTS.md`. Inspect the test summaries for projects that report zero discovered tests, not only the process exit code.
