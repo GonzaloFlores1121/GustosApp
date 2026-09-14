@@ -15,11 +15,7 @@ namespace GustosApp.API.Extensiones
               .AddJwtBearer(options =>
       {
           options.Authority = $"https://securetoken.google.com/{firebaseProjectId}";
-
-          // Manual fetch of keys to bypass ConfigurationManager silent failures
-          var httpClient = new HttpClient();
-          var jwksJson = httpClient.GetStringAsync("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com").Result;
-          var jwks = new JsonWebKeySet(jwksJson);
+          options.Audience = firebaseProjectId;
 
           options.TokenValidationParameters = new TokenValidationParameters
           {
@@ -28,7 +24,6 @@ namespace GustosApp.API.Extensiones
               ValidateAudience = true,
               ValidAudience = firebaseProjectId,
               ValidateLifetime = true,
-              IssuerSigningKeys = jwks.Keys,
               ValidateIssuerSigningKey = true
           };
 
@@ -89,11 +84,7 @@ namespace GustosApp.API.Extensiones
                       .GetRequiredService<ILoggerFactory>()
                       .CreateLogger("JWT");
 
-                  logger.LogError("🛑 FALLO DE AUTENTICACIÓN JWT!");
-                  logger.LogError(context.Exception.ToString());
-                  
-                  var rawToken = context.Request.Headers["Authorization"].ToString();
-                  logger.LogError($"El token que intentó validar vino en el header como: '{rawToken}'");
+                  logger.LogWarning(context.Exception, "Falló la autenticación JWT.");
 
                   return Task.CompletedTask;
               }

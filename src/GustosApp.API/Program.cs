@@ -215,3 +215,5 @@ app.MapHub<SolicitudesAmistadHub>("/solicitudesAmistadHub");
 app.MapHub<VotacionesHub>("/votacionesHub");
 
 app.Run();
+
+public partial class Program;
