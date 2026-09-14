@@ -23,10 +23,11 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             _firebase = firebase;
         }
 
-        public async Task<string?> ActualizarImagenDestacadaAsync(Guid id, ArchivoEntrada? archivo, bool soloBorrar, CancellationToken ct)
+        public async Task<string?> ActualizarImagenDestacadaAsync(Guid id, Guid usuarioId, ArchivoEntrada? archivo, bool soloBorrar, CancellationToken ct)
         {
             var restaurante = await _restauranteRepository.GetRestauranteConImagenesAsync(id, ct)
                 ?? throw new NotFoundException("Restaurante no encontrado.");
+            ValidarPropietario(restaurante, usuarioId);
 
             var urlsSubidas = new List<string>();
 
@@ -60,10 +61,11 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             }
         }
 
-        public async Task<string?> ActualizarLogoAsync(Guid id, ArchivoEntrada? archivo, bool soloBorrar, CancellationToken ct)
+        public async Task<string?> ActualizarLogoAsync(Guid id, Guid usuarioId, ArchivoEntrada? archivo, bool soloBorrar, CancellationToken ct)
         {
             var restaurante = await _restauranteRepository.GetRestauranteConImagenesAsync(id, ct)
                 ?? throw new NotFoundException("Restaurante no encontrado.");
+            ValidarPropietario(restaurante, usuarioId);
 
             var urlsSubidas = new List<string>();
 
@@ -97,10 +99,11 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             }
         }
 
-        public async Task<List<string>> ActualizarImagenesColeccionAsync(Guid id, TipoImagenRestaurante tipo, IList<ArchivoEntrada>? archivos, bool soloBorrar, CancellationToken ct)
+        public async Task<List<string>> ActualizarImagenesColeccionAsync(Guid id, Guid usuarioId, TipoImagenRestaurante tipo, IList<ArchivoEntrada>? archivos, bool soloBorrar, CancellationToken ct)
         {
             var restaurante = await _restauranteRepository.GetRestauranteConImagenesAsync(id, ct)
                 ?? throw new NotFoundException("Restaurante no encontrado.");
+            ValidarPropietario(restaurante, usuarioId);
 
             var urlsSubidas = new List<string>();
 
@@ -155,6 +158,12 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 }
                 throw;
             }
+        }
+
+        private static void ValidarPropietario(Restaurante restaurante, Guid usuarioId)
+        {
+            if (restaurante.DuenoId != usuarioId)
+                throw new AccesoProhibidoException("No tenés permisos para actualizar las imágenes de este restaurante.");
         }
     }
 }
