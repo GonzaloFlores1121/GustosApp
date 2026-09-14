@@ -14,17 +14,22 @@ using Moq;
 
 namespace GustosApp.API.Tests;
 
-public sealed class GustosAppApiFactory : WebApplicationFactory<Program>
+public class GustosAppApiFactory : WebApplicationFactory<Program>
 {
+    private static readonly object FirebaseLock = new();
+
     public GustosAppApiFactory()
     {
-        if (FirebaseApp.DefaultInstance is null)
+        lock (FirebaseLock)
         {
-            FirebaseApp.Create(new AppOptions
+            if (FirebaseApp.DefaultInstance is null)
             {
-                Credential = GoogleCredential.FromAccessToken("integration-test-token"),
-                ProjectId = "gustosapp-integration-tests"
-            });
+                FirebaseApp.Create(new AppOptions
+                {
+                    Credential = GoogleCredential.FromAccessToken("integration-test-token"),
+                    ProjectId = "gustosapp-integration-tests"
+                });
+            }
         }
     }
 
