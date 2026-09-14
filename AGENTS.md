@@ -31,6 +31,14 @@ Respeta la direccion de dependencias existente. Domain no debe depender de Appli
 - Usa excepciones especificas o resultados de aplicacion para errores esperados; no dependas del texto de una excepcion para decidir el codigo HTTP.
 - No introduzcas patrones, capas o abstracciones sin un problema concreto que los justifique.
 
+## Idioma y nombres
+
+- Mantiene en espanol los nombres propios del proyecto: clases, metodos, variables, DTOs, casos de uso, pruebas y archivos relacionados.
+- Nombra las pruebas en espanol y expresa con claridad el escenario y el resultado esperado.
+- Conserva en su idioma original los nombres impuestos por .NET, librerias, protocolos o proveedores, incluidas las firmas sobrescritas y las palabras tecnicas como HTTP, Redis, Firebase y SignalR.
+- No traduzcas contratos HTTP, configuraciones externas, codigo generado ni APIs publicas existentes solo por uniformidad; cualquier cambio de contrato debe ser deliberado y estar cubierto por pruebas.
+- Cuando modifiques codigo propio que mezcla idiomas, mejora los nombres de forma gradual y acotada, evitando renombrados masivos sin valor funcional.
+
 ## Verificacion y Git
 
 Antes de finalizar una tarea que cambie codigo o configuracion:
@@ -45,4 +53,3 @@ dotnet test GustosApp.sln --configuration Release --no-build
 - Revisa el estado de Git antes y despues de trabajar.
 - No incluyas cambios previos o ajenos en un commit.
 - Cuando el usuario autorice commits, crea commits descriptivos y enfocados. No hagas push salvo pedido explicito.
-
