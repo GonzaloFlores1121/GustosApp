@@ -4,14 +4,6 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <UserSecretsId>b5f3e14d-4778-4e6e-9cc5-084ba7a0edbe</UserSecretsId>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Google.Cloud.AIPlatform.V1" Version="3.56.0" />
-    <PackageReference Include="Google.GenAI" Version="0.6.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="6.0.1" />
-    <PackageReference Include="Microsoft.Owin.Security.Google" Version="4.2.3" />
-  </ItemGroup>
 
 </Project>
