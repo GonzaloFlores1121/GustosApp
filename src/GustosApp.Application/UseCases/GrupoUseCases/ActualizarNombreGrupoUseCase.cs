@@ -1,5 +1,6 @@
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases
 {
@@ -38,7 +39,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
 
             // Verificar que el usuario es administrador
             if (grupo.AdministradorId != usuario.Id)
-                throw new UnauthorizedAccessException("Solo el administrador puede cambiar el nombre del grupo");
+                throw new AccesoProhibidoException("Solo el administrador puede cambiar el nombre del grupo");
 
             // Actualizar nombre
             grupo.ActualizarNombre(nuevoNombre.Trim());

@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases;
 using GustosApp.Domain.Interfaces;
@@ -228,7 +229,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task HandleAsync_Deberia_Lanzar_Unauthorized_SiUsuarioNoEsAdministrador()
+        public async Task HandleAsync_UsuarioNoEsAdministrador_LanzaAccesoProhibido()
         {
             // Arrange
             var sut = CreateSut();
@@ -260,8 +261,12 @@ namespace GustosApp.Application.Tests
 
             // Assert
             await act.Should()
-                .ThrowAsync<UnauthorizedAccessException>()
+                .ThrowAsync<AccesoProhibidoException>()
                 .WithMessage("Solo los administradores pueden invitar usuarios");
+
+            _invitacionRepoMock.Verify(
+                r => r.CreateAsync(It.IsAny<InvitacionGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]

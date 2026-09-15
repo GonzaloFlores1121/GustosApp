@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.GrupoUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -120,9 +121,9 @@ namespace GustosApp.Application.Tests
                 Times.Never);
         }
 
-        // Verifica que cuando el usuario actor no es administrador se lanza UnauthorizedAccessException con el mensaje correcto
+        // Verifica que un usuario autenticado sin permisos administrativos recibe acceso prohibido.
         [Fact]
-        public async Task HandleAsync_UsuarioActorNoAdministrador_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_UsuarioActorNoAdministrador_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid-valido";
             var grupoId = Guid.NewGuid();
@@ -142,7 +143,7 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsAdministradorAsync(grupoId, usuarioActor.Id, ct))
                 .ReturnsAsync(false);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _sut.HandleAsync(firebaseUid, grupoId, "username", ct));
 
             Assert.Equal("Solo los administradores pueden eliminar miembros", ex.Message);

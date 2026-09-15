@@ -1,4 +1,5 @@
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
@@ -44,7 +45,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
 
             // 3. Solo administradores pueden invitar
             if (!await _grupoRepository.UsuarioEsAdministradorAsync(grupoId, usuarioInvitador.Id, ct))
-                throw new UnauthorizedAccessException("Solo los administradores pueden invitar usuarios");
+                throw new AccesoProhibidoException("Solo los administradores pueden invitar usuarios");
 
             // 4. Buscar usuario invitado
             var usuarioInvitado = await ObtenerUsuarioInvitado(EmailUsuario, UsuarioId,

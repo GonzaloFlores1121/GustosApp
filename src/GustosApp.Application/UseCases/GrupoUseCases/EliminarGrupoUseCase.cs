@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases
 {
@@ -22,7 +23,7 @@ namespace GustosApp.Application.UseCases
             if (usuario == null) throw new UnauthorizedAccessException("Usuario no encontrado");
 
             var esAdmin = await _grupoRepository.UsuarioEsAdministradorAsync(grupoId, usuario.Id, cancellationToken);
-            if (!esAdmin) throw new UnauthorizedAccessException("No tienes permisos para eliminar este grupo");
+            if (!esAdmin) throw new AccesoProhibidoException("No tienes permisos para eliminar este grupo");
 
             await _grupoRepository.DeleteAsync(grupoId, cancellationToken);
             return true;

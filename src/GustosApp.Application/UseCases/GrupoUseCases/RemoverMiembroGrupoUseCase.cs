@@ -1,4 +1,5 @@
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 
@@ -35,7 +36,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
 
             // verificar que actor es administrador
             if (!await _grupoRepository.UsuarioEsAdministradorAsync(grupoId, usuarioActor.Id, cancellationToken))
-                throw new UnauthorizedAccessException("Solo los administradores pueden eliminar miembros");
+                throw new AccesoProhibidoException("Solo los administradores pueden eliminar miembros");
 
             // buscar el miembro a remover
             var miembro = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(grupoId, username, cancellationToken);

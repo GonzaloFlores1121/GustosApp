@@ -120,6 +120,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(InvitacionGrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> InvitarUsuario(Guid grupoId, [FromBody] InvitacionGrupoRequest request, CancellationToken ct)
         {
 
@@ -218,6 +219,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(GrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> ActualizarNombreGrupo(Guid grupoId, [FromBody] ActualizarNombreGrupoRequest request, CancellationToken ct)
         {
             var firebaseUid = GetFirebaseUid();
@@ -230,6 +232,7 @@ namespace GustosApp.API.Controllers
         [HttpDelete("{grupoId}")]
         [ProducesResponseType(typeof(EliminarGrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> EliminarGrupo(string grupoId, CancellationToken ct)
         {
 
@@ -255,6 +258,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(RemoverMiembroResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
 
         public async Task<IActionResult> RemoverMiembro(Guid grupoId, string username, CancellationToken ct)
         {
