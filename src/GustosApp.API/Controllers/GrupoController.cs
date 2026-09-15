@@ -393,7 +393,7 @@ namespace GustosApp.API.Controllers
             var response = new
             {
                 Success = ok,
-                Mensaje = "Miembro Desactivado Correctamente"
+                Mensaje = "Miembro excluido de la recomendación correctamente"
             };
 
             return Ok(response);
@@ -415,7 +415,7 @@ namespace GustosApp.API.Controllers
             var response = new
             {
                 Success = ok,
-                Mensaje = "Miembro activado Correctamente"
+                Mensaje = "Miembro incluido en la recomendación correctamente"
             };
 
             return Ok(response);

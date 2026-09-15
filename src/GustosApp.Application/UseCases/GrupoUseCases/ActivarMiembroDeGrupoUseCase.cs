@@ -52,24 +52,26 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
             }
 
             var esAdmin = await _grupoRepository.UsuarioEsAdministradorAsync(grupoId, usuarioSolicitante.Id);
-            var esElMismoUsuario = usuarioSolicitante.Id.Equals(usuarioId); 
 
-            if (!esAdmin && !esElMismoUsuario)
+            if (!esAdmin)
             {
-                throw new AccesoProhibidoException("Debe ser administrador del grupo o el mismo usuario para activar al miembro.");
+                throw new AccesoProhibidoException("Solo el administrador del grupo puede incluir miembros en la recomendación.");
             }
 
             var miembroGrupo = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(grupoId, usuarioObtenido.IdUsuario);
 
-            if (miembroGrupo == null || miembroGrupo.afectarRecomendacion)
+            if (miembroGrupo == null)
             {
-                // Lanza una excepción o devuelve true si ya está activo (Idempotencia)
-                if (miembroGrupo != null && miembroGrupo.afectarRecomendacion) return true;
-
-                throw new InvalidOperationException("El usuario no es un miembro inactivo del grupo.");
+                throw new InvalidOperationException("El usuario no es miembro del grupo.");
             }
 
-            //cambiar el estado del usuario en el grupo
+            // La operación es idempotente cuando el miembro ya participa de la recomendación.
+            if (miembroGrupo.afectarRecomendacion)
+            {
+                return true;
+            }
+
+            // Incluir las preferencias del miembro en la próxima recomendación.
             return await _miembroGrupoRepository.ActivarMiembro(grupoId, usuarioObtenido.Id);
         }
     }

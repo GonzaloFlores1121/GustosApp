@@ -53,11 +53,10 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
             }
 
             var esAdmin = await _grupoRepository.UsuarioEsAdministradorAsync(grupoId, usuarioSolicitante.Id);
-            var esElMismoUsuario = usuarioSolicitante.Id.Equals(usuarioADesactivar.Id);
 
-            if (!esAdmin && !esElMismoUsuario)
+            if (!esAdmin)
             {
-                throw new AccesoProhibidoException("Debe ser administrador del grupo o el mismo usuario para desactivar a un miembro.");
+                throw new AccesoProhibidoException("Solo el administrador del grupo puede excluir miembros de la recomendación.");
             }            
 
             var miembroGrupo = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(grupoId, usuarioADesactivar.IdUsuario);
@@ -72,6 +71,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
                 return true;
             }
 
+            // Excluir las preferencias del miembro de la próxima recomendación.
             return await _miembroGrupoRepository.DesactivarMiembroDeGrupo(grupoId, usuarioADesactivar.Id);
         }
     }

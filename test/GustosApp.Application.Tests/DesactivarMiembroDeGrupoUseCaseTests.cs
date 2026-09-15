@@ -90,7 +90,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_NoEsAdministradorNiMismoUsuario_LanzaAccesoProhibido()
+        public async Task Handle_NoEsAdministradorAunqueSeaElMismoUsuario_LanzaAccesoProhibido()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -104,7 +104,7 @@ namespace GustosApp.Application.Tests
             );
 
             var solicitante = new Usuario { Id = Guid.NewGuid() };
-            var objetivo = new Usuario { Id = Guid.NewGuid() };
+            var objetivo = solicitante;
 
             mockUsuarioRepo
                 .Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
@@ -169,7 +169,7 @@ namespace GustosApp.Application.Tests
 
 
         [Fact]
-        public async Task Handle_MiembroYaDesactivado_ReturnsTrue()
+        public async Task Handle_MiembroYaExcluidoDeRecomendacion_DevuelveTrue()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -207,7 +207,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_MiembroActivo_DesactivaYRetornaTrue()
+        public async Task Handle_MiembroIncluido_LoExcluyeDeRecomendacionYDevuelveTrue()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
