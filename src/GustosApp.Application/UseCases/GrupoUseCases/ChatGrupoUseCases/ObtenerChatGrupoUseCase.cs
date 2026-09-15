@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases
 {
@@ -25,9 +26,9 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases
             if (grupo == null)
                 throw new ArgumentException("Grupo no encontrado");
 
-            bool esMiembro = grupo.Miembros.Any(m => m.Usuario.FirebaseUid == firebaseUid);
+            bool esMiembro = grupo.Miembros.Any(m => m.Activo && m.Usuario.FirebaseUid == firebaseUid);
             if (!esMiembro)
-                throw new UnauthorizedAccessException("No pertenece a este grupo");
+                throw new AccesoProhibidoException("No pertenece a este grupo");
 
             return await _chatRepository.GetMessagesByGrupoIdAsync(grupoId, cancellationToken);
 

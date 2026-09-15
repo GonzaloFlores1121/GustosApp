@@ -5,6 +5,7 @@ using System.Data;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases
 {
@@ -36,9 +37,13 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
 
             var usuarioSolicitante = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid);
             var usuarioObtenido = await _usuarioRepository.GetByIdAsync(usuarioId);
-            if (usuarioSolicitante == null || usuarioObtenido == null)
+            if (usuarioSolicitante == null)
             {
-                throw new UnauthorizedAccessException("no existe el usuario");
+                throw new UnauthorizedAccessException("El usuario solicitante no existe.");
+            }
+            if (usuarioObtenido == null)
+            {
+                throw new ArgumentException("El ID de usuario a activar no existe.", nameof(usuarioId));
             }
 
             if (await _grupoRepository.GetByIdAsync(grupoId)==null)
@@ -51,7 +56,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
 
             if (!esAdmin && !esElMismoUsuario)
             {
-                throw new UnauthorizedAccessException("Debe ser administrador del grupo o el mismo usuario para activar al miembro.");
+                throw new AccesoProhibidoException("Debe ser administrador del grupo o el mismo usuario para activar al miembro.");
             }
 
             var miembroGrupo = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(grupoId, usuarioObtenido.IdUsuario);

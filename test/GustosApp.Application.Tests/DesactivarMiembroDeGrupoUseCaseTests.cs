@@ -1,5 +1,6 @@
 ﻿using GustosApp.Application.UseCases.GrupoUseCases;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Model;
 using Moq;
 
@@ -89,7 +90,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_NoEsAdminNiElMismo_ThrowsUnauthorized()
+        public async Task Handle_NoEsAdministradorNiMismoUsuario_LanzaAccesoProhibido()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -121,8 +122,12 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsAdministradorAsync(It.IsAny<Guid>(), solicitante.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 useCase.Handle(Guid.NewGuid(), objetivo.Id, "uid"));
+
+            mockMiembroRepo.Verify(
+                r => r.DesactivarMiembroDeGrupo(It.IsAny<Guid>(), It.IsAny<Guid>()),
+                Times.Never);
         }
 
 

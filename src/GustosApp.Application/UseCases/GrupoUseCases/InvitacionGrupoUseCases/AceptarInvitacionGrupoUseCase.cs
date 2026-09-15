@@ -1,4 +1,5 @@
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.NotificacionUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -53,7 +54,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
 
             // Verificar que la invitación es para este usuario
             if (invitacion.UsuarioInvitadoId != usuario.Id)
-                throw new UnauthorizedAccessException("Esta invitación no es para ti");
+                throw new AccesoProhibidoException("Esta invitación no es para ti");
 
             // Verificar que la invitación está pendiente
             if (invitacion.Estado != EstadoInvitacion.Pendiente)

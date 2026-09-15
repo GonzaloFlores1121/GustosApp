@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
@@ -45,6 +46,13 @@ namespace GustosApp.Application.Tests
             Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
 
             await Assert.ThrowsAsync<UnauthorizedAccessException>(act);
+
+            _invitacionRepoMock.Verify(
+                r => r.UpdateAsync(It.IsAny<InvitacionGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _notificacionRepoMock.Verify(
+                r => r.EliminarAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]
@@ -116,7 +124,7 @@ namespace GustosApp.Application.Tests
 
 
         [Fact]
-        public async Task HandleAsync_InvitacionParaOtroUsuario_LanzaUnauthorized()
+        public async Task HandleAsync_InvitacionParaOtroUsuario_LanzaAccesoProhibido()
         {
             string uid = "uid123";
             Guid notifId = Guid.NewGuid();
@@ -140,7 +148,14 @@ namespace GustosApp.Application.Tests
 
             Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(act);
+            await Assert.ThrowsAsync<AccesoProhibidoException>(act);
+
+            _invitacionRepoMock.Verify(
+                r => r.UpdateAsync(It.IsAny<InvitacionGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _notificacionRepoMock.Verify(
+                r => r.EliminarAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
  

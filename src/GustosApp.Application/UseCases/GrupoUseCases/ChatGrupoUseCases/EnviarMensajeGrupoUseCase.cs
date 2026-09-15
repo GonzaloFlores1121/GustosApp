@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases
 {
@@ -37,9 +38,9 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases
                 throw new ArgumentException("El grupo no existe.");
 
 
-            var esMiembro = grupo.Miembros?.Any(m => m.UsuarioId == usuario.Id) ?? false;
+            var esMiembro = grupo.Miembros?.Any(m => m.Activo && m.UsuarioId == usuario.Id) ?? false;
             if (!esMiembro)
-                throw new UnauthorizedAccessException("No pertenecés a este grupo.");
+                throw new AccesoProhibidoException("No pertenecés a este grupo.");
 
 
             if (string.IsNullOrWhiteSpace(mensaje))

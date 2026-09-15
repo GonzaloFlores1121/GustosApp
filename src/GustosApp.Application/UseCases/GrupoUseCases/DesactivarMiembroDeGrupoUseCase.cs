@@ -1,5 +1,6 @@
 ﻿using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Common.Exceptions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -56,7 +57,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
 
             if (!esAdmin && !esElMismoUsuario)
             {
-                throw new UnauthorizedAccessException("Debe ser administrador del grupo o el mismo usuario para desactivar a un miembro.");
+                throw new AccesoProhibidoException("Debe ser administrador del grupo o el mismo usuario para desactivar a un miembro.");
             }            
 
             var miembroGrupo = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(grupoId, usuarioADesactivar.IdUsuario);

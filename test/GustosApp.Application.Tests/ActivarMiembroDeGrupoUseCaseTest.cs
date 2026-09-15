@@ -1,5 +1,6 @@
 ﻿using GustosApp.Application.UseCases.GrupoUseCases;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Model;
 using Moq;
 using System;
@@ -36,7 +37,7 @@ namespace GustosApp.Application.Tests
             );
         }
         [Fact]
-        public async Task Handle_UsuarioObtenidoNoExiste_ThrowsUnauthorized()
+        public async Task Handle_UsuarioAActivarNoExiste_LanzaArgumentException()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -59,9 +60,11 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Usuario)null);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var excepcion = await Assert.ThrowsAsync<ArgumentException>(() =>
                 useCase.Handle(Guid.NewGuid(), Guid.NewGuid(), "uid")
             );
+
+            Assert.Equal("usuarioId", excepcion.ParamName);
         }
         [Fact]
         public async Task Handle_GrupoNoExiste_ThrowsKeyNotFound()
@@ -97,7 +100,7 @@ namespace GustosApp.Application.Tests
             );
         }
         [Fact]
-        public async Task Handle_NoEsAdminNiEsMismoUsuario_ThrowsUnauthorized()
+        public async Task Handle_NoEsAdministradorNiMismoUsuario_LanzaAccesoProhibido()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -131,9 +134,13 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsAdministradorAsync(It.IsAny<Guid>(), solicitante.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 useCase.Handle(Guid.NewGuid(), objetivo.Id, "uid")
             );
+
+            mockMiembroRepo.Verify(
+                r => r.ActivarMiembro(It.IsAny<Guid>(), It.IsAny<Guid>()),
+                Times.Never);
         }
 
         [Fact]

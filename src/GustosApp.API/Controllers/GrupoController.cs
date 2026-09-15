@@ -279,6 +279,7 @@ namespace GustosApp.API.Controllers
         [HttpGet("{grupoId}/chat")]
         [ProducesResponseType(typeof(IEnumerable<ChatMensajeResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> ObtenerChat(string grupoId, CancellationToken ct)
         {
 
@@ -329,6 +330,7 @@ namespace GustosApp.API.Controllers
         [HttpPost("invitaciones/{invitacionId}/aceptar")]
         [ProducesResponseType(typeof(GrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> AceptarInvitacion(Guid invitacionId, CancellationToken ct)
         {
 
@@ -378,7 +380,11 @@ namespace GustosApp.API.Controllers
         [Authorize]
         [HttpPut("desactivarMiembro")]
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> DesactivarMiembro(Guid grupoId, Guid UsuarioId)
         {
             var firebaseUid = GetFirebaseUid();
@@ -396,7 +402,11 @@ namespace GustosApp.API.Controllers
         [Authorize]
         [HttpPut("activarMiembro")]
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> ActivarMiembro(Guid grupoId, Guid UsuarioId)
         {
             var firebaseUid = GetFirebaseUid();
