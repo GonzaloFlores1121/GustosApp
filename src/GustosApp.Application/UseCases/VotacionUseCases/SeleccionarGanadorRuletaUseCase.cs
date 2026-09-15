@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -42,7 +43,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             // 3. Validar que sea ADMIN DEL GRUPO
             var grupo = votacion.Grupo;
             if (grupo.AdministradorId != usuario.Id)
-                throw new UnauthorizedAccessException("Solo el administrador puede seleccionar el ganador");
+                throw new AccesoProhibidoException("Solo el administrador puede seleccionar el ganador");
 
 
             // 4. Validar estado de la votación

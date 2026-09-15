@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.VotacionUseCases;
 using GustosApp.Domain.Interfaces;
@@ -72,7 +73,7 @@ namespace GustosApp.Application.Tests
 
 
         [Fact]
-        public async Task HandleAsync_UsuarioNoEsMiembroActivo_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_UsuarioNoEsMiembroActivo_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -95,10 +96,42 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsMiembroAsync(grupoId, firebaseUid, default))
                 .ReturnsAsync(false);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid()));
 
             Assert.Equal("No eres un miembro activo del grupo.", ex.Message);
+            _mockNotificaciones.Verify(
+                n => n.NotificarEmpate(It.IsAny<Guid>(), It.IsAny<Guid>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_RepositorioNoReconoceMembresia_LanzaAccesoProhibido()
+        {
+            var firebaseUid = "uid";
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var grupoId = Guid.NewGuid();
+            var grupo = new Grupo("Test", usuario.Id) { Id = grupoId };
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id));
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+
+            _mockUsuarioRepository
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerPorIdConCandidatosAsync(votacion.Id, default))
+                .ReturnsAsync(votacion);
+            _mockGrupoRepository
+                .Setup(r => r.UsuarioEsMiembroAsync(grupoId, firebaseUid, default))
+                .ReturnsAsync(false);
+
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
+                _useCase.HandleAsync(firebaseUid, votacion.Id));
+
+            Assert.Equal("No eres miembro de este grupo", ex.Message);
+            _mockNotificaciones.Verify(
+                n => n.NotificarEmpate(It.IsAny<Guid>(), It.IsAny<Guid>()),
+                Times.Never);
         }
 
 

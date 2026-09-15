@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.VotacionUseCases;
 using GustosApp.Domain.Interfaces;
@@ -70,7 +71,7 @@ namespace GustosApp.Application.Tests
 
  
         [Fact]
-        public async Task HandleAsync_UsuarioNoEsAdmin_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_UsuarioNoEsAdmin_LanzaAccesoProhibido()
         {
             var firebaseUid = "firebase123";
             var votacionId = Guid.NewGuid();
@@ -85,10 +86,16 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Setup(x => x.ObtenerPorIdConCandidatosAsync(votacionId, default))
                 .ReturnsAsync(votacion);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _useCase.HandleAsync(firebaseUid, votacionId, Guid.NewGuid()));
 
             Assert.Equal("Solo el administrador puede seleccionar el ganador", ex.Message);
+            _mockVotacionRepository.Verify(
+                x => x.ActualizarVotacionAsync(It.IsAny<VotacionGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _mockNotificaciones.Verify(
+                n => n.NotificarGanador(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>()),
+                Times.Never);
         }
 
  
