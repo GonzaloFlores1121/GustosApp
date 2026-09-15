@@ -1,5 +1,6 @@
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases.AmistadUseCases
 {
@@ -28,7 +29,7 @@ namespace GustosApp.Application.UseCases.AmistadUseCases
                 ?? throw new ArgumentException("Solicitud no encontrada");
 
             if (solicitud.DestinatarioId != usuario.Id)
-                throw new UnauthorizedAccessException("Solo el destinatario puede aceptar la solicitud");
+                throw new AccesoProhibidoException("Solo el destinatario puede aceptar la solicitud");
 
             solicitud.Aceptar();
 

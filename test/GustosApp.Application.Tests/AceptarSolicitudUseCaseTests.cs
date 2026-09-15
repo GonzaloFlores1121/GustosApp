@@ -1,5 +1,6 @@
 ﻿using GustosApp.Application.UseCases.AmistadUseCases;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Model;
 using Moq;
@@ -106,8 +107,12 @@ namespace GustosApp.Application.Tests
             Func<Task> act = async () => await _useCase.HandleAsync("uid", Guid.NewGuid());
 
             // Assert
-            await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            await act.Should().ThrowAsync<AccesoProhibidoException>()
                 .WithMessage("Solo el destinatario puede aceptar la solicitud");
+
+            _solicitudRepoMock.Verify(r =>
+                r.UpdateAsync(It.IsAny<SolicitudAmistad>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]
