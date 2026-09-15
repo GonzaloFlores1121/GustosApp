@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -37,10 +38,12 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             var usuario = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid, ct)
                 ?? throw new UnauthorizedAccessException("Usuario no encontrado");
 
-            // 2. Validar que sea miembro del grupo
-            var esMiembro = await _grupoRepository.UsuarioEsMiembroAsync(grupoId, firebaseUid, ct);
-            if (!esMiembro)
-                throw new UnauthorizedAccessException("No eres miembro de este grupo");
+            // 2. Validar que el grupo exista y que el usuario sea su administrador
+            var grupo = await _grupoRepository.GetByIdAsync(grupoId, ct)
+                ?? throw new NotFoundException("Grupo no encontrado.");
+
+            if (grupo.AdministradorId != usuario.Id)
+                throw new AccesoProhibidoException("Solo el administrador del grupo puede iniciar una votación.");
 
             // 3. No permitir dos votaciones simultáneas
             var votacionActiva = await _votacionRepository.ObtenerVotacionActivaAsync(grupoId, ct);
@@ -49,6 +52,10 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
             if (restaurantesCandidatos == null || restaurantesCandidatos.Count == 0)
                 throw new InvalidOperationException("Debe seleccionar al menos un restaurante candidato.");
+
+            var hayParticipantes = grupo.Miembros.Any(m => m.Activo && m.afectarRecomendacion);
+            if (!hayParticipantes)
+                throw new InvalidOperationException("Debe seleccionar al menos un miembro activo para participar de la votación.");
 
 
             // 4. Crear votación

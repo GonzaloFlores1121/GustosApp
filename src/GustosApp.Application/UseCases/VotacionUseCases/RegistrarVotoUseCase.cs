@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
@@ -54,11 +55,11 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             var grupo = votacion.Grupo;
             var miembro = grupo.Miembros.FirstOrDefault(m => m.UsuarioId == usuario.Id);
 
-            if (miembro == null)
-                throw new UnauthorizedAccessException("No eres miembro de este grupo");
+            if (miembro == null || !miembro.Activo)
+                throw new AccesoProhibidoException("No eres un miembro activo de este grupo.");
 
             if (!miembro.afectarRecomendacion)
-                throw new InvalidOperationException("No puedes votar porque no estás marcado para asistir a la reunión");
+                throw new AccesoProhibidoException("No estás incluido entre los participantes de esta votación.");
 
             // 5. VALIDAR CANDIDATO
             bool esCandidato = votacion.RestaurantesCandidatos.Any(rc => rc.RestauranteId == restauranteId);

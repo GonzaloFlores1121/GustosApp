@@ -20,6 +20,7 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IUsuarioRepository> _usuarioRepo;
         private readonly Mock<IMiembroGrupoRepository> _miembroRepo;
         private readonly Mock<IChatRealTimeService> _chat;
+        private readonly Mock<IVotacionRepository> _votacionRepo;
 
         private readonly AbandonarGrupoUseCase _sut;
 
@@ -29,12 +30,17 @@ namespace GustosApp.Application.Tests
             _usuarioRepo = new Mock<IUsuarioRepository>();
             _miembroRepo = new Mock<IMiembroGrupoRepository>();
             _chat = new Mock<IChatRealTimeService>();
+            _votacionRepo = new Mock<IVotacionRepository>();
+            _votacionRepo
+                .Setup(r => r.ObtenerVotacionActivaAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((VotacionGrupo?)null);
 
             _sut = new AbandonarGrupoUseCase(
                 _grupoRepo.Object,
                 _usuarioRepo.Object,
                 _miembroRepo.Object,
-                _chat.Object
+                _chat.Object,
+                _votacionRepo.Object
             );
         }
 
@@ -147,6 +153,37 @@ namespace GustosApp.Application.Tests
 
             await act.Should().ThrowAsync<InvalidOperationException>()
                 .WithMessage("No puedes abandonar el grupo siendo el único administrador. Promueve a otro miembro a administrador primero.");
+        }
+
+        [Fact]
+        public async Task HandleAsync_VotacionActiva_NoPermiteAbandonarElGrupo()
+        {
+            var usuario = CrearUsuario("uid_votacion");
+            var grupo = CrearGrupo();
+            var miembro = CrearMiembro(grupo, esAdmin: false, activo: true);
+
+            _usuarioRepo
+                .Setup(r => r.GetByFirebaseUidAsync("uid_votacion", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(usuario);
+            _grupoRepo
+                .Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+            _miembroRepo
+                .Setup(r => r.GetByGrupoYUsuarioAsync(grupo.Id, usuario.IdUsuario, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(miembro);
+            _votacionRepo
+                .Setup(r => r.ObtenerVotacionActivaAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new VotacionGrupo(grupo.Id));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _sut.HandleAsync("uid_votacion", grupo.Id));
+
+            _miembroRepo.Verify(
+                r => r.UpdateAsync(It.IsAny<MiembroGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _chat.Verify(
+                r => r.UsuarioAbandono(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()),
+                Times.Never);
         }
 
    

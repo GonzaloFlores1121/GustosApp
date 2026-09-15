@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.VotacionUseCases;
 using GustosApp.Domain.Interfaces;
@@ -72,7 +73,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task HandleAsync_UsuarioNoEsAdmin_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_UsuarioNoEsAdministrador_LanzaAccesoProhibido()
         {
             var firebaseUid = "firebase123";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -86,10 +87,13 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Setup(x => x.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
                 .ReturnsAsync(votacion);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid()));
 
-            Assert.Equal("Solo el administrador puede cerrar la votación", ex.Message);
+            Assert.Equal("Solo el administrador puede cerrar la votación.", ex.Message);
+            _mockVotacionRepository.Verify(
+                x => x.ActualizarVotacionAsync(It.IsAny<VotacionGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         

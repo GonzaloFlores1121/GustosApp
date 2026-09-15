@@ -20,18 +20,24 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IMiembroGrupoRepository> _miembroGrupoRepositoryMock;
         private readonly RemoverMiembroGrupoUseCase _sut;
         private readonly Mock<IChatRealTimeService> _chatrealtime;
+        private readonly Mock<IVotacionRepository> _votacionRepositoryMock;
         public RemoverMiembroGrupoUseCaseTests()
         {
             _grupoRepositoryMock = new Mock<IGrupoRepository>();
             _usuarioRepositoryMock = new Mock<IUsuarioRepository>();
             _miembroGrupoRepositoryMock = new Mock<IMiembroGrupoRepository>();
             _chatrealtime = new Mock<IChatRealTimeService>();
+            _votacionRepositoryMock = new Mock<IVotacionRepository>();
+            _votacionRepositoryMock
+                .Setup(r => r.ObtenerVotacionActivaAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((VotacionGrupo?)null);
 
             _sut = new RemoverMiembroGrupoUseCase(
                 _grupoRepositoryMock.Object,
                 _usuarioRepositoryMock.Object,
                 _miembroGrupoRepositoryMock.Object,
-                _chatrealtime.Object
+                _chatrealtime.Object,
+                _votacionRepositoryMock.Object
                 );
         }
 
@@ -188,6 +194,43 @@ namespace GustosApp.Application.Tests
 
             _miembroGrupoRepositoryMock.Verify(
                 r => r.UpdateAsync(It.IsAny<MiembroGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_VotacionActiva_NoPermiteRemoverMiembro()
+        {
+            var firebaseUid = "uid-admin";
+            var grupoId = Guid.NewGuid();
+            var ct = CancellationToken.None;
+            var usuarioActor = CreateUsuario(firebaseUid: firebaseUid);
+            var grupo = CreateGrupo(grupoId);
+            var miembro = CreateMiembroGrupo(activo: true);
+
+            _usuarioRepositoryMock
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, ct))
+                .ReturnsAsync(usuarioActor);
+            _grupoRepositoryMock
+                .Setup(r => r.GetByIdAsync(grupoId, ct))
+                .ReturnsAsync(grupo);
+            _grupoRepositoryMock
+                .Setup(r => r.UsuarioEsAdministradorAsync(grupoId, usuarioActor.Id, ct))
+                .ReturnsAsync(true);
+            _miembroGrupoRepositoryMock
+                .Setup(r => r.GetByGrupoYUsuarioAsync(grupoId, "miembro", ct))
+                .ReturnsAsync(miembro);
+            _votacionRepositoryMock
+                .Setup(r => r.ObtenerVotacionActivaAsync(grupoId, ct))
+                .ReturnsAsync(new VotacionGrupo(grupoId));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _sut.HandleAsync(firebaseUid, grupoId, "miembro", ct));
+
+            _miembroGrupoRepositoryMock.Verify(
+                r => r.UpdateAsync(It.IsAny<MiembroGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _chatrealtime.Verify(
+                r => r.UsuarioExpulsadoDelGrupo(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()),
                 Times.Never);
         }
 

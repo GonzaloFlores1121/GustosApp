@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.VotacionUseCases;
 using GustosApp.Domain.Common;
@@ -157,7 +158,7 @@ namespace GustosApp.Application.Tests
 
        
         [Fact]
-        public async Task HandleAsync_UsuarioNoEsMiembro_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_UsuarioNoEsMiembro_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -174,16 +175,51 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
                 .ReturnsAsync(votacion);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
 
-            Assert.Equal("No eres miembro de este grupo", ex.Message);
+            Assert.Equal("No eres un miembro activo de este grupo.", ex.Message);
+            _mockVotacionRepository.Verify(
+                r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+
+        [Fact]
+        public async Task HandleAsync_MiembroInactivo_LanzaAccesoProhibido()
+        {
+            var firebaseUid = "uid";
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var grupoId = Guid.NewGuid();
+            var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
+            var miembro = new MiembroGrupo(grupoId, usuario.Id) { afectarRecomendacion = true };
+            miembro.AbandonarGrupo();
+            grupo.Miembros.Add(miembro);
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+
+            _mockUsuarioRepository
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
+                .ReturnsAsync(votacion);
+
+            await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
+                _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
+
+            _mockRestauranteRepository.Verify(
+                r => r.GetRestauranteByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _mockVotacionRepository.Verify(
+                r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
 
       
         [Fact]
-        public async Task HandleAsync_MiembroNoAfectaRecomendacion_LanzaInvalidOperationException()
+        public async Task HandleAsync_MiembroNoIncluidoEnVotacion_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -202,10 +238,13 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
                 .ReturnsAsync(votacion);
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
 
-            Assert.Equal("No puedes votar porque no estás marcado para asistir a la reunión", ex.Message);
+            Assert.Equal("No estás incluido entre los participantes de esta votación.", ex.Message);
+            _mockVotacionRepository.Verify(
+                r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
 

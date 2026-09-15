@@ -11,16 +11,18 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;
         private readonly IChatRealTimeService _chatRealtime;
+        private readonly IVotacionRepository _votacionRepository;
         public RemoverMiembroGrupoUseCase(IGrupoRepository grupoRepository,
             IUsuarioRepository usuarioRepository,
-            IMiembroGrupoRepository miembroGrupoRepository
-,
-            IChatRealTimeService chatRealtime)
+            IMiembroGrupoRepository miembroGrupoRepository,
+            IChatRealTimeService chatRealtime,
+            IVotacionRepository votacionRepository)
         {
             _grupoRepository = grupoRepository;
             _usuarioRepository = usuarioRepository;
             _miembroGrupoRepository = miembroGrupoRepository;
             _chatRealtime = chatRealtime;
+            _votacionRepository = votacionRepository;
         }
 
         public async Task<bool> HandleAsync(string firebaseUid, Guid grupoId, string username, CancellationToken cancellationToken = default)
@@ -42,6 +44,10 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
             var miembro = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(grupoId, username, cancellationToken);
             if (miembro == null || !miembro.Activo)
                 throw new ArgumentException("El usuario no es miembro activo del grupo");
+
+            var votacionActiva = await _votacionRepository.ObtenerVotacionActivaAsync(grupoId, cancellationToken);
+            if (votacionActiva != null)
+                throw new InvalidOperationException("No se pueden remover miembros mientras haya una votación activa.");
 
             // no permitir eliminar al único administrador
             if (miembro.EsAdministrador)

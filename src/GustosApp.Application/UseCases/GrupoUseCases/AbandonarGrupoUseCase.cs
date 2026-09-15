@@ -10,16 +10,19 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;
         private readonly IChatRealTimeService _chatRealTime;
+        private readonly IVotacionRepository _votacionRepository;
 
         public AbandonarGrupoUseCase(IGrupoRepository grupoRepository,
             IUsuarioRepository usuarioRepository,
             IMiembroGrupoRepository miembroGrupoRepository,
-             IChatRealTimeService chatRealTime)
+            IChatRealTimeService chatRealTime,
+            IVotacionRepository votacionRepository)
         {
             _grupoRepository = grupoRepository;
             _usuarioRepository = usuarioRepository;
             _miembroGrupoRepository = miembroGrupoRepository;
             _chatRealTime = chatRealTime;
+            _votacionRepository = votacionRepository;
         }
 
         public async Task<bool> HandleAsync(string firebaseUid, Guid grupoId, CancellationToken cancellationToken = default)
@@ -38,6 +41,10 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
             var miembro = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(grupoId, usuario.IdUsuario, cancellationToken);
             if (miembro == null || !miembro.Activo)
                 throw new ArgumentException("No eres miembro de este grupo");
+
+            var votacionActiva = await _votacionRepository.ObtenerVotacionActivaAsync(grupoId, cancellationToken);
+            if (votacionActiva != null)
+                throw new InvalidOperationException("No puedes abandonar el grupo mientras haya una votación activa.");
 
             // Verificar que no es el único administrador
             if (miembro.EsAdministrador)

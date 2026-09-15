@@ -50,6 +50,9 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(VotacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> IniciarVotacion(
             [FromBody] IniciarVotacionRequest request,
             CancellationToken ct)
@@ -81,6 +84,8 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(VotoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> RegistrarVoto(
             Guid votacionId,
             [FromBody] RegistrarVotoRequest request,
@@ -166,6 +171,8 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(VotacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CerrarVotacion(
          Guid votacionId,
          [FromBody] CerrarVotacionRequest? request = null,
