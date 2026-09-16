@@ -1,0 +1,15 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Defini MSSQL_SA_PASSWORD en tu terminal antes de iniciar SQL Server}
+    ports:
+      - "127.0.0.1:14330:1433"
+    volumes:
+      - gustos_sqlserver:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  gustos_sqlserver:
