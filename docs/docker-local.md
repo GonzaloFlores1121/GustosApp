@@ -6,23 +6,45 @@ Este ejercicio agrega SQL Server al Redis que ya usa el backend. El archivo
 La API se ejecuta localmente con .NET, para ver con claridad qué parte corre
 en un contenedor y qué parte corre en Windows.
 
-## 1. Preparar Docker y la contraseña
+## 1. Preparar Docker y los archivos locales
 
 Iniciá Docker Desktop y esperá a que indique que el motor está funcionando.
 Usá contenedores Linux. SQL Server requiere al menos 2 GB de memoria disponible
-para arrancar. Desde PowerShell, en la raíz del repositorio backend:
+para arrancar.
+
+Desde PowerShell, copiá `.env.example` como `.env` en la raíz del backend:
 
 ```powershell
-$claveSql = Read-Host "Contraseña local para el usuario sa" -AsSecureString
-$env:MSSQL_SA_PASSWORD = [System.Net.NetworkCredential]::new("", $claveSql).Password
-docker compose -f docker-compose.yml -f docker-compose.sqlserver.yml config --quiet
+Copy-Item .env.example .env
 ```
 
-Elegí una contraseña de al menos ocho caracteres, con caracteres de tres
-categorías entre mayúsculas, minúsculas, números y símbolos. Queda en esta
-sesión de PowerShell y no se guarda en Git. Guardala en tu gestor de
-contraseñas: cuando cierres la terminal, volvé a usar la misma contraseña
-para conectar con la base ya creada.
+En `.env`, escribí
+la contraseña que ya elegiste para el usuario `sa`:
+
+```env
+MSSQL_SA_PASSWORD=tu_misma_contrasena_de_sql_server
+```
+
+Si todavía no creaste SQL Server, elegí una contraseña de al menos ocho
+caracteres, con caracteres de tres categorías entre mayúsculas, minúsculas,
+números y símbolos. `.env` está ignorado por Git; no lo compartas ni lo
+subas al repositorio.
+
+Conservá también tu `appsettings.Development.json`: sigue siendo el perfil
+para SQL Server Express. Creá `src/GustosApp.API/appsettings.Docker.json`,
+que también está ignorado por Git:
+
+```json
+{
+  "ConnectionStrings": {
+    "Redis": "localhost:6379",
+    "DefaultConnection": "Server=localhost,14330;Database=GustosAppDb;User Id=sa;Password=tu_misma_contrasena_de_sql_server;TrustServerCertificate=True"
+  }
+}
+```
+
+ASP.NET Core carga `appsettings.Docker.json` al elegir el perfil
+`Docker local` en Visual Studio.
 
 ## 2. Levantar y observar
 
@@ -44,22 +66,21 @@ Si solamente necesitás Redis, el comando de siempre sigue funcionando:
 docker compose up -d
 ```
 
-## 3. Conectar el backend
+## 3. Crear la base y ejecutar el backend
 
-En la misma terminal, configurá la conexión para el proceso local de .NET:
+La primera vez, aplicá las migraciones:
 
 ```powershell
-$env:ConnectionStrings__DefaultConnection = "Server=localhost,14330;Database=GustosAppDb;User Id=sa;Password=$env:MSSQL_SA_PASSWORD;TrustServerCertificate=True"
 dotnet ef database update --project src/GustosApp.Infraestructure/GustosApp.Infraestructure.csproj --startup-project src/GustosApp.API/GustosApp.API.csproj --context GustosDbContext
-dotnet run --project src/GustosApp.API/GustosApp.API.csproj --launch-profile http
 ```
 
-Las dos rayas bajas en `ConnectionStrings__DefaultConnection` representan
-los dos puntos de `ConnectionStrings:DefaultConnection` en la configuración
-de ASP.NET Core. Así se reemplaza la conexión local a SQLEXPRESS sin editar
-`appsettings.Development.json`. Las credenciales locales de Firebase que
-ya requiere el proyecto siguen siendo necesarias para ejecutar la API.
-Con el perfil `http`, Swagger queda en `http://localhost:5174/swagger`.
+En Visual Studio, elegí `Docker local` en el selector junto al botón de
+inicio y presioná Play. La API local usará SQL Server Docker y quedará en
+`http://localhost:5174/swagger`. Para volver a SQL Server Express, elegí
+el perfil `http` o `https`.
+
+Las credenciales locales de Firebase que ya requiere el proyecto siguen
+siendo necesarias para ejecutar la API.
 El frontend puede ejecutarse en otra terminal; este laboratorio no modifica
 su repositorio.
 
