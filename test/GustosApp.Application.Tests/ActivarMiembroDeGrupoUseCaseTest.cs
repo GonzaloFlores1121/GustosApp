@@ -218,7 +218,7 @@ namespace GustosApp.Application.Tests
                          .ReturnsAsync(true);
 
             var miembro = new MiembroGrupo(Guid.NewGuid(), objetivo.Id);
-            miembro.afectarRecomendacion = true; // ya participa de la recomendación
+            miembro.ParticipaEnRecomendacion = true; // ya participa de la recomendación
 
             mockMiembroRepo.Setup(r =>
                 r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
@@ -263,7 +263,7 @@ namespace GustosApp.Application.Tests
                 r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new MiembroGrupo(Guid.NewGuid(), objetivo.Id)
                 {
-                    afectarRecomendacion = false
+                    ParticipaEnRecomendacion = false
                 });
 
             mockMiembroRepo.Setup(r =>

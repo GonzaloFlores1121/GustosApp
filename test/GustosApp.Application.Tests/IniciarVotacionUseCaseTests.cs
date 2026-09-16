@@ -56,7 +56,7 @@ namespace GustosApp.Application.Tests
             var grupoId = Guid.NewGuid();
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
             var grupo = new Grupo("Grupo", Guid.NewGuid()) { Id = grupoId };
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { afectarRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = true });
 
             _mockUsuarioRepository
                 .Setup(x => x.GetByFirebaseUidAsync(firebaseUid, It.IsAny<CancellationToken>()))
@@ -226,10 +226,10 @@ namespace GustosApp.Application.Tests
             var grupoId = Guid.NewGuid();
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
             var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { afectarRecomendacion = false });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = false });
             var miembroInactivoSeleccionado = new MiembroGrupo(grupoId, Guid.NewGuid())
             {
-                afectarRecomendacion = true
+                ParticipaEnRecomendacion = true
             };
             miembroInactivoSeleccionado.AbandonarGrupo();
             grupo.Miembros.Add(miembroInactivoSeleccionado);
@@ -258,7 +258,7 @@ namespace GustosApp.Application.Tests
         private static Grupo CrearGrupoConParticipante(Guid grupoId, Usuario administrador)
         {
             var grupo = new Grupo("Grupo", administrador.Id) { Id = grupoId };
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, administrador.Id) { afectarRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, administrador.Id) { ParticipaEnRecomendacion = true });
             return grupo;
         }
     }

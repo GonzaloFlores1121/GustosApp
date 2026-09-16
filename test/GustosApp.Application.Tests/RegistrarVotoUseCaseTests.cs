@@ -79,7 +79,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(usuario);
 
             var grupo = new Grupo("Test", usuario.Id) { Id = grupoId };
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { afectarRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = true });
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteId));
@@ -192,7 +192,7 @@ namespace GustosApp.Application.Tests
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
             var grupoId = Guid.NewGuid();
             var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
-            var miembro = new MiembroGrupo(grupoId, usuario.Id) { afectarRecomendacion = true };
+            var miembro = new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = true };
             miembro.AbandonarGrupo();
             grupo.Miembros.Add(miembro);
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
@@ -227,7 +227,7 @@ namespace GustosApp.Application.Tests
 
             var grupo = new Grupo("TestGrupo", usuario.Id) { Id = grupoId };
             var miembro = new MiembroGrupo(grupoId, usuario.Id);
-            miembro.afectarRecomendacion = false; // NO participa
+            miembro.ParticipaEnRecomendacion = false; // NO participa
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
@@ -321,7 +321,7 @@ namespace GustosApp.Application.Tests
 
             var grupo = new Grupo("Test", usuario.Id) { Id = grupoId };
             var miembro = new MiembroGrupo(grupoId, usuario.Id);
-            miembro.afectarRecomendacion = true;
+            miembro.ParticipaEnRecomendacion = true;
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };

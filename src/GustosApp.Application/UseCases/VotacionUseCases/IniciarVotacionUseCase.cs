@@ -53,7 +53,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             if (restaurantesCandidatos == null || restaurantesCandidatos.Count == 0)
                 throw new InvalidOperationException("Debe seleccionar al menos un restaurante candidato.");
 
-            var hayParticipantes = grupo.Miembros.Any(m => m.Activo && m.afectarRecomendacion);
+            var hayParticipantes = grupo.Miembros.Any(m => m.Activo && m.ParticipaEnRecomendacion);
             if (!hayParticipantes)
                 throw new InvalidOperationException("Debe seleccionar al menos un miembro activo para participar de la votación.");
 

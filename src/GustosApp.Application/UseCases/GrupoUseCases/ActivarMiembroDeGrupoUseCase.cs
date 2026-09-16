@@ -66,7 +66,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
             }
 
             // La operación es idempotente cuando el miembro ya participa de la recomendación.
-            if (miembroGrupo.afectarRecomendacion)
+            if (miembroGrupo.ParticipaEnRecomendacion)
             {
                 return true;
             }

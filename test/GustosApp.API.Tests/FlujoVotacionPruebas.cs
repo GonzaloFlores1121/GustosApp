@@ -136,7 +136,7 @@ public sealed class FlujoVotacionPruebas
         {
             contexto.MiembrosGrupos.Add(new MiembroGrupo(grupo.Id, usuario.Id)
             {
-                afectarRecomendacion = participa
+                ParticipaEnRecomendacion = participa
             });
         }
 

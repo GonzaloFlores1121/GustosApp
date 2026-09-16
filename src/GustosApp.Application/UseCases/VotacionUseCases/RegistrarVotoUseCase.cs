@@ -58,7 +58,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             if (miembro == null || !miembro.Activo)
                 throw new AccesoProhibidoException("No eres un miembro activo de este grupo.");
 
-            if (!miembro.afectarRecomendacion)
+            if (!miembro.ParticipaEnRecomendacion)
                 throw new AccesoProhibidoException("No estás incluido entre los participantes de esta votación.");
 
             // 5. VALIDAR CANDIDATO

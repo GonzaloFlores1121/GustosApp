@@ -66,7 +66,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
                 throw new InvalidOperationException("El usuario a desactivar no es un miembro del grupo.");
             }
 
-            if (!miembroGrupo.afectarRecomendacion)
+            if (!miembroGrupo.ParticipaEnRecomendacion)
             {
                 return true;
             }

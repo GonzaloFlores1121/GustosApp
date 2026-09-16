@@ -263,6 +263,10 @@ public class GustosDbContext : DbContext
             .HasForeignKey(m => m.UsuarioId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<MiembroGrupo>()
+            .Property(m => m.ParticipaEnRecomendacion)
+            .HasColumnName("afectarRecomendacion");
+
         modelBuilder.Entity<InvitacionGrupo>()
             .HasOne(i => i.Grupo)
             .WithMany(g => g.Invitaciones)

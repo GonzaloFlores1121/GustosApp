@@ -145,7 +145,7 @@ namespace GustosApp.Application.Tests
 
             var grupo = new Grupo("Grupo Test", usuario.Id) { Id = grupoId };
             var miembro = new MiembroGrupo(grupoId, usuario.Id);
-            miembro.afectarRecomendacion = true;
+            miembro.ParticipaEnRecomendacion = true;
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
@@ -191,9 +191,9 @@ namespace GustosApp.Application.Tests
 
             var grupo = new Grupo("Test", usuario1.Id) { Id = grupoId };
 
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario1.Id) { afectarRecomendacion = true });
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario2.Id) { afectarRecomendacion = true });
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario3.Id) { afectarRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario1.Id) { ParticipaEnRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario2.Id) { ParticipaEnRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario3.Id) { ParticipaEnRecomendacion = true });
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
 
@@ -230,8 +230,8 @@ namespace GustosApp.Application.Tests
             var r2 = Guid.NewGuid();
 
             var grupo = new Grupo("Test", usuario1.Id) { Id = grupoId };
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario1.Id) { afectarRecomendacion = true });
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario2.Id) { afectarRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario1.Id) { ParticipaEnRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario2.Id) { ParticipaEnRecomendacion = true });
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
 
@@ -267,7 +267,7 @@ namespace GustosApp.Application.Tests
             var ganador = Guid.NewGuid();
 
             var grupo = new Grupo("Test", usuario.Id) { Id = grupoId };
-            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { afectarRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = true });
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
             votacion.EstablecerGanadorRuleta(ganador);

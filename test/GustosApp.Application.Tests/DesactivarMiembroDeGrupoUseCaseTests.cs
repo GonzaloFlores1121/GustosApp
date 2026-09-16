@@ -198,7 +198,7 @@ namespace GustosApp.Application.Tests
                          .ReturnsAsync(true);
 
             mockMiembroRepo.Setup(r => r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
-                           .ReturnsAsync(new MiembroGrupo (It.IsAny<Guid>(),objetivo.Id){ afectarRecomendacion = false });
+                           .ReturnsAsync(new MiembroGrupo (It.IsAny<Guid>(),objetivo.Id){ ParticipaEnRecomendacion = false });
 
             var result = await useCase.Handle(Guid.NewGuid(), objetivo.Id, "uid");
 
@@ -237,7 +237,7 @@ namespace GustosApp.Application.Tests
                          .ReturnsAsync(true);
 
             mockMiembroRepo.Setup(r => r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
-                           .ReturnsAsync(new MiembroGrupo(grupo.Id,objetivo.Id) { afectarRecomendacion = true });
+                           .ReturnsAsync(new MiembroGrupo(grupo.Id,objetivo.Id) { ParticipaEnRecomendacion = true });
 
             mockMiembroRepo.Setup(r => r.DesactivarMiembroDeGrupo(It.IsAny<Guid>(), objetivo.Id))
                            .ReturnsAsync(true);
