@@ -28,6 +28,9 @@ namespace GustosApp.Domain.Model
         public ICollection<VotacionRestaurante> RestaurantesCandidatos { get; set; }
          = new List<VotacionRestaurante>();
 
+        public ICollection<VotacionParticipante> Participantes { get; set; }
+            = new List<VotacionParticipante>();
+
         public Restaurante? RestauranteGanador { get; set; }
 
         private VotacionGrupo() { } // Para EF Core
@@ -79,6 +82,31 @@ namespace GustosApp.Domain.Model
         {
             var votosUnicos = Votos.Select(v => v.UsuarioId).Distinct().Count();
             return votosUnicos >= miembrosActivos;
+        }
+
+        public bool TodosLosParticipantesVotaron()
+        {
+            if (Participantes.Count == 0)
+                return false;
+
+            var usuariosQueVotaron = Votos
+                .Select(v => v.UsuarioId)
+                .ToHashSet();
+
+            return Participantes.All(p => usuariosQueVotaron.Contains(p.UsuarioId));
+        }
+
+        public bool IntentarCerrarConGanadorUnico()
+        {
+            if (Estado != EstadoVotacion.Activa || !TodosLosParticipantesVotaron())
+                return false;
+
+            var empatados = ObtenerRestaurantesEmpatados();
+            if (empatados.Count != 1)
+                return false;
+
+            CerrarVotacion(empatados[0]);
+            return true;
         }
 
         public List<Guid> ObtenerRestaurantesEmpatados()

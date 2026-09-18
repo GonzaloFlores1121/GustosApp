@@ -13,7 +13,7 @@ public sealed class FlujoVotacionPruebas
     private const string FirebaseUid = "usuario-pruebas-integracion";
 
     [Fact]
-    public async Task FlujoCompleto_SeleccionarParticipanteIniciarVotarConsultarYCerrar()
+    public async Task FlujoCompleto_SeleccionarParticipantesIniciarYUltimoVotoCierraConGanador()
     {
         await using var fabrica = new FabricaApiGustosAppVotacion();
         var datos = await PrepararEscenarioAsync(fabrica, usuarioAutenticadoEsAdministrador: true, participa: false);
@@ -28,11 +28,21 @@ public sealed class FlujoVotacionPruebas
         {
             GrupoId = datos.GrupoId,
             Descripcion = "Almuerzo de integración",
-            RestaurantesCandidatos = [datos.RestauranteId]
+            RestaurantesCandidatos = [datos.RestauranteId, datos.OtroRestauranteId]
         });
         respuestaInicio.StatusCode.Should().Be(HttpStatusCode.OK);
         var votacion = await respuestaInicio.Content.ReadFromJsonAsync<VotacionResponse>();
         votacion.Should().NotBeNull();
+
+        await using (var alcance = fabrica.Services.CreateAsyncScope())
+        {
+            var contexto = alcance.ServiceProvider.GetRequiredService<GustosDbContext>();
+            contexto.Votos.Add(new VotoRestaurante(
+                votacion!.Id,
+                datos.OtroUsuarioId,
+                datos.RestauranteId));
+            await contexto.SaveChangesAsync();
+        }
 
         var respuestaVoto = await cliente.PostAsJsonAsync($"/Votacion/{votacion!.Id}/votar", new RegistrarVotoRequest
         {
@@ -45,18 +55,10 @@ public sealed class FlujoVotacionPruebas
         respuestaResultados.StatusCode.Should().Be(HttpStatusCode.OK);
         var resultados = await respuestaResultados.Content.ReadFromJsonAsync<ResultadoVotacionResponse>();
         resultados.Should().NotBeNull();
-        resultados!.TotalVotos.Should().Be(1);
+        resultados!.TotalVotos.Should().Be(2);
         resultados.TodosVotaron.Should().BeTrue();
         resultados.GanadorId.Should().Be(datos.RestauranteId);
-
-        var respuestaCierre = await cliente.PostAsJsonAsync(
-            $"/Votacion/{votacion.Id}/cerrar",
-            new CerrarVotacionRequest());
-        respuestaCierre.StatusCode.Should().Be(HttpStatusCode.OK);
-        var votacionCerrada = await respuestaCierre.Content.ReadFromJsonAsync<VotacionResponse>();
-        votacionCerrada.Should().NotBeNull();
-        votacionCerrada!.Estado.Should().Be("Cerrada");
-        votacionCerrada.RestauranteGanadorId.Should().Be(datos.RestauranteId);
+        resultados.Estado.Should().Be("Cerrada");
     }
 
     [Fact]
@@ -126,8 +128,23 @@ public sealed class FlujoVotacionPruebas
             Direccion = "Calle de prueba 123",
             PlaceId = $"place-{Guid.NewGuid():N}"
         };
+        var otroRestaurante = new Restaurante
+        {
+            Id = Guid.NewGuid(),
+            Nombre = "Otro restaurante de prueba",
+            NombreNormalizado = "otro restaurante de prueba",
+            Direccion = "Otra calle 456",
+            PlaceId = $"place-{Guid.NewGuid():N}"
+        };
+        var otroUsuario = new Usuario(
+            $"participante-{Guid.NewGuid():N}",
+            "participante@example.com",
+            "Otro",
+            "Participante",
+            $"participante-{Guid.NewGuid():N}");
 
         contexto.Usuarios.Add(usuario);
+        contexto.Usuarios.Add(otroUsuario);
         if (!usuarioAutenticadoEsAdministrador)
             contexto.Usuarios.Add(administrador);
         contexto.Grupos.Add(grupo);
@@ -140,11 +157,27 @@ public sealed class FlujoVotacionPruebas
             });
         }
 
+        contexto.MiembrosGrupos.Add(new MiembroGrupo(grupo.Id, otroUsuario.Id)
+        {
+            ParticipaEnRecomendacion = true
+        });
+
         contexto.Restaurantes.Add(restaurante);
+        contexto.Restaurantes.Add(otroRestaurante);
         await contexto.SaveChangesAsync();
 
-        return new DatosEscenario(usuario.Id, grupo.Id, restaurante.Id);
+        return new DatosEscenario(
+            usuario.Id,
+            otroUsuario.Id,
+            grupo.Id,
+            restaurante.Id,
+            otroRestaurante.Id);
     }
 
-    private sealed record DatosEscenario(Guid UsuarioId, Guid GrupoId, Guid RestauranteId);
+    private sealed record DatosEscenario(
+        Guid UsuarioId,
+        Guid OtroUsuarioId,
+        Guid GrupoId,
+        Guid RestauranteId,
+        Guid OtroRestauranteId);
 }

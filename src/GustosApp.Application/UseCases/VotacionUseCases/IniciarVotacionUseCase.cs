@@ -50,22 +50,39 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             if (votacionActiva != null)
                 throw new InvalidOperationException("Ya existe una votación activa en este grupo");
 
-            if (restaurantesCandidatos == null || restaurantesCandidatos.Count == 0)
-                throw new InvalidOperationException("Debe seleccionar al menos un restaurante candidato.");
+            var candidatosUnicos = restaurantesCandidatos?
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList() ?? new List<Guid>();
 
-            var hayParticipantes = grupo.Miembros.Any(m => m.Activo && m.ParticipaEnRecomendacion);
-            if (!hayParticipantes)
-                throw new InvalidOperationException("Debe seleccionar al menos un miembro activo para participar de la votación.");
+            if (candidatosUnicos.Count < 2)
+                throw new InvalidOperationException("Debe seleccionar al menos dos restaurantes candidatos.");
+
+            var participantes = grupo.Miembros
+                .Where(m => m.Activo && m.ParticipaEnRecomendacion)
+                .Select(m => m.UsuarioId)
+                .Distinct()
+                .ToList();
+
+            if (participantes.Count < 2)
+                throw new InvalidOperationException("Debe seleccionar al menos dos miembros activos para participar de la votación.");
 
 
             // 4. Crear votación
             var votacion = new VotacionGrupo(grupoId, descripcion);
 
             // 5. Agregar restaurantes candidatos
-            foreach (var restauranteId in restaurantesCandidatos)
+            foreach (var restauranteId in candidatosUnicos)
             {
                 votacion.RestaurantesCandidatos.Add(
                     new VotacionRestaurante(votacion.Id, restauranteId)
+                );
+            }
+
+            foreach (var usuarioId in participantes)
+            {
+                votacion.Participantes.Add(
+                    new VotacionParticipante(votacion.Id, usuarioId)
                 );
             }
 

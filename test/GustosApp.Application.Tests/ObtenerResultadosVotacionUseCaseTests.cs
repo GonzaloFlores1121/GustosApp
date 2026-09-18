@@ -149,6 +149,7 @@ namespace GustosApp.Application.Tests
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id);
 
             _mockUsuarioRepository.Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync(usuario);
@@ -196,6 +197,7 @@ namespace GustosApp.Application.Tests
             grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario3.Id) { ParticipaEnRecomendacion = true });
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario1.Id, usuario2.Id, usuario3.Id);
 
             votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuario1.Id, ganadorId, null) { Restaurante = restauranteGanador, Usuario = usuario1 });
             votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuario2.Id, ganadorId, null) { Restaurante = restauranteGanador, Usuario = usuario2 });
@@ -234,6 +236,7 @@ namespace GustosApp.Application.Tests
             grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario2.Id) { ParticipaEnRecomendacion = true });
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario1.Id, usuario2.Id);
 
             votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuario1.Id, r1, null));
             votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuario2.Id, r2, null));
@@ -270,6 +273,7 @@ namespace GustosApp.Application.Tests
             grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = true });
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id);
             votacion.EstablecerGanadorRuleta(ganador);
 
             _mockUsuarioRepository.Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default)).ReturnsAsync(usuario);
@@ -285,6 +289,12 @@ namespace GustosApp.Application.Tests
             _mockNotificaciones.Verify(n =>
                 n.NotificarEmpate(It.IsAny<Guid>(), It.IsAny<Guid>()),
                 Times.Never);
+        }
+
+        private static void AgregarParticipantes(VotacionGrupo votacion, params Guid[] usuariosIds)
+        {
+            foreach (var usuarioId in usuariosIds)
+                votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioId));
         }
     }
 

@@ -146,7 +146,7 @@ namespace GustosApp.Application.Tests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 _useCase.HandleAsync(firebaseUid, grupoId, "desc", new List<Guid>()));
 
-            Assert.Equal("Debe seleccionar al menos un restaurante candidato.", ex.Message);
+            Assert.Equal("Debe seleccionar al menos dos restaurantes candidatos.", ex.Message);
         }
 
        
@@ -184,6 +184,7 @@ namespace GustosApp.Application.Tests
             Assert.Equal(descripcion, result.Descripcion);
             Assert.Equal(EstadoVotacion.Activa, result.Estado);
             Assert.Equal(candidatos.Count, result.RestaurantesCandidatos.Count);
+            Assert.Equal(2, result.Participantes.Count);
         }
 
        
@@ -193,7 +194,7 @@ namespace GustosApp.Application.Tests
             var firebaseUid = "firebase123";
             var grupoId = Guid.NewGuid();
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
-            var candidatos = new List<Guid> { Guid.NewGuid() };
+            var candidatos = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
             var grupo = CrearGrupoConParticipante(grupoId, usuario);
 
             _mockUsuarioRepository
@@ -216,7 +217,8 @@ namespace GustosApp.Application.Tests
 
             Assert.NotNull(result);
             Assert.Null(result.Descripcion);
-            Assert.Single(result.RestaurantesCandidatos);
+            Assert.Equal(2, result.RestaurantesCandidatos.Count);
+            Assert.Equal(2, result.Participantes.Count);
         }
 
         [Fact]
@@ -247,9 +249,9 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync((VotacionGrupo?)null);
 
             var excepcion = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _useCase.HandleAsync(firebaseUid, grupoId, "desc", new List<Guid> { Guid.NewGuid() }));
+                _useCase.HandleAsync(firebaseUid, grupoId, "desc", new List<Guid> { Guid.NewGuid(), Guid.NewGuid() }));
 
-            Assert.Equal("Debe seleccionar al menos un miembro activo para participar de la votación.", excepcion.Message);
+            Assert.Equal("Debe seleccionar al menos dos miembros activos para participar de la votación.", excepcion.Message);
             _mockVotacionRepository.Verify(
                 x => x.CrearVotacionAsync(It.IsAny<VotacionGrupo>(), It.IsAny<CancellationToken>()),
                 Times.Never);
@@ -259,6 +261,7 @@ namespace GustosApp.Application.Tests
         {
             var grupo = new Grupo("Grupo", administrador.Id) { Id = grupoId };
             grupo.Miembros.Add(new MiembroGrupo(grupoId, administrador.Id) { ParticipaEnRecomendacion = true });
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, Guid.NewGuid()) { ParticipaEnRecomendacion = true });
             return grupo;
         }
     }

@@ -55,6 +55,9 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             if (votacion.RestauranteGanadorId.HasValue)
                 throw new InvalidOperationException("Ya se seleccionó un ganador para esta votación");
 
+            if (!votacion.TodosLosParticipantesVotaron())
+                throw new InvalidOperationException("La ruleta solo puede utilizarse cuando todos los participantes hayan votado");
+
 
             // 6. Validar empate real
             var restaurantesEmpatados = votacion.ObtenerRestaurantesEmpatados();
@@ -75,14 +78,19 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 throw new InvalidOperationException("El restaurante seleccionado no es un candidato válido");
 
 
-            // 9. Asignar ganador por ruleta (dominio)
-            votacion.EstablecerGanadorRuleta(restauranteGanadorId);
+            // 9. Asignar ganador y cerrar la votación
+            votacion.CerrarVotacion(restauranteGanadorId);
 
             await _notificaciones.NotificarGanador(votacion.GrupoId, votacion.Id, restauranteGanadorId);
 
 
             // 10. Guardar
             await _votacionRepository.ActualizarVotacionAsync(votacion, ct);
+
+            await _notificaciones.NotificarVotacionCerrada(
+                votacion.GrupoId,
+                votacion.Id,
+                restauranteGanadorId);
 
             return votacion;
         }

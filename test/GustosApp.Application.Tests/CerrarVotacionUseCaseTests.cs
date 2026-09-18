@@ -17,7 +17,6 @@ namespace GustosApp.Application.Tests
     {
         private readonly Mock<IVotacionRepository> _mockVotacionRepository;
         private readonly Mock<IUsuarioRepository> _mockUsuarioRepository;
-        private readonly Mock<IGrupoRepository> _mockGrupoRepository;
         private readonly Mock<INotificacionesVotacionService> _mockNotificaciones;
         private readonly CerrarVotacionUseCase _useCase;
 
@@ -25,13 +24,11 @@ namespace GustosApp.Application.Tests
         {
             _mockVotacionRepository = new Mock<IVotacionRepository>();
             _mockUsuarioRepository = new Mock<IUsuarioRepository>();
-            _mockGrupoRepository = new Mock<IGrupoRepository>();
             _mockNotificaciones = new Mock<INotificacionesVotacionService>();
 
             _useCase = new CerrarVotacionUseCase(
                 _mockVotacionRepository.Object,
                 _mockUsuarioRepository.Object,
-                _mockGrupoRepository.Object,
                 _mockNotificaciones.Object);
         }
 
@@ -123,7 +120,7 @@ namespace GustosApp.Application.Tests
 
        
         [Fact]
-        public async Task HandleAsync_GanadorManualNoCandidato_LanzaInvalidOperationException()
+        public async Task HandleAsync_NoVotaronTodos_LanzaInvalidOperationException()
         {
             var firebaseUid = "firebase123";
             var ganador = Guid.NewGuid();
@@ -132,8 +129,7 @@ namespace GustosApp.Application.Tests
             var grupo = new Grupo("Test", usuario.Id) { Id = Guid.NewGuid() };
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
 
-            // No hay candidatos → el ganador NO es candidato
-            votacion.RestaurantesCandidatos.Clear();
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuario.Id));
 
             _mockUsuarioRepository.Setup(x => x.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync(usuario);
@@ -145,7 +141,7 @@ namespace GustosApp.Application.Tests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), ganador));
 
-            Assert.Equal("El ganador debe ser un restaurante candidato", ex.Message);
+            Assert.Equal("La votación no puede cerrarse hasta que todos los participantes hayan votado", ex.Message);
         }
 
        
@@ -160,6 +156,8 @@ namespace GustosApp.Application.Tests
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
 
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, candidato));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuario.Id));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuario.Id, candidato, null));
 
             _mockUsuarioRepository.Setup(x => x.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync(usuario);
@@ -200,8 +198,13 @@ namespace GustosApp.Application.Tests
 
             // restaurante1 gana 2-1
             votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuarioId, restaurante1, null));
-            votacion.Votos.Add(new VotoRestaurante(votacion.Id, Guid.NewGuid(), restaurante1, null));
-            votacion.Votos.Add(new VotoRestaurante(votacion.Id, Guid.NewGuid(), restaurante2, null));
+            var participante2 = Guid.NewGuid();
+            var participante3 = Guid.NewGuid();
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, participante2, restaurante1, null));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, participante3, restaurante2, null));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioId));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, participante2));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, participante3));
 
             _mockUsuarioRepository.Setup(x => x.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync(usuario);
@@ -221,7 +224,7 @@ namespace GustosApp.Application.Tests
 
        
         [Fact]
-        public async Task HandleAsync_Empate_CierraSinGanador()
+        public async Task HandleAsync_Empate_ExigeResolverMedianteRuleta()
         {
             var firebaseUid = "firebase123";
             var usuarioId = Guid.NewGuid();
@@ -237,8 +240,11 @@ namespace GustosApp.Application.Tests
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, r1));
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, r2));
 
+            var participante2 = Guid.NewGuid();
             votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuarioId, r1, null));
-            votacion.Votos.Add(new VotoRestaurante(votacion.Id, Guid.NewGuid(), r2, null));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, participante2, r2, null));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioId));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, participante2));
 
             _mockUsuarioRepository.Setup(x => x.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync(usuario);
@@ -247,18 +253,18 @@ namespace GustosApp.Application.Tests
                 .Setup(x => x.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
                 .ReturnsAsync(votacion);
 
-            var result = await _useCase.HandleAsync(firebaseUid, Guid.NewGuid());
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _useCase.HandleAsync(firebaseUid, Guid.NewGuid()));
 
-            Assert.Null(result.RestauranteGanadorId);
-            Assert.Equal(EstadoVotacion.Cerrada, result.Estado);
-
-            _mockNotificaciones.Verify(n =>
-                n.NotificarVotacionCerrada(grupo.Id, votacion.Id, null), Times.Once);
+            Assert.Equal("La votación está empatada y debe resolverse mediante la ruleta", ex.Message);
+            _mockVotacionRepository.Verify(
+                x => x.ActualizarVotacionAsync(It.IsAny<VotacionGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         
         [Fact]
-        public async Task HandleAsync_SinVotos_CierraSinGanador()
+        public async Task HandleAsync_SinVotos_NoPermiteCerrar()
         {
             var firebaseUid = "firebase123";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -267,6 +273,7 @@ namespace GustosApp.Application.Tests
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
 
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, Guid.NewGuid()));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuario.Id));
 
             _mockUsuarioRepository.Setup(x => x.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync(usuario);
@@ -275,13 +282,10 @@ namespace GustosApp.Application.Tests
                 .Setup(x => x.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
                 .ReturnsAsync(votacion);
 
-            var result = await _useCase.HandleAsync(firebaseUid, Guid.NewGuid());
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _useCase.HandleAsync(firebaseUid, Guid.NewGuid()));
 
-            Assert.Null(result.RestauranteGanadorId);
-            Assert.Equal(EstadoVotacion.Cerrada, result.Estado);
-
-            _mockNotificaciones.Verify(n =>
-                n.NotificarVotacionCerrada(grupo.Id, votacion.Id, null), Times.Once);
+            Assert.Equal("La votación no puede cerrarse hasta que todos los participantes hayan votado", ex.Message);
         }
     }
 

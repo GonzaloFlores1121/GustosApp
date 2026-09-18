@@ -51,14 +51,8 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             if (votacion.Estado != EstadoVotacion.Activa)
                 throw new InvalidOperationException("La votación no está activa");
 
-            // 4. Verificar que el usuario es miembro
-            var grupo = votacion.Grupo;
-            var miembro = grupo.Miembros.FirstOrDefault(m => m.UsuarioId == usuario.Id);
-
-            if (miembro == null || !miembro.Activo)
-                throw new AccesoProhibidoException("No eres un miembro activo de este grupo.");
-
-            if (!miembro.ParticipaEnRecomendacion)
+            // 4. Verificar la fotografía de participantes tomada al iniciar
+            if (!votacion.Participantes.Any(p => p.UsuarioId == usuario.Id))
                 throw new AccesoProhibidoException("No estás incluido entre los participantes de esta votación.");
 
             // 5. VALIDAR CANDIDATO
@@ -92,14 +86,14 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                     EsActualizacion = true
                 };
 
-                await _notificaciones.NotificarVotoRegistrado(votacion.GrupoId, payloadUpdate);
-                await _notificaciones.NotificarResultadosActualizados(votacion.GrupoId, votacionId);
+                await FinalizarYNotificarAsync(votacion, payloadUpdate, ct);
 
                 return votoExistente;
             }
 
             // --- CREAR NUEVO VOTO ---
             var nuevoVoto = new VotoRestaurante(votacionId, usuario.Id, restauranteId, comentario);
+            votacion.Votos.Add(nuevoVoto);
             await _votacionRepository.RegistrarVotoAsync(nuevoVoto, ct);
 
             var payloadNuevo = new EventoVotoRegistrado
@@ -114,10 +108,40 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 EsActualizacion = false
             };
 
-            await _notificaciones.NotificarVotoRegistrado(votacion.GrupoId, payloadNuevo);
-            await _notificaciones.NotificarResultadosActualizados(votacion.GrupoId, votacionId);
+            await FinalizarYNotificarAsync(votacion, payloadNuevo, ct);
 
             return nuevoVoto;
+        }
+
+        private async Task FinalizarYNotificarAsync(
+            VotacionGrupo votacion,
+            EventoVotoRegistrado evento,
+            CancellationToken ct)
+        {
+            var seCerro = votacion.IntentarCerrarConGanadorUnico();
+
+            if (seCerro)
+                await _votacionRepository.ActualizarVotacionAsync(votacion, ct);
+
+            await _notificaciones.NotificarVotoRegistrado(votacion.GrupoId, evento);
+            await _notificaciones.NotificarResultadosActualizados(votacion.GrupoId, votacion.Id);
+
+            if (seCerro && votacion.RestauranteGanadorId.HasValue)
+            {
+                await _notificaciones.NotificarGanador(
+                    votacion.GrupoId,
+                    votacion.Id,
+                    votacion.RestauranteGanadorId.Value);
+
+                await _notificaciones.NotificarVotacionCerrada(
+                    votacion.GrupoId,
+                    votacion.Id,
+                    votacion.RestauranteGanadorId);
+            }
+            else if (votacion.TodosLosParticipantesVotaron())
+            {
+                await _notificaciones.NotificarEmpate(votacion.GrupoId, votacion.Id);
+            }
         }
 
     }

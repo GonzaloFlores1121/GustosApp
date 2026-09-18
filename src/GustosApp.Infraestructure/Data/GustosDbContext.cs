@@ -57,6 +57,7 @@ public class GustosDbContext : DbContext
     
     public DbSet<VotacionGrupo> Votaciones { get; set; }
     public DbSet<VotoRestaurante> Votos { get; set; }
+    public DbSet<VotacionParticipante> VotacionParticipantes { get; set; }
 
     public DbSet<VotacionRestaurante> VotacionRestaurantes { get; set; }
     public DbSet<OpinionRestaurante> OpinionesRestaurante { get; set; }
@@ -79,6 +80,7 @@ public class GustosDbContext : DbContext
 
         modelBuilder.ApplyConfiguration(new GustosApp.Infraestructure.Configurations.VotacionGrupoConfiguration());
         modelBuilder.ApplyConfiguration(new GustosApp.Infraestructure.Configurations.VotoRestauranteConfiguration());
+        modelBuilder.ApplyConfiguration(new GustosApp.Infraestructure.Configurations.VotacionParticipanteConfiguration());
 
 
 

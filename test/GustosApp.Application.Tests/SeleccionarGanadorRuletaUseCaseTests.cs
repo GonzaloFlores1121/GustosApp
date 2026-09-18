@@ -149,7 +149,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task HandleAsync_NoHayEmpate_LanzaInvalidOperationException()
+        public async Task HandleAsync_NoVotaronTodos_LanzaInvalidOperationException()
         {
             var firebaseUid = "firebase123";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -165,7 +165,7 @@ namespace GustosApp.Application.Tests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
 
-            Assert.Equal("No hay empate en esta votación", ex.Message);
+            Assert.Equal("La ruleta solo puede utilizarse cuando todos los participantes hayan votado", ex.Message);
         }
 
         [Fact]
@@ -180,11 +180,13 @@ namespace GustosApp.Application.Tests
             var r1 = Guid.NewGuid();
             var r2 = Guid.NewGuid();
             var noEmpatado = Guid.NewGuid();
+            var segundoUsuarioId = Guid.NewGuid();
 
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, segundoUsuarioId);
 
             votacion.Votos.Add(new VotoRestaurante(votacionId, usuario.Id, r1, null));
-            votacion.Votos.Add(new VotoRestaurante(votacionId, Guid.NewGuid(), r2, null));
+            votacion.Votos.Add(new VotoRestaurante(votacionId, segundoUsuarioId, r2, null));
 
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, r1));
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, r2));
@@ -214,12 +216,14 @@ namespace GustosApp.Application.Tests
             var r1 = Guid.NewGuid();
             var r2 = Guid.NewGuid();
             var ganador = r1;
+            var segundoUsuarioId = Guid.NewGuid();
 
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, segundoUsuarioId);
 
             // Empate real
             votacion.Votos.Add(new VotoRestaurante(votacionId, usuario.Id, r1, null));
-            votacion.Votos.Add(new VotoRestaurante(votacionId, Guid.NewGuid(), r2, null));
+            votacion.Votos.Add(new VotoRestaurante(votacionId, segundoUsuarioId, r2, null));
 
             // NO agrego candidatos → r1 NO es válido
 
@@ -247,12 +251,14 @@ namespace GustosApp.Application.Tests
 
             var r1 = Guid.NewGuid();
             var r2 = Guid.NewGuid();
+            var segundoUsuarioId = Guid.NewGuid();
 
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, segundoUsuarioId);
 
             // Empate real
             votacion.Votos.Add(new VotoRestaurante(votacionId, usuario.Id, r1, null));
-            votacion.Votos.Add(new VotoRestaurante(votacionId, Guid.NewGuid(), r2, null));
+            votacion.Votos.Add(new VotoRestaurante(votacionId, segundoUsuarioId, r2, null));
 
             // candidatos oficiales
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, r1));
@@ -273,8 +279,12 @@ namespace GustosApp.Application.Tests
 
             // Assert
             Assert.Equal(r1, result.RestauranteGanadorId);
+            Assert.Equal(EstadoVotacion.Cerrada, result.Estado);
             _mockNotificaciones.Verify(
                 n => n.NotificarGanador(grupo.Id, votacion.Id, r1),
+                Times.Once);
+            _mockNotificaciones.Verify(
+                n => n.NotificarVotacionCerrada(grupo.Id, votacion.Id, r1),
                 Times.Once);
         }
 
@@ -291,12 +301,15 @@ namespace GustosApp.Application.Tests
             var r1 = Guid.NewGuid();
             var r2 = Guid.NewGuid();
             var r3 = Guid.NewGuid();
+            var segundoUsuarioId = Guid.NewGuid();
+            var tercerUsuarioId = Guid.NewGuid();
 
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, segundoUsuarioId, tercerUsuarioId);
 
             votacion.Votos.Add(new VotoRestaurante(votacionId, usuario.Id, r1, null));
-            votacion.Votos.Add(new VotoRestaurante(votacionId, Guid.NewGuid(), r2, null));
-            votacion.Votos.Add(new VotoRestaurante(votacionId, Guid.NewGuid(), r3, null));
+            votacion.Votos.Add(new VotoRestaurante(votacionId, segundoUsuarioId, r2, null));
+            votacion.Votos.Add(new VotoRestaurante(votacionId, tercerUsuarioId, r3, null));
 
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, r1));
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, r2));
@@ -315,6 +328,13 @@ namespace GustosApp.Application.Tests
             var result = await _useCase.HandleAsync(firebaseUid, votacionId, r3);
 
             Assert.Equal(r3, result.RestauranteGanadorId);
+            Assert.Equal(EstadoVotacion.Cerrada, result.Estado);
+        }
+
+        private static void AgregarParticipantes(VotacionGrupo votacion, params Guid[] usuariosIds)
+        {
+            foreach (var usuarioId in usuariosIds)
+                votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioId));
         }
     }
 }

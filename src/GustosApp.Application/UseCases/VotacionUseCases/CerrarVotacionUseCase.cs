@@ -13,18 +13,15 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
     {
         private readonly IVotacionRepository _votacionRepository;
         private readonly IUsuarioRepository _usuarioRepository;
-        private readonly IGrupoRepository _grupoRepository;
         private readonly INotificacionesVotacionService _notificaciones;
 
         public CerrarVotacionUseCase(
             IVotacionRepository votacionRepository,
             IUsuarioRepository usuarioRepository,
-            IGrupoRepository grupoRepository,
             INotificacionesVotacionService notificaciones)
         {
             _votacionRepository = votacionRepository;
             _usuarioRepository = usuarioRepository;
-            _grupoRepository = grupoRepository;
             _notificaciones = notificaciones;
         }
 
@@ -51,8 +48,16 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             if (votacion.Estado != EstadoVotacion.Activa)
                 throw new InvalidOperationException("La votación no está activa");
 
+            if (!votacion.TodosLosParticipantesVotaron())
+                throw new InvalidOperationException("La votación no puede cerrarse hasta que todos los participantes hayan votado");
 
-            // 4. Si se manda ganador → VALIDAR QUE SEA CANDIDATO
+            var ganadores = votacion.ObtenerRestaurantesEmpatados();
+            if (ganadores.Count != 1)
+                throw new InvalidOperationException("La votación está empatada y debe resolverse mediante la ruleta");
+
+            var ganadorCalculado = ganadores.Single();
+
+            // Si se informa un ganador, debe coincidir con el resultado de los votos.
             if (restauranteGanadorId.HasValue)
             {
                 var esCandidato = votacion.RestaurantesCandidatos
@@ -60,41 +65,16 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
                 if (!esCandidato)
                     throw new InvalidOperationException("El ganador debe ser un restaurante candidato");
+
+                if (restauranteGanadorId.Value != ganadorCalculado)
+                    throw new InvalidOperationException("El ganador informado no coincide con el resultado de la votación");
             }
 
-            // 5. Si NO se envió ganador → calcular automáticamente
-            if (!restauranteGanadorId.HasValue)
-            {
-                var resultados = votacion.ObtenerResultados();
+            votacion.CerrarVotacion(ganadorCalculado);
 
-                if (resultados.Any())
-                {
-                    var maxVotos = resultados.Max(r => r.Value);
-                    var ganadores = resultados
-                        .Where(r => r.Value == maxVotos)
-                        .Select(r => r.Key)
-                        .ToList();
-
-                    // Si hay un único ganador → asignarlo
-                    if (ganadores.Count == 1)
-                    {
-                        restauranteGanadorId = ganadores.First();
-                    }
-                    else
-                    {
-                        // Si hay más de uno → empate
-                        restauranteGanadorId = null;
-                    }
-                }
-            }
-
-            // 6. Cerrar votación
-            votacion.CerrarVotacion(restauranteGanadorId);
-
-            // 7. Guardar
             await _votacionRepository.ActualizarVotacionAsync(votacion, ct);
 
-            await _notificaciones.NotificarVotacionCerrada(votacion.GrupoId, votacion.Id, restauranteGanadorId);
+            await _notificaciones.NotificarVotacionCerrada(votacion.GrupoId, votacion.Id, ganadorCalculado);
 
 
             return votacion;

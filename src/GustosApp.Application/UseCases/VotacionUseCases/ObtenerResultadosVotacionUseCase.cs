@@ -54,8 +54,8 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
             // Obtener resultados
             var resultados = votacion.ObtenerResultados();
-            var miembrosActivos = votacion.Grupo.Miembros.Count(m => m.ParticipaEnRecomendacion && m.Activo);
-            var todosVotaron = votacion.TodosHanVotado(miembrosActivos);
+            var miembrosActivos = votacion.Participantes.Count;
+            var todosVotaron = votacion.TodosLosParticipantesVotaron();
 
             var candidatos = votacion.RestaurantesCandidatos
             .Select(rc => new RestauranteCandidato
