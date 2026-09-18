@@ -107,6 +107,77 @@ public sealed class FlujoVotacionPruebas
         respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task ObtenerHistorial_DevuelveSoloVotacionesCerradasPaginadas()
+    {
+        await using var fabrica = new FabricaApiGustosAppVotacion();
+        var datos = await PrepararEscenarioAsync(
+            fabrica,
+            usuarioAutenticadoEsAdministrador: true,
+            participa: true);
+
+        await using (var alcance = fabrica.Services.CreateAsyncScope())
+        {
+            var contexto = alcance.ServiceProvider.GetRequiredService<GustosDbContext>();
+            AgregarVotacionCerrada(contexto, datos, "Primera cena");
+            AgregarVotacionCerrada(contexto, datos, "Segunda cena");
+            contexto.Votaciones.Add(new VotacionGrupo(datos.GrupoId, "Votación activa"));
+            await contexto.SaveChangesAsync();
+        }
+
+        using var cliente = fabrica.CreateClient();
+        var respuesta = await cliente.GetAsync(
+            $"/Votacion/grupo/{datos.GrupoId}/historial?pagina=1&tamanoPagina=1");
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.OK);
+        var historial = await respuesta.Content.ReadFromJsonAsync<HistorialVotacionesResponse>();
+        historial.Should().NotBeNull();
+        historial!.Pagina.Should().Be(1);
+        historial.TamanoPagina.Should().Be(1);
+        historial.Total.Should().Be(2);
+        historial.TotalPaginas.Should().Be(2);
+        historial.Votaciones.Should().ContainSingle();
+        historial.Votaciones[0].Ganador.Should().NotBeNull();
+        historial.Votaciones[0].Ganador!.Nombre.Should().Be("Restaurante de prueba");
+        historial.Votaciones[0].CantidadParticipantes.Should().Be(2);
+        historial.Votaciones[0].CantidadVotos.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ObtenerHistorial_UsuarioFueraDelGrupo_DevuelveProhibido()
+    {
+        await using var fabrica = new FabricaApiGustosAppVotacion();
+        var datos = await PrepararEscenarioAsync(
+            fabrica,
+            usuarioAutenticadoEsAdministrador: false,
+            participa: false);
+        using var cliente = fabrica.CreateClient();
+
+        var respuesta = await cliente.GetAsync($"/Votacion/grupo/{datos.GrupoId}/historial");
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    private static void AgregarVotacionCerrada(
+        GustosDbContext contexto,
+        DatosEscenario datos,
+        string descripcion)
+    {
+        var votacion = new VotacionGrupo(datos.GrupoId, descripcion);
+        votacion.Participantes.Add(new VotacionParticipante(votacion.Id, datos.UsuarioId));
+        votacion.Participantes.Add(new VotacionParticipante(votacion.Id, datos.OtroUsuarioId));
+        votacion.Votos.Add(new VotoRestaurante(
+            votacion.Id,
+            datos.UsuarioId,
+            datos.RestauranteId));
+        votacion.Votos.Add(new VotoRestaurante(
+            votacion.Id,
+            datos.OtroUsuarioId,
+            datos.RestauranteId));
+        votacion.CerrarVotacion(datos.RestauranteId);
+        contexto.Votaciones.Add(votacion);
+    }
+
     private static async Task<DatosEscenario> PrepararEscenarioAsync(
         FabricaApiGustosAppVotacion fabrica,
         bool usuarioAutenticadoEsAdministrador,
