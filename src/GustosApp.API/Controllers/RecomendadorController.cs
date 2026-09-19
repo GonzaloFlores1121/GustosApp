@@ -1,13 +1,9 @@
 using GustosApp.API.DTO;
-using GustosApp.API.DTO;
-using GustosApp.Application.Interfaces;
-using GustosApp.Application.Services;
 using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using System.Threading.Tasks;
 
 namespace GustosApp.API.Controllers
 {
@@ -19,14 +15,15 @@ namespace GustosApp.API.Controllers
     {
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IRestauranteRepository _restauranteRepository;
-        private readonly IRecomendacionAIService _recomendacionAIService;
         private readonly RecomendacionIAUseCase _recomendacionIAUseCase;
 
-        public RecomendadorController(IUsuarioRepository usuarioRepository,IRestauranteRepository restauranteRepository,IRecomendacionAIService recomendacionAIService, RecomendacionIAUseCase recomendacionIAUseCase)
+        public RecomendadorController(
+            IUsuarioRepository usuarioRepository,
+            IRestauranteRepository restauranteRepository,
+            RecomendacionIAUseCase recomendacionIAUseCase)
         {
             _usuarioRepository = usuarioRepository;
             _restauranteRepository = restauranteRepository;
-            _recomendacionAIService = recomendacionAIService;
             _recomendacionIAUseCase = recomendacionIAUseCase;
         }
       
@@ -63,4 +60,3 @@ namespace GustosApp.API.Controllers
 
     }
 }
- 

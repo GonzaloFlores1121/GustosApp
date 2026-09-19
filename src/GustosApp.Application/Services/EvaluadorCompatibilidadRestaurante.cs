@@ -7,6 +7,18 @@ namespace GustosApp.Application.Services
 {
     public class EvaluadorCompatibilidadRestaurante
     {
+        private readonly TimeProvider _reloj;
+
+        public EvaluadorCompatibilidadRestaurante(TimeProvider reloj)
+        {
+            _reloj = reloj;
+        }
+
+        public EvaluadorCompatibilidadRestaurante()
+            : this(TimeProvider.System)
+        {
+        }
+
         private static readonly IReadOnlyDictionary<string, string[]> TagsPorRestriccion =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -78,12 +90,22 @@ namespace GustosApp.Application.Services
                 .Concat(condiciones.Select(CrearReglaCondicion))
                 .ToList();
 
-            if (reglas.Any(regla => EsIncompatible(regla, restriccionesRespetadas, tagsConocidos)))
+            var datosDesactualizados = restaurante.ObtenerEstadoActualDatosCompatibilidad(
+                _reloj.GetUtcNow().UtcDateTime) ==
+                EstadoDatosCompatibilidadRestaurante.Desactualizado;
+
+            var resultados = reglas
+                .Select(regla => EvaluarRegla(
+                    regla,
+                    restriccionesRespetadas,
+                    tagsConocidos,
+                    datosDesactualizados))
+                .ToList();
+
+            if (resultados.Contains(ResultadoReglaCompatibilidad.Incompatible))
                 return NivelCompatibilidadRestaurante.Incompatible;
 
-            return reglas.All(regla =>
-                    regla.RestriccionQueConfirma != null &&
-                    restriccionesRespetadas.Contains(regla.RestriccionQueConfirma))
+            return resultados.All(resultado => resultado == ResultadoReglaCompatibilidad.Compatible)
                 ? NivelCompatibilidadRestaurante.Estimada
                 : NivelCompatibilidadRestaurante.Desconocida;
         }
@@ -101,18 +123,23 @@ namespace GustosApp.Application.Services
                 : new ReglaCompatibilidad([], null);
         }
 
-        private static bool EsIncompatible(
+        private static ResultadoReglaCompatibilidad EvaluarRegla(
             ReglaCompatibilidad regla,
             HashSet<string> restriccionesRespetadas,
-            HashSet<string> tagsConocidos)
+            HashSet<string> tagsConocidos,
+            bool datosDesactualizados)
         {
             if (regla.RestriccionQueConfirma != null &&
                 restriccionesRespetadas.Contains(regla.RestriccionQueConfirma))
             {
-                return false;
+                return datosDesactualizados
+                    ? ResultadoReglaCompatibilidad.Desconocida
+                    : ResultadoReglaCompatibilidad.Compatible;
             }
 
-            return regla.TagsProhibidos.Any(tagsConocidos.Contains);
+            return regla.TagsProhibidos.Any(tagsConocidos.Contains)
+                ? ResultadoReglaCompatibilidad.Incompatible
+                : ResultadoReglaCompatibilidad.Desconocida;
         }
 
         private static string Normalizar(string valor)
@@ -136,5 +163,12 @@ namespace GustosApp.Application.Services
         private sealed record ReglaCondicionMedica(
             IReadOnlyCollection<string> TagsProhibidos,
             string? RestriccionQueConfirma);
+
+        private enum ResultadoReglaCompatibilidad
+        {
+            Desconocida = 0,
+            Compatible = 1,
+            Incompatible = 2
+        }
     }
 }
