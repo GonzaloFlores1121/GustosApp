@@ -70,6 +70,14 @@ namespace GustosApp.Domain.Model
         public double Score { get; set; }
         public NivelCompatibilidadRestaurante NivelCompatibilidad { get; set; } =
             NivelCompatibilidadRestaurante.Desconocida;
+        public OrigenDatosCompatibilidadRestaurante OrigenDatosCompatibilidad { get; private set; } =
+            OrigenDatosCompatibilidadRestaurante.Estimacion;
+        public EstadoDatosCompatibilidadRestaurante EstadoDatosCompatibilidad { get; private set; } =
+            EstadoDatosCompatibilidadRestaurante.Estimado;
+        public DateTime? FechaObtencionDatosCompatibilidadUtc { get; private set; }
+        public DateTime? FechaUltimaVerificacionDatosCompatibilidadUtc { get; private set; }
+
+        public static readonly TimeSpan VigenciaDatosCompatibilidad = TimeSpan.FromDays(180);
 
         // Imágenes
      
@@ -120,6 +128,56 @@ namespace GustosApp.Domain.Model
             foreach (var r in nuevasRestricciones)
                 if (!idsViejos.Contains(r.Id))
                     RestriccionesQueRespeta.Add(r);
+        }
+
+        public void RegistrarDatosCompatibilidadEstimados(
+            OrigenDatosCompatibilidadRestaurante origen,
+            DateTime fechaObtencionUtc)
+        {
+            OrigenDatosCompatibilidad = origen;
+            EstadoDatosCompatibilidad = EstadoDatosCompatibilidadRestaurante.Estimado;
+            FechaObtencionDatosCompatibilidadUtc = NormalizarFechaUtc(fechaObtencionUtc);
+            FechaUltimaVerificacionDatosCompatibilidadUtc = null;
+        }
+
+        public void RegistrarVerificacionDatosCompatibilidad(
+            OrigenDatosCompatibilidadRestaurante origen,
+            DateTime fechaVerificacionUtc)
+        {
+            var fechaUtc = NormalizarFechaUtc(fechaVerificacionUtc);
+
+            OrigenDatosCompatibilidad = origen;
+            EstadoDatosCompatibilidad = EstadoDatosCompatibilidadRestaurante.Verificado;
+            FechaObtencionDatosCompatibilidadUtc ??= fechaUtc;
+            FechaUltimaVerificacionDatosCompatibilidadUtc = fechaUtc;
+        }
+
+        public EstadoDatosCompatibilidadRestaurante ObtenerEstadoActualDatosCompatibilidad(
+            DateTime fechaReferenciaUtc)
+        {
+            if (EstadoDatosCompatibilidad != EstadoDatosCompatibilidadRestaurante.Verificado ||
+                !FechaUltimaVerificacionDatosCompatibilidadUtc.HasValue)
+            {
+                return EstadoDatosCompatibilidad;
+            }
+
+            var fechaUtc = NormalizarFechaUtc(fechaReferenciaUtc);
+            var fechaVerificacionUtc = NormalizarFechaUtc(
+                FechaUltimaVerificacionDatosCompatibilidadUtc.Value);
+
+            return fechaUtc - fechaVerificacionUtc > VigenciaDatosCompatibilidad
+                ? EstadoDatosCompatibilidadRestaurante.Desactualizado
+                : EstadoDatosCompatibilidadRestaurante.Verificado;
+        }
+
+        private static DateTime NormalizarFechaUtc(DateTime fecha)
+        {
+            return fecha.Kind switch
+            {
+                DateTimeKind.Utc => fecha,
+                DateTimeKind.Local => fecha.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(fecha, DateTimeKind.Utc)
+            };
         }
 
 

@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.RestauranteUseCases;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
@@ -350,6 +351,13 @@ namespace GustosApp.Application.Tests
                 Times.Never);
 
             Assert.Empty(restaurante.RestriccionesQueRespeta);
+            Assert.Equal(
+                OrigenDatosCompatibilidadRestaurante.Restaurante,
+                restaurante.OrigenDatosCompatibilidad);
+            Assert.Equal(
+                EstadoDatosCompatibilidadRestaurante.Verificado,
+                restaurante.EstadoDatosCompatibilidad);
+            Assert.NotNull(restaurante.FechaUltimaVerificacionDatosCompatibilidadUtc);
         }
 
         [Fact]

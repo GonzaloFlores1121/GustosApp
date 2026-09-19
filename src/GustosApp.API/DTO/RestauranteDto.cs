@@ -47,6 +47,10 @@ namespace GustosApp.API.DTO
         public double Score { get; set; }
         public string NivelCompatibilidad { get; set; } = "Desconocida";
         public string AdvertenciaCompatibilidad { get; set; } = string.Empty;
+        public string OrigenDatosCompatibilidad { get; set; } = "Estimacion";
+        public string EstadoDatosCompatibilidad { get; set; } = "Estimado";
+        public DateTime? FechaObtencionDatosCompatibilidadUtc { get; set; }
+        public DateTime? FechaUltimaVerificacionDatosCompatibilidadUtc { get; set; }
         public string? Tipo { get; set; }
 
 

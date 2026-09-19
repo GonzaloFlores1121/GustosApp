@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Application.Common.Exceptions;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 
@@ -80,6 +81,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                     : new List<Restriccion>();
 
                 restaurante.SetRestricciones(restricciones);
+                restaurante.RegistrarVerificacionDatosCompatibilidad(
+                    OrigenDatosCompatibilidadRestaurante.Restaurante,
+                    DateTime.UtcNow);
             }
 
             restaurante.ActualizadoUtc = DateTime.UtcNow;
