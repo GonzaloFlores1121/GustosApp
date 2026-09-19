@@ -45,6 +45,8 @@ namespace GustosApp.API.DTO
         public ICollection<GustoDto> GustosQueSirve { get; set; }
         public ICollection<RestriccionResponse> RestriccionesQueRespeta { get; set; }
         public double Score { get; set; }
+        public string NivelCompatibilidad { get; set; } = "Desconocida";
+        public string AdvertenciaCompatibilidad { get; set; } = string.Empty;
         public string? Tipo { get; set; }
 
 

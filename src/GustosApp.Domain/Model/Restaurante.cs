@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using GustosApp.Domain.Common;
 
 using System.Threading.Tasks;
 
@@ -67,6 +68,8 @@ namespace GustosApp.Domain.Model
         public decimal? Valoracion { get; set; }                  
         public ICollection<RestaurantePlato> Platos { get; set; } = new List<RestaurantePlato>();
         public double Score { get; set; }
+        public NivelCompatibilidadRestaurante NivelCompatibilidad { get; set; } =
+            NivelCompatibilidadRestaurante.Desconocida;
 
         // Imágenes
      

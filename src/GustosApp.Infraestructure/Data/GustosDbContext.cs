@@ -126,7 +126,9 @@ public class GustosDbContext : DbContext
 
 
         modelBuilder.Entity<Restaurante>()
-        .Ignore(r => r.Score);
+            .Ignore(r => r.Score);
+        modelBuilder.Entity<Restaurante>()
+            .Ignore(r => r.NivelCompatibilidad);
 
         modelBuilder.Entity<Restaurante>()
          .HasOne(r => r.Menu)

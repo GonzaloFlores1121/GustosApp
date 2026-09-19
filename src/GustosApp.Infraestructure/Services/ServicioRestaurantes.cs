@@ -99,6 +99,7 @@ namespace GustosApp.Infraestructure.Services
             IQueryable<Restaurante> query = _db.Restaurantes
                 .AsNoTracking()
                 .Include(r => r.GustosQueSirve)
+                    .ThenInclude(g => g.Tags)
                 .Include(r => r.RestriccionesQueRespeta)
                 .Include(r => r.Platos);
 
@@ -443,28 +444,8 @@ namespace GustosApp.Infraestructure.Services
         {
             var baseQuery = _db.Restaurantes.AsNoTracking();
 
-            // Normalización
-            var gustosNorm = gustos?.Select(g => g.Trim().ToLower()).ToList() ?? new();
-            var restNorm = restricciones?.Select(r => r.Trim().ToLower()).ToList() ?? new();
-
-            bool filtrarGustos = gustosNorm.Count > 0;
-            bool filtrarRest = restNorm.Count > 0;
-
-            // Si hay filtros
-            if (filtrarGustos || filtrarRest)
-            {
-                baseQuery = baseQuery.Where(r =>
-                    (
-                        filtrarGustos &&
-                        r.GustosQueSirve.Any(g => gustosNorm.Contains(g.Nombre.ToLower()))
-                    )
-                    ||
-                    (
-                        filtrarRest &&
-                        r.RestriccionesQueRespeta.Any(res => restNorm.Contains(res.Nombre.ToLower()))
-                    )
-                );
-            }
+            // Los gustos y restricciones se evalúan en el recomendador. Filtrarlos aquí
+            // impediría usar restaurantes con compatibilidad todavía desconocida como respaldo.
 
             // Resto del filtrado (ubicación / rating)
             if (lat.HasValue && lng.HasValue && radioMetros is > 0)
@@ -500,6 +481,7 @@ namespace GustosApp.Infraestructure.Services
 
             return await baseQuery
                 .Include(r => r.GustosQueSirve)
+                    .ThenInclude(g => g.Tags)
                 .Include(r => r.RestriccionesQueRespeta)
                 .ToListAsync();
         }
