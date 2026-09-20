@@ -11,6 +11,7 @@ namespace GustosApp.Domain.Interfaces
     public interface ISolicitudRestauranteRepository
     {
         Task<SolicitudRestaurante?> GetByIdAsync(Guid id, CancellationToken ct);
+        Task<SolicitudRestaurante?> BuscarReclamoPendienteAsync(Guid usuarioId, Guid restauranteId, CancellationToken ct);
         Task<List<SolicitudRestaurante>> GetPendientesAsync(CancellationToken ct);
         Task AddAsync(SolicitudRestaurante solicitud, CancellationToken ct);
         Task UpdateAsync(SolicitudRestaurante solicitud, CancellationToken ct);

@@ -129,7 +129,7 @@ namespace GustosApp.Infraestructure.Services
                 query = query.Where(r =>
                     r.Latitud >= minLat && r.Latitud <= maxLat &&
                     r.Longitud >= minLng && r.Longitud <= maxLng &&
-                    r.Rating >= rating);
+                    (rating <= 0 || r.Rating >= rating));
 
                 // Orden + Take también en SQL
                 query = query.OrderBy(r =>
@@ -138,7 +138,7 @@ namespace GustosApp.Infraestructure.Services
             }
             else
             {
-                query = query.Where(r => r.Rating >= rating)
+                query = query.Where(r => rating <= 0 || r.Rating >= rating)
                     .OrderBy(r => r.NombreNormalizado)
                     .Take(1000);
             }
@@ -464,7 +464,7 @@ namespace GustosApp.Infraestructure.Services
                 baseQuery = baseQuery.Where(r =>
                     r.Latitud >= minLat && r.Latitud <= maxLat &&
                     r.Longitud >= minLng && r.Longitud <= maxLng &&
-                    r.Rating >= rating);
+                    (rating <= 0 || r.Rating >= rating));
 
                 baseQuery = baseQuery.OrderBy(r =>
                         Math.Abs(r.Latitud - latVal) +
@@ -474,7 +474,7 @@ namespace GustosApp.Infraestructure.Services
             else
             {
                 baseQuery = baseQuery
-                    .Where(r => r.Rating >= rating)
+                    .Where(r => rating <= 0 || r.Rating >= rating)
                     .OrderBy(r => r.NombreNormalizado)
                     .Take(1000);
             }

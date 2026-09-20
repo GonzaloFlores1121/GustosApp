@@ -50,6 +50,10 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             // Cambiar el rol del usuario nuevamente a Usuario
             solicitud.Usuario.Rol = RolUsuario.Usuario;
 
+            // Confirmar antes de modificar Firebase o borrar archivos: una aprobación
+            // concurrente debe provocar conflicto sin deshacer sus efectos externos.
+            await _solicitudes.UpdateAsync(solicitud, ct);
+
             await _authService.SetUserRoleAsync(solicitud.Usuario.FirebaseUid, 
                 RolUsuario.Usuario.ToString());
 
@@ -59,10 +63,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             {
                 await _firebase.DeleteFileAsync(img.Url);
             }
-
-            await _usuarios.UpdateAsync(solicitud.Usuario, ct);
-
-            await _usuarios.SaveChangesAsync(ct);
 
             await _email.EnviarEmailAsync(
                  solicitud.Usuario.Email,
@@ -76,7 +76,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             );
 
 
-            await _solicitudes.UpdateAsync(solicitud, ct);
         }
     }
 

@@ -83,6 +83,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 
             var imagenes = new List<SolicitudRestauranteImagen>();
             var urlsSubidas = new List<string>();
+            var solicitudGuardada = false;
 
             try
             {
@@ -123,10 +124,10 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                 solicitud.Gustos = await _gustos.GetByIdsAsync(gustosIds, ct);
                 solicitud.Restricciones = await _restricciones.GetRestriccionesByIdsAsync(restriccionesIds, ct);
 
-                await _solicitudes.AddAsync(solicitud, ct);
-
                 usuario.Rol = RolUsuario.PendienteRestaurante;
-                await _usuarios.UpdateAsync(usuario, ct);
+                solicitud.Usuario = usuario;
+                await _solicitudes.AddAsync(solicitud, ct);
+                solicitudGuardada = true;
                 await _firebase.SetUserRoleAsync(usuario.FirebaseUid, RolUsuario.PendienteRestaurante.ToString());
 
                 // Modificar esto si es deploy?
@@ -146,7 +147,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             }
             catch (Exception)
             {
-                foreach (var url in urlsSubidas)
+                foreach (var url in solicitudGuardada ? Enumerable.Empty<string>() : urlsSubidas)
                 {
                     try { await _firebaseStorage.DeleteFileAsync(url); }
                     catch { }

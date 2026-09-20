@@ -155,6 +155,16 @@ namespace GustosApp.API.Controllers
         }
 
 
+        [HttpPost("{id:guid}/reclamo")]
+        [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> ReclamarRestaurante(Guid id,
+            [FromServices] ReclamarRestauranteUseCase casoDeUso, CancellationToken ct)
+        {
+            return Ok(await casoDeUso.HandleAsync(GetFirebaseUid(), id, ct));
+        }
+
         [HttpGet("registro-datos")]
         [ProducesResponseType(typeof(DatosSolicitudRestauranteDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

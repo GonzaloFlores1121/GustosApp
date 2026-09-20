@@ -61,6 +61,29 @@ namespace GustosApp.Application.Tests
                 Rol = rol
             };
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task FalloDeAlta_EliminaArchivosSoloSiLaSolicitudNoSeGuardo(bool fallaPersistencia)
+        {
+            var usuario = FakeUsuario(Guid.NewGuid());
+            _usuariosRepo.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(usuario);
+            _gustosRepo.Setup(r => r.GetByIdsAsync(It.IsAny<List<Guid>>(), default)).ReturnsAsync(new List<Gusto>());
+            _restriccionesRepo.Setup(r => r.GetRestriccionesByIdsAsync(It.IsAny<List<Guid>>(), default)).ReturnsAsync(new List<Restriccion>());
+            using var contenido = new MemoryStream(new byte[] { 1 });
+            var archivo = new GustosApp.Domain.Common.ArchivoEntrada(contenido, "menu.jpg");
+            _firebaseStorage.Setup(f => f.UploadFileAsync(contenido, "menu.jpg", "solicitudes")).ReturnsAsync("https://example.test/menu.jpg");
+            if (fallaPersistencia)
+                _solicitudesRepo.Setup(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default)).ThrowsAsync(new InvalidOperationException("Error SQL"));
+            else
+                _firebase.Setup(f => f.SetUserRoleAsync(usuario.FirebaseUid, It.IsAny<string>())).ThrowsAsync(new InvalidOperationException("Error Firebase"));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync("uid", "Nombre", "Dirección", null, null, null,
+                new List<Guid>(), new List<Guid>(), null, null, null, archivo, null, "", default));
+
+            _firebaseStorage.Verify(f => f.DeleteFileAsync("https://example.test/menu.jpg"), fallaPersistencia ? Times.Once() : Times.Never());
+        }
+
         private List<Guid> FakeGuids(int count)
         {
             var list = new List<Guid>();
@@ -234,7 +257,9 @@ namespace GustosApp.Application.Tests
             // Usuario pasa a PendienteRestaurante
             user.Rol.Should().Be(RolUsuario.PendienteRestaurante);
 
-            _usuariosRepo.Verify(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+            // El rol y la solicitud se persisten juntos, en lugar de dos escrituras independientes.
+            _solicitudesRepo.Verify(r => r.AddAsync(It.Is<SolicitudRestaurante>(s =>
+                s.Usuario == user && s.Usuario.Rol == RolUsuario.PendienteRestaurante), It.IsAny<CancellationToken>()), Times.Once);
 
             // Firebase role
             _firebase.Verify(f =>

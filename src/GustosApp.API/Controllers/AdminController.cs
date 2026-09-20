@@ -60,6 +60,13 @@ namespace GustosApp.API.Controllers
             return Ok(restaurante);
         }
 
+        [HttpPost("solicitudes/{id:guid}/reprocesar-menu")]
+        public async Task<IActionResult> ReprocesarMenu(Guid id, CancellationToken ct)
+        {
+            await _aprobarSolicitud.ReprocesarMenuAsync(id, ct);
+            return NoContent();
+        }
+
         [HttpDelete("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

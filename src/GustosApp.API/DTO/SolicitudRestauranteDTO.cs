@@ -4,6 +4,10 @@ namespace GustosApp.API.DTO
 {
     public class SolicitudRestaurantePendienteDto
     {
+        public Guid? RestauranteExistenteId { get; set; }
+        public Guid? RestauranteAprobadoId { get; set; }
+        public bool RolFirebaseSincronizado { get; set; }
+        public bool CorreoAprobacionEnviado { get; set; }
         public Guid Id { get; set; }
         public string NombreRestaurante { get; set; } = string.Empty;
         public string Direccion { get; set; } = string.Empty;
@@ -18,6 +22,10 @@ namespace GustosApp.API.DTO
     }
     public class SolicitudRestauranteDetalleDto
     {
+        public Guid? RestauranteExistenteId { get; set; }
+        public Guid? RestauranteAprobadoId { get; set; }
+        public bool RolFirebaseSincronizado { get; set; }
+        public bool CorreoAprobacionEnviado { get; set; }
         public Guid Id { get; set; }
 
         // Datos del usuario solicitante

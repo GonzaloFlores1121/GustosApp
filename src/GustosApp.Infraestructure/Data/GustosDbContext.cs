@@ -84,6 +84,17 @@ public class GustosDbContext : DbContext
 
 
 
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.Estado).IsConcurrencyToken();
+        modelBuilder.Entity<Restaurante>().Property(r => r.DuenoId).IsConcurrencyToken();
+        modelBuilder.Entity<Restaurante>().Property(r => r.PropietarioUid).IsConcurrencyToken();
+        modelBuilder.Entity<Usuario>().Property(u => u.Rol).IsConcurrencyToken();
+        modelBuilder.Entity<SolicitudRestaurante>()
+            .HasOne<Restaurante>().WithMany().HasForeignKey(s => s.RestauranteExistenteId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<SolicitudRestaurante>()
+            .HasOne<Restaurante>().WithMany().HasForeignKey(s => s.RestauranteAprobadoId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         modelBuilder.Entity<SolicitudRestaurante>()
     .Property(s => s.Latitud)
     .HasColumnType("decimal(10,7)");

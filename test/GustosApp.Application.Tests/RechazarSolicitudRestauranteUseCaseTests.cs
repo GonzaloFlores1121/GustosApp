@@ -181,12 +181,24 @@ namespace GustosApp.Application.Tests
                 CancellationToken.None),
                 Times.Once);
 
-            // Update usuario
-            _usuarios.Verify(u => u.UpdateAsync(user, default), Times.Once);
-            _usuarios.Verify(u => u.SaveChangesAsync(default), Times.Once);
+            // La solicitud y el usuario se guardan juntos antes de los efectos externos.
+            _solicitudes.Verify(s => s.UpdateAsync(It.Is<SolicitudRestaurante>(s =>
+                s.Usuario.Rol == RolUsuario.Usuario && s.Estado == EstadoSolicitudRestaurante.Rechazada), default), Times.Once);
 
             // Update solicitud
             _solicitudes.Verify(s => s.UpdateAsync(solicitud, default), Times.Once);
+        }
+
+        [Fact]
+        public async Task RechazoConcurrente_NoCambiaFirebaseNiBorraImagenes()
+        {
+            var solicitud = FakeSolicitud(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()));
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _solicitudes.Setup(r => r.UpdateAsync(solicitud, default)).ThrowsAsync(new InvalidOperationException("Conflicto"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(solicitud.Id, "Rechazo", default));
+            _auth.VerifyNoOtherCalls();
+            _firebase.VerifyNoOtherCalls();
+            _email.VerifyNoOtherCalls();
         }
     }
 
