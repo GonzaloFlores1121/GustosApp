@@ -22,6 +22,11 @@ namespace GustosApp.API.DTO
     }
     public class SolicitudRestauranteDetalleDto
     {
+        public string? NombreSolicitante { get; set; }
+        public string? RelacionRestaurante { get; set; }
+        public string? TelefonoContacto { get; set; }
+        public bool DeclaraAutorizacion { get; set; }
+        public string? TipoComprobante { get; set; }
         public Guid? RestauranteExistenteId { get; set; }
         public Guid? RestauranteAprobadoId { get; set; }
         public bool RolFirebaseSincronizado { get; set; }

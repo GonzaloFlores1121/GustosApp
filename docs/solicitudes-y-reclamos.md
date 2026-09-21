@@ -1,7 +1,7 @@
 # Solicitudes y reclamos de restaurantes
 
 El alta nueva continúa mediante `POST /api/Restaurantes` con el formulario existente.
-El reclamo usa `POST /api/Restaurantes/{id}/reclamo`, autenticado y sin cuerpo.
+El reclamo usa `POST /api/Restaurantes/{id}/reclamo`, autenticado y con multipart de datos y comprobante privado. Ver [comprobantes de reclamos](comprobantes-reclamos.md).
 Devuelve el identificador de la solicitud pendiente. Repetirlo para el mismo
 usuario y restaurante devuelve la misma solicitud y reintenta sincronizar el rol.
 Los reclamos aparecen en el listado administrativo existente; no envían el correo

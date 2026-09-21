@@ -156,13 +156,21 @@ namespace GustosApp.API.Controllers
 
 
         [HttpPost("{id:guid}/reclamo")]
+        [RequestSizeLimit(3 * 1024 * 1024)]
         [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> ReclamarRestaurante(Guid id,
+            [FromForm] ReclamarRestauranteDto datos,
             [FromServices] ReclamarRestauranteUseCase casoDeUso, CancellationToken ct)
         {
-            return Ok(await casoDeUso.HandleAsync(GetFirebaseUid(), id, ct));
+            if (datos.Comprobante.Length > DatosReclamo.LimiteBytes)
+                return BadRequest(new { message = "El comprobante debe pesar hasta 2 MB." });
+            using var contenido = new MemoryStream();
+            await datos.Comprobante.CopyToAsync(contenido, ct);
+            var reclamo = new DatosReclamo(datos.NombreSolicitante, datos.RelacionRestaurante,
+                datos.TelefonoContacto, datos.DeclaraAutorizacion, contenido.ToArray(), datos.Comprobante.FileName);
+            return Ok(await casoDeUso.HandleAsync(GetFirebaseUid(), id, ct, reclamo));
         }
 
         [HttpGet("registro-datos")]

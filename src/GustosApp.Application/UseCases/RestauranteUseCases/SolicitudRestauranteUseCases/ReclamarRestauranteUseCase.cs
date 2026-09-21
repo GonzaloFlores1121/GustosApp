@@ -11,8 +11,10 @@ public sealed class ReclamarRestauranteUseCase(
     IUsuarioRepository usuarios,
     IFirebaseAuthService firebase)
 {
-    public async Task<Guid> HandleAsync(string firebaseUid, Guid restauranteId, CancellationToken ct)
+    public async Task<Guid> HandleAsync(string firebaseUid, Guid restauranteId, CancellationToken ct, DatosReclamo? datos = null)
     {
+        if (datos is null) throw new ArgumentException("Adjuntá los datos y el comprobante del reclamo.");
+        var tipoComprobante = datos.Validar();
         var usuario = await usuarios.GetByFirebaseUidAsync(firebaseUid, ct)
             ?? throw new KeyNotFoundException("Usuario no encontrado.");
         var pendiente = await solicitudes.BuscarReclamoPendienteAsync(usuario.Id, restauranteId, ct);
@@ -35,6 +37,12 @@ public sealed class ReclamarRestauranteUseCase(
             UsuarioId = usuario.Id,
             Usuario = usuario,
             RestauranteExistenteId = restaurante.Id,
+            NombreSolicitante = datos.NombreSolicitante.Trim(),
+            RelacionRestaurante = datos.RelacionRestaurante.Trim(),
+            TelefonoContacto = datos.TelefonoContacto.Trim(),
+            DeclaraAutorizacion = datos.DeclaraAutorizacion,
+            TipoComprobante = tipoComprobante,
+            ComprobanteReclamo = datos.Comprobante.ToArray(),
             Nombre = restaurante.Nombre,
             Direccion = restaurante.Direccion,
             Latitud = restaurante.Latitud,

@@ -14,6 +14,16 @@ namespace GustosApp.API.Tests;
 
 public class ReclamoRestauranteApiPruebas
 {
+    private static MultipartFormDataContent Formulario()
+    {
+        var datos = new MultipartFormDataContent();
+        datos.Add(new StringContent("Ana Pérez"), "NombreSolicitante");
+        datos.Add(new StringContent("Propietaria"), "RelacionRestaurante");
+        datos.Add(new StringContent("1122334455"), "TelefonoContacto");
+        datos.Add(new StringContent("true"), "DeclaraAutorizacion");
+        datos.Add(new ByteArrayContent("%PDF-1.4 prueba"u8.ToArray()), "Comprobante", "prueba.pdf");
+        return datos;
+    }
     [Fact]
     public async Task ReclamarPorHttp_PersisteVinculoYReutilizaSolicitudPendiente()
     {
@@ -42,18 +52,33 @@ public class ReclamoRestauranteApiPruebas
         }
 
         var ruta = $"/api/Restaurantes/{restauranteId}/reclamo";
-        var respuesta = await cliente.PostAsync(ruta, null);
+        var sinDatos = await cliente.PostAsync(ruta, new MultipartFormDataContent());
+        Assert.Equal(HttpStatusCode.BadRequest, sinDatos.StatusCode);
+        var respuesta = await cliente.PostAsync(ruta, Formulario());
         Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
         var solicitudId = await respuesta.Content.ReadFromJsonAsync<Guid>();
-        var repetida = await cliente.PostAsync(ruta, null);
+        var repetida = await cliente.PostAsync(ruta, Formulario());
         Assert.Equal(HttpStatusCode.OK, repetida.StatusCode);
         Assert.Equal(solicitudId, await repetida.Content.ReadFromJsonAsync<Guid>());
         using var verificacion = fabrica.Services.CreateScope();
         var contexto = verificacion.ServiceProvider.GetRequiredService<GustosDbContext>();
         var solicitud = await contexto.SolicitudesRestaurantes.SingleAsync();
         Assert.Equal(restauranteId, solicitud.RestauranteExistenteId);
+        Assert.Equal("Ana Pérez", solicitud.NombreSolicitante);
+        Assert.Equal("%PDF-1.4 prueba"u8.ToArray(), solicitud.ComprobanteReclamo);
+        var descarga = await cliente.GetAsync($"/api/solicitudes-restaurantes/{solicitudId}/comprobante");
+        Assert.Equal(HttpStatusCode.OK, descarga.StatusCode);
+        Assert.Equal(solicitud.ComprobanteReclamo, await descarga.Content.ReadAsByteArrayAsync());
+        Assert.Equal("no-store", descarga.Headers.CacheControl?.ToString());
+        Assert.Equal("attachment", descarga.Content.Headers.ContentDisposition?.DispositionType);
+        var otroUsuario = new Usuario("otro-uid", "otro@example.test", "Otro", "Usuario", "otro", null);
+        contexto.Usuarios.Add(otroUsuario);
+        var ajena = new SolicitudRestaurante { Id = Guid.NewGuid(), UsuarioId = otroUsuario.Id, Usuario = otroUsuario, Nombre = "Ajeno", Direccion = "Calle", WebsiteUrl = "", TipoComprobante = "application/pdf", ComprobanteReclamo = "%PDF-privado"u8.ToArray() };
+        contexto.SolicitudesRestaurantes.Add(ajena);
+        await contexto.SaveChangesAsync();
+        Assert.Equal(HttpStatusCode.Forbidden, (await cliente.GetAsync($"/api/solicitudes-restaurantes/{ajena.Id}/comprobante")).StatusCode);
         Assert.Equal(EstadoSolicitudRestaurante.Pendiente, solicitud.Estado);
         Assert.Null((await contexto.Restaurantes.SingleAsync(r => r.Id == restauranteId)).DuenoId);
-        Assert.Equal(RolUsuario.PendienteRestaurante, (await contexto.Usuarios.SingleAsync()).Rol);
+        Assert.Equal(RolUsuario.PendienteRestaurante, (await contexto.Usuarios.SingleAsync(u => u.FirebaseUid == "usuario-pruebas-integracion")).Rol);
     }
 }
