@@ -8,8 +8,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 public sealed class ReclamarRestauranteUseCase(
     ISolicitudRestauranteRepository solicitudes,
     IRestauranteRepository restaurantes,
-    IUsuarioRepository usuarios,
-    IFirebaseAuthService firebase)
+    IUsuarioRepository usuarios)
 {
     public async Task<Guid> HandleAsync(string firebaseUid, Guid restauranteId, CancellationToken ct, DatosReclamo? datos = null)
     {
@@ -20,11 +19,12 @@ public sealed class ReclamarRestauranteUseCase(
         var pendiente = await solicitudes.BuscarReclamoPendienteAsync(usuario.Id, restauranteId, ct);
         if (pendiente != null)
         {
-            await firebase.SetUserRoleAsync(usuario.FirebaseUid, RolUsuario.PendienteRestaurante.ToString());
             return pendiente.Id;
         }
         if (usuario.Rol != RolUsuario.Usuario)
-            throw new InvalidOperationException("Ya tenés una solicitud pendiente o ya sos dueño de un restaurante.");
+            throw new InvalidOperationException("Ya sos dueño de un restaurante.");
+        if (await solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct) != null)
+            throw new InvalidOperationException("Ya tenés una solicitud de restaurante pendiente.");
 
         var restaurante = await restaurantes.GetRestauranteByIdAsync(restauranteId, ct)
             ?? throw new KeyNotFoundException("Restaurante no encontrado.");
@@ -51,10 +51,7 @@ public sealed class ReclamarRestauranteUseCase(
             HorariosJson = restaurante.HorariosJson,
             Estado = EstadoSolicitudRestaurante.Pendiente
         };
-        // El usuario se obtiene con seguimiento: se guarda junto con la solicitud.
-        usuario.Rol = RolUsuario.PendienteRestaurante;
         await solicitudes.AddAsync(solicitud, ct);
-        await firebase.SetUserRoleAsync(usuario.FirebaseUid, RolUsuario.PendienteRestaurante.ToString());
         return solicitud.Id;
     }
 }

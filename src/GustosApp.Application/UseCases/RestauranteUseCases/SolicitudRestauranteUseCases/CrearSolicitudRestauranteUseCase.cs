@@ -18,7 +18,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         private readonly IGustoRepository _gustos;
         private readonly IRestriccionRepository _restricciones;
         private readonly IUsuarioRepository _usuarios;
-        private readonly IFirebaseAuthService _firebase;
         private readonly IEmailService _email;
         private readonly IEmailTemplateService _templates;
         private readonly IFileStorageService _firebaseStorage;
@@ -26,7 +25,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         public CrearSolicitudRestauranteUseCase(
             ISolicitudRestauranteRepository solicitudes,
              IRestriccionRepository restricciones, IGustoRepository gustos,
-            IUsuarioRepository usuarios, IFirebaseAuthService firebase,
+            IUsuarioRepository usuarios,
             IEmailService email, IEmailTemplateService templates,
             IFileStorageService firebaseStorage
 )
@@ -35,7 +34,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             _usuarios = usuarios;
             _gustos = gustos;
             _restricciones = restricciones;
-            _firebase = firebase;
             _email = email;
            _templates = templates;
            _firebaseStorage = firebaseStorage;
@@ -65,7 +63,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 
             // 2) Validar rol
             if (usuario.Rol != RolUsuario.Usuario)
-                throw new Exception("Ya tenés una solicitud pendiente o ya sos dueño de un restaurante.");
+                throw new Exception("Ya sos dueño de un restaurante.");
+            if (await _solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct) != null)
+                throw new InvalidOperationException("Ya tenés una solicitud de restaurante pendiente.");
 
             // Parsear lat/lng
             double? latitud = null;
@@ -124,11 +124,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                 solicitud.Gustos = await _gustos.GetByIdsAsync(gustosIds, ct);
                 solicitud.Restricciones = await _restricciones.GetRestriccionesByIdsAsync(restriccionesIds, ct);
 
-                usuario.Rol = RolUsuario.PendienteRestaurante;
                 solicitud.Usuario = usuario;
                 await _solicitudes.AddAsync(solicitud, ct);
                 solicitudGuardada = true;
-                await _firebase.SetUserRoleAsync(usuario.FirebaseUid, RolUsuario.PendienteRestaurante.ToString());
 
                 // Modificar esto si es deploy?
                 await _email.EnviarEmailAsync(

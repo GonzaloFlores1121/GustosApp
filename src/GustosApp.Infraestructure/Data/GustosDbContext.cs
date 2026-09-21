@@ -105,6 +105,10 @@ public class GustosDbContext : DbContext
 
         modelBuilder.Entity<SolicitudRestaurante>()
     .HasIndex(s => s.Estado);
+        modelBuilder.Entity<SolicitudRestaurante>()
+            .HasIndex(s => s.UsuarioId)
+            .IsUnique()
+            .HasFilter("[Estado] = 0");
 
         modelBuilder.Entity<SolicitudRestaurante>()
             .Property(s => s.Nombre)

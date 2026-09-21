@@ -21,6 +21,10 @@ namespace GustosApp.Infraestructure.Repositories
             => _db.SolicitudesRestaurantes.FirstOrDefaultAsync(s => s.UsuarioId == usuarioId
                 && s.RestauranteExistenteId == restauranteId && s.Estado == EstadoSolicitudRestaurante.Pendiente, ct);
 
+        public Task<SolicitudRestaurante?> BuscarPendientePorUsuarioAsync(Guid usuarioId, CancellationToken ct)
+            => _db.SolicitudesRestaurantes.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UsuarioId == usuarioId && s.Estado == EstadoSolicitudRestaurante.Pendiente, ct);
+
         public Task<SolicitudRestaurante?> GetByIdAsync(Guid id, CancellationToken ct)
         {
             return _db.SolicitudesRestaurantes
@@ -47,6 +51,10 @@ namespace GustosApp.Infraestructure.Repositories
             catch (DbUpdateConcurrencyException)
             {
                 throw new InvalidOperationException("El usuario o la solicitud cambiaron durante la operación. Volvé a consultar su estado.");
+            }
+            catch (DbUpdateException)
+            {
+                throw new InvalidOperationException("Ya existe una solicitud de restaurante pendiente para este usuario.");
             }
         }
 

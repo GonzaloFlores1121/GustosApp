@@ -13,21 +13,17 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
     public class RechazarSolicitudRestauranteUseCase
     {
         private readonly ISolicitudRestauranteRepository _solicitudes;
-        private readonly IUsuarioRepository _usuarios;
         private readonly IFileStorageService _firebase;
-        private readonly IFirebaseAuthService _authService;
         private readonly IEmailService _email;
         private readonly IEmailTemplateService _templates;
 
         public RechazarSolicitudRestauranteUseCase(
             ISolicitudRestauranteRepository solicitudes,
-            IUsuarioRepository usuarios,IFileStorageService firebase,
-           IFirebaseAuthService authService, IEmailService email, IEmailTemplateService templates)
+            IFileStorageService firebase,
+            IEmailService email, IEmailTemplateService templates)
         {
             _solicitudes = solicitudes;
-            _usuarios = usuarios;
             _firebase = firebase;
-            _authService = authService;
             _email = email;
             _templates = templates;
         }
@@ -47,16 +43,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             solicitud.Estado = EstadoSolicitudRestaurante.Rechazada;
             solicitud.MotivoRechazo = motivo;
 
-            // Cambiar el rol del usuario nuevamente a Usuario
-            solicitud.Usuario.Rol = RolUsuario.Usuario;
-
             // Confirmar antes de modificar Firebase o borrar archivos: una aprobación
             // concurrente debe provocar conflicto sin deshacer sus efectos externos.
             await _solicitudes.UpdateAsync(solicitud, ct);
-
-            await _authService.SetUserRoleAsync(solicitud.Usuario.FirebaseUid, 
-                RolUsuario.Usuario.ToString());
-
 
             //eliminar imagnees de firebase :D
             foreach (var img in solicitud.Imagenes)

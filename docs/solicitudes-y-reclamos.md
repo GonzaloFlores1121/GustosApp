@@ -1,5 +1,9 @@
 # Solicitudes y reclamos de restaurantes
 
+La cuenta siempre representa a una persona. Crear o reclamar un restaurante genera una solicitud pendiente sin cambiar su rol ni impedirle usar GustosApp. Al aprobarla, el usuario obtiene el rol `DuenoRestaurante`, que agrega acceso administrativo a su restaurante y conserva el acceso normal a la aplicación.
+
+Solo puede existir una solicitud pendiente por usuario. La regla se valida en Application y mediante un índice único filtrado en SQL Server para cubrir solicitudes simultáneas. `PendienteRestaurante` queda como valor histórico para migrar datos anteriores, no como estado nuevo de una cuenta.
+
 El alta nueva continúa mediante `POST /api/Restaurantes` con el formulario existente.
 El reclamo usa `POST /api/Restaurantes/{id}/reclamo`, autenticado y con multipart de datos y comprobante privado. Ver [comprobantes de reclamos](comprobantes-reclamos.md).
 Devuelve el identificador de la solicitud pendiente. Repetirlo para el mismo

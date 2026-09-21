@@ -79,6 +79,6 @@ public class ReclamoRestauranteApiPruebas
         Assert.Equal(HttpStatusCode.Forbidden, (await cliente.GetAsync($"/api/solicitudes-restaurantes/{ajena.Id}/comprobante")).StatusCode);
         Assert.Equal(EstadoSolicitudRestaurante.Pendiente, solicitud.Estado);
         Assert.Null((await contexto.Restaurantes.SingleAsync(r => r.Id == restauranteId)).DuenoId);
-        Assert.Equal(RolUsuario.PendienteRestaurante, (await contexto.Usuarios.SingleAsync(u => u.FirebaseUid == "usuario-pruebas-integracion")).Rol);
+        Assert.Equal(RolUsuario.Usuario, (await contexto.Usuarios.SingleAsync(u => u.FirebaseUid == "usuario-pruebas-integracion")).Rol);
     }
 }

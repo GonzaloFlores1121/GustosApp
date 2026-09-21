@@ -49,7 +49,7 @@ public class ReclamarRestaurantePruebas
     {
         usuarios.Setup(r => r.GetByFirebaseUidAsync(usuario.FirebaseUid, default)).ReturnsAsync(usuario);
         restaurantes.Setup(r => r.GetRestauranteByIdAsync(restaurante.Id, default)).ReturnsAsync(restaurante);
-        return new(solicitudes.Object, restaurantes.Object, usuarios.Object, firebase.Object);
+        return new(solicitudes.Object, restaurantes.Object, usuarios.Object);
     }
 
     [Fact]
@@ -61,7 +61,8 @@ public class ReclamarRestaurantePruebas
             && s.RestauranteExistenteId == restaurante.Id && s.UsuarioId == usuario.Id
             && s.Estado == EstadoSolicitudRestaurante.Pendiente && s.Nombre == restaurante.Nombre), default), Times.Once);
         Assert.Null(restaurante.DuenoId);
-        Assert.Equal(RolUsuario.PendienteRestaurante, usuario.Rol);
+        Assert.Equal(RolUsuario.Usuario, usuario.Rol);
+        firebase.VerifyNoOtherCalls();
         restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Never);
     }
 
@@ -78,13 +79,11 @@ public class ReclamarRestaurantePruebas
         firebase.VerifyNoOtherCalls();
     }
 
-    [Theory]
-    [InlineData(RolUsuario.PendienteRestaurante)]
-    [InlineData(RolUsuario.DuenoRestaurante)]
-    public async Task Reclamar_UsuarioNoHabilitado_NoCreaSolicitud(RolUsuario rol)
+    [Fact]
+    public async Task Reclamar_DuenoNoCreaSolicitud()
     {
         var caso = CrearCaso();
-        usuario.Rol = rol;
+        usuario.Rol = RolUsuario.DuenoRestaurante;
         await Assert.ThrowsAsync<InvalidOperationException>(() => caso.HandleAsync(usuario.FirebaseUid, restaurante.Id, default, DatosValidos()));
         solicitudes.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
     }
@@ -93,11 +92,21 @@ public class ReclamarRestaurantePruebas
     public async Task Reclamar_ReintentoDevuelveSolicitudExistente()
     {
         var caso = CrearCaso();
-        usuario.Rol = RolUsuario.PendienteRestaurante;
         var pendiente = new SolicitudRestaurante { Id = Guid.NewGuid() };
         solicitudes.Setup(r => r.BuscarReclamoPendienteAsync(usuario.Id, restaurante.Id, default)).ReturnsAsync(pendiente);
         Assert.Equal(pendiente.Id, await caso.HandleAsync(usuario.FirebaseUid, restaurante.Id, default, DatosValidos()));
         solicitudes.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
+        firebase.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Reclamar_OtraSolicitudPendiente_NoCreaUnaSegunda()
+    {
+        solicitudes.Setup(r => r.BuscarPendientePorUsuarioAsync(usuario.Id, default))
+            .ReturnsAsync(new SolicitudRestaurante { Id = Guid.NewGuid() });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CrearCaso().HandleAsync(usuario.FirebaseUid, restaurante.Id, default, DatosValidos()));
+        solicitudes.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
+        Assert.Equal(RolUsuario.Usuario, usuario.Rol);
     }
 
     [Fact]

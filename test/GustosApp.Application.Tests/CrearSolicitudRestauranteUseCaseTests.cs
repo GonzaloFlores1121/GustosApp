@@ -44,7 +44,6 @@ namespace GustosApp.Application.Tests
                 _restriccionesRepo.Object,
                 _gustosRepo.Object,
                 _usuariosRepo.Object,
-                _firebase.Object,
                 _email.Object,
                 _templates.Object,
                 _firebaseStorage.Object
@@ -61,10 +60,8 @@ namespace GustosApp.Application.Tests
                 Rol = rol
             };
 
-        [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public async Task FalloDeAlta_EliminaArchivosSoloSiLaSolicitudNoSeGuardo(bool fallaPersistencia)
+        [Fact]
+        public async Task FalloDePersistencia_EliminaLosArchivosSubidos()
         {
             var usuario = FakeUsuario(Guid.NewGuid());
             _usuariosRepo.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(usuario);
@@ -73,15 +70,12 @@ namespace GustosApp.Application.Tests
             using var contenido = new MemoryStream(new byte[] { 1 });
             var archivo = new GustosApp.Domain.Common.ArchivoEntrada(contenido, "menu.jpg");
             _firebaseStorage.Setup(f => f.UploadFileAsync(contenido, "menu.jpg", "solicitudes")).ReturnsAsync("https://example.test/menu.jpg");
-            if (fallaPersistencia)
-                _solicitudesRepo.Setup(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default)).ThrowsAsync(new InvalidOperationException("Error SQL"));
-            else
-                _firebase.Setup(f => f.SetUserRoleAsync(usuario.FirebaseUid, It.IsAny<string>())).ThrowsAsync(new InvalidOperationException("Error Firebase"));
+            _solicitudesRepo.Setup(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default)).ThrowsAsync(new InvalidOperationException("Error SQL"));
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync("uid", "Nombre", "Dirección", null, null, null,
                 new List<Guid>(), new List<Guid>(), null, null, null, archivo, null, "", default));
 
-            _firebaseStorage.Verify(f => f.DeleteFileAsync("https://example.test/menu.jpg"), fallaPersistencia ? Times.Once() : Times.Never());
+            _firebaseStorage.Verify(f => f.DeleteFileAsync("https://example.test/menu.jpg"), Times.Once());
         }
 
         private List<Guid> FakeGuids(int count)
@@ -130,10 +124,10 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task HandleAsync_DeberiaLanzarException_SiUsuarioNoTieneRolUsuario()
+        public async Task HandleAsync_DeberiaLanzarException_SiUsuarioYaEsDueno()
         {
             // Arrange
-            var user = FakeUsuario(Guid.NewGuid(), rol: RolUsuario.PendienteRestaurante);
+            var user = FakeUsuario(Guid.NewGuid(), rol: RolUsuario.DuenoRestaurante);
 
             _usuariosRepo
                 .Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
@@ -159,10 +153,28 @@ namespace GustosApp.Application.Tests
 
             // Assert
             await act.Should().ThrowAsync<Exception>()
-                .WithMessage("Ya tenés una solicitud pendiente o ya sos dueño de un restaurante.");
+                .WithMessage("Ya sos dueño de un restaurante.");
 
             _solicitudesRepo.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), It.IsAny<CancellationToken>()), Times.Never);
             _usuariosRepo.Verify(r => r.UpdateAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_NoCreaSegundaSolicitudMientrasHayUnaPendiente()
+        {
+            var user = FakeUsuario(Guid.NewGuid());
+            _usuariosRepo.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(user);
+            _solicitudesRepo.Setup(r => r.BuscarPendientePorUsuarioAsync(user.Id, default))
+                .ReturnsAsync(new SolicitudRestaurante { Id = Guid.NewGuid() });
+
+            Func<Task> act = () => _useCase.HandleAsync("uid", "Mi Resto", "Calle 123", null, null, null,
+                [], [], null, null, null, null, null, "", default);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("Ya tenés una solicitud de restaurante pendiente.");
+            user.Rol.Should().Be(RolUsuario.Usuario);
+            _solicitudesRepo.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
+            _firebase.VerifyNoOtherCalls();
         }
 
         [Fact]
@@ -194,10 +206,6 @@ namespace GustosApp.Application.Tests
 
             _usuariosRepo
                 .Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
-
-            _firebase
-                .Setup(f => f.SetUserRoleAsync(user.FirebaseUid, RolUsuario.PendienteRestaurante.ToString()))
                 .Returns(Task.CompletedTask);
 
             string? emailBody = null;
@@ -254,17 +262,14 @@ namespace GustosApp.Application.Tests
             solicitudCapturada.Gustos.Should().BeEquivalentTo(gustosResult);
             solicitudCapturada.Restricciones.Should().BeEquivalentTo(restriccionesResult);
 
-            // Usuario pasa a PendienteRestaurante
-            user.Rol.Should().Be(RolUsuario.PendienteRestaurante);
+            // La solicitud no reemplaza la identidad del usuario.
+            user.Rol.Should().Be(RolUsuario.Usuario);
 
             // El rol y la solicitud se persisten juntos, en lugar de dos escrituras independientes.
             _solicitudesRepo.Verify(r => r.AddAsync(It.Is<SolicitudRestaurante>(s =>
-                s.Usuario == user && s.Usuario.Rol == RolUsuario.PendienteRestaurante), It.IsAny<CancellationToken>()), Times.Once);
+                s.Usuario == user && s.Usuario.Rol == RolUsuario.Usuario), It.IsAny<CancellationToken>()), Times.Once);
 
-            // Firebase role
-            _firebase.Verify(f =>
-                f.SetUserRoleAsync(user.FirebaseUid, RolUsuario.PendienteRestaurante.ToString()),
-                Times.Once);
+            _firebase.VerifyNoOtherCalls();
 
             // Template + Email
             templateData.Should().NotBeNull();
