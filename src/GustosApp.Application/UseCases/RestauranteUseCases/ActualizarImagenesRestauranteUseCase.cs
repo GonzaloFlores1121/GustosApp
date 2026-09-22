@@ -29,26 +29,31 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 ?? throw new NotFoundException("Restaurante no encontrado.");
             ValidarPropietario(restaurante, usuarioId);
 
+            if (!soloBorrar && archivo is null)
+                return restaurante.ImagenUrl;
+
             var urlsSubidas = new List<string>();
+            var urlAnterior = restaurante.ImagenUrl;
 
             try
             {
-                if (!string.IsNullOrWhiteSpace(restaurante.ImagenUrl))
-                {
-                    try { await _firebase.DeleteFileAsync(restaurante.ImagenUrl); } catch { }
-                    restaurante.ImagenUrl = null;
-                }
-
+                string? urlNueva = null;
                 if (!soloBorrar && archivo != null)
                 {
                     using var stream = archivo.Stream;
-                    var url = await _firebase.UploadFileAsync(stream, archivo.FileName, "restaurantes");
-                    urlsSubidas.Add(url);
-                    restaurante.ImagenUrl = url;
+                    urlNueva = await _firebase.UploadFileAsync(stream, archivo.FileName, "restaurantes");
+                    urlsSubidas.Add(urlNueva);
                 }
 
+                restaurante.ImagenUrl = urlNueva;
                 restaurante.ActualizadoUtc = DateTime.UtcNow;
                 await _restauranteRepository.SaveChangesAsync(ct);
+
+                if (!string.IsNullOrWhiteSpace(urlAnterior) && urlAnterior != urlNueva)
+                {
+                    try { await _firebase.DeleteFileAsync(urlAnterior); } catch { }
+                }
+
                 return restaurante.ImagenUrl;
             }
             catch (Exception)
@@ -67,26 +72,31 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 ?? throw new NotFoundException("Restaurante no encontrado.");
             ValidarPropietario(restaurante, usuarioId);
 
+            if (!soloBorrar && archivo is null)
+                return restaurante.LogoUrl;
+
             var urlsSubidas = new List<string>();
+            var urlAnterior = restaurante.LogoUrl;
 
             try
             {
-                if (!string.IsNullOrWhiteSpace(restaurante.LogoUrl))
-                {
-                    try { await _firebase.DeleteFileAsync(restaurante.LogoUrl); } catch { }
-                    restaurante.LogoUrl = null;
-                }
-
+                string? urlNueva = null;
                 if (!soloBorrar && archivo != null)
                 {
                     using var stream = archivo.Stream;
-                    var url = await _firebase.UploadFileAsync(stream, archivo.FileName, "restaurantes");
-                    urlsSubidas.Add(url);
-                    restaurante.LogoUrl = url;
+                    urlNueva = await _firebase.UploadFileAsync(stream, archivo.FileName, "restaurantes");
+                    urlsSubidas.Add(urlNueva);
                 }
 
+                restaurante.LogoUrl = urlNueva;
                 restaurante.ActualizadoUtc = DateTime.UtcNow;
                 await _restauranteRepository.SaveChangesAsync(ct);
+
+                if (!string.IsNullOrWhiteSpace(urlAnterior) && urlAnterior != urlNueva)
+                {
+                    try { await _firebase.DeleteFileAsync(urlAnterior); } catch { }
+                }
+
                 return restaurante.LogoUrl;
             }
             catch (Exception)
@@ -105,18 +115,21 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 ?? throw new NotFoundException("Restaurante no encontrado.");
             ValidarPropietario(restaurante, usuarioId);
 
+            if (!soloBorrar && (archivos is null || archivos.Count == 0))
+            {
+                return restaurante.Imagenes
+                    .Where(i => i.Tipo == tipo)
+                    .OrderBy(i => i.Orden)
+                    .Select(i => i.Url)
+                    .ToList();
+            }
+
             var urlsSubidas = new List<string>();
 
             try
             {
                 var imagenesExistentes = restaurante.Imagenes.Where(i => i.Tipo == tipo).ToList();
-
-                foreach (var img in imagenesExistentes)
-                {
-                    try { await _firebase.DeleteFileAsync(img.Url); } catch { }
-                    restaurante.Imagenes.Remove(img);
-                }
-
+                var imagenesNuevas = new List<RestauranteImagen>();
                 if (!soloBorrar && archivos != null && archivos.Count > 0)
                 {
                     var orden = 0;
@@ -134,13 +147,22 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                             Orden = orden++,
                             FechaCreacionUtc = DateTime.UtcNow
                         };
-
-                        restaurante.Imagenes.Add(entidad);
+                        imagenesNuevas.Add(entidad);
                     }
                 }
 
+                foreach (var imagen in imagenesExistentes)
+                    restaurante.Imagenes.Remove(imagen);
+                foreach (var imagen in imagenesNuevas)
+                    restaurante.Imagenes.Add(imagen);
+
                 restaurante.ActualizadoUtc = DateTime.UtcNow;
                 await _restauranteRepository.SaveChangesAsync(ct);
+
+                foreach (var imagen in imagenesExistentes)
+                {
+                    try { await _firebase.DeleteFileAsync(imagen.Url); } catch { }
+                }
 
                 var urls = restaurante.Imagenes
                     .Where(i => i.Tipo == tipo)

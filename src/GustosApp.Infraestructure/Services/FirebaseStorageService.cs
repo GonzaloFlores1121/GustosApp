@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Google.Apis.Auth.OAuth2;
 using Google.Cloud.Storage.V1;
 using GustosApp.Application.Interfaces;
+using GustosApp.Infraestructure.Files;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -17,9 +18,6 @@ namespace GustosApp.Infraestructure.Services
         private readonly string _bucketName;
         private readonly IConfiguration _config;
         private readonly ILogger<FirebaseStorageService> _logger;
-        private static readonly string[] _allowedMimeTypes =
-           { "image/jpeg", "image/png", "image/webp" };
-
         public FirebaseStorageService(
             string? firebaseJson,
             string localFilePath,
@@ -59,13 +57,7 @@ namespace GustosApp.Infraestructure.Services
 
         public async Task<string> UploadFileAsync(Stream stream, string fileName, string? folder = null)
         {
-            if (stream == null || stream.Length == 0)
-                throw new ArgumentException("Archivo vacío o nulo.");
-
-            // Detectar MIME y validar tipo
-            var mimeType = GetMimeType(fileName);
-            if (!_allowedMimeTypes.Contains(mimeType))
-                throw new InvalidOperationException($"Tipo de archivo no permitido: {mimeType}");
+            var mimeType = await ValidadorContenidoImagen.ValidarAsync(stream, fileName);
 
             // Nombre único (GUID + timestamp)
             var uniqueName = $"{Guid.NewGuid():N}_{DateTime.UtcNow:yyyyMMddHHmmss}{Path.GetExtension(fileName)}";
@@ -102,16 +94,5 @@ namespace GustosApp.Infraestructure.Services
             return Uri.UnescapeDataString(encodedName);
         }
 
-        private static string GetMimeType(string fileName)
-        {
-            var ext = Path.GetExtension(fileName).ToLowerInvariant();
-            return ext switch
-            {
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".png" => "image/png",
-                ".webp" => "image/webp",
-                _ => "application/octet-stream"
-            };
-        }
     }
 }

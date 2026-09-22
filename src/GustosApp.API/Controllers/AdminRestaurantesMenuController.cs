@@ -1,4 +1,5 @@
 using GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
+using GustosApp.Infraestructure.Files;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -34,8 +35,19 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
     {
         var archivos = request.Imagenes ?? [];
         if (archivos.Count > 5) return BadRequest(new { error = "Podés adjuntar hasta cinco imágenes." });
-        if (archivos.Any(a => a.Length > 5_000_000 || !a.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            return BadRequest(new { error = "Cada archivo debe ser una imagen de hasta 5 MB." });
+
+        try
+        {
+            foreach (var archivo in archivos)
+            {
+                await using var contenido = archivo.OpenReadStream();
+                await ValidadorContenidoImagen.ValidarAsync(contenido, archivo.FileName, ct: ct);
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
 
         var streams = archivos.Select(a => a.OpenReadStream()).ToArray();
         try { return Ok(await useCase.HandleAsync(restauranteId, request.Texto, streams, ct)); }
