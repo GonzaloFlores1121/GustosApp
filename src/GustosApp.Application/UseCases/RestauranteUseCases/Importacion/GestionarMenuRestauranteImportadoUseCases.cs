@@ -18,6 +18,7 @@ public sealed record ResultadoAnalisisMenuRestaurante(
     IReadOnlyCollection<GustoSugeridoMenu> GustosSugeridos,
     IReadOnlyCollection<GustoSugeridoMenu> CatalogoGustos,
     bool AnalizadoConIa,
+    string DetalleAnalisis,
     string Advertencia);
 
 public sealed record RestauranteParaGestionMenu(
@@ -39,6 +40,15 @@ public sealed record RestaurantePendienteClasificacion(
 
 public sealed class AnalizarMenuRestauranteImportadoUseCase
 {
+    private static readonly IReadOnlyDictionary<string, string[]> EquivalenciasPorGusto =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["cafe con leche"] = ["latte", "capuccino", "cappuccino", "flat white", "macchiato", "mocaccino"],
+            ["cafe"] = ["espresso", "ristretto", "americano", "cafe"],
+            ["pasteleria"] = ["croissant", "pain au chocolat", "roll de canela", "cookie", "brownie"],
+            ["te"] = ["matcha", "chai", "te negro", "te verde"]
+        };
+
     private readonly IRestauranteRepository _restaurantes;
     private readonly IGustoRepository _gustos;
     private readonly IOcrService _ocr;
@@ -83,6 +93,7 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
         var sugerenciasLocales = ClasificarLocalmente(texto, catalogo);
         var categoria = restaurante.Categoria ?? "Restaurante";
         var analizadoConIa = false;
+        var detalleAnalisis = "Gemini no estuvo disponible; las sugerencias se obtuvieron mediante coincidencias locales.";
 
         try
         {
@@ -92,7 +103,10 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
                 categoria = categoriaIa;
                 sugerenciasLocales.UnionWith(gustosIa);
                 analizadoConIa = true;
+                detalleAnalisis = "Gemini complementó las coincidencias locales usando únicamente gustos existentes del catálogo.";
             }
+            else if (!string.IsNullOrWhiteSpace(respuesta) && !respuesta.StartsWith("Error ", StringComparison.OrdinalIgnoreCase))
+                detalleAnalisis = "Gemini respondió, pero el formato no se pudo interpretar; se conservaron las coincidencias locales.";
         }
         catch
         {
@@ -109,6 +123,7 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
             catalogo.OrderBy(gusto => gusto.Nombre)
                 .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray(),
             analizadoConIa,
+            detalleAnalisis,
             "Las sugerencias deben revisarse antes de guardarlas. El menú no demuestra ausencia de contaminación cruzada ni compatibilidad médica.");
     }
 
@@ -125,7 +140,13 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
     {
         var normalizado = Normalizar(texto);
         return catalogo.Where(gusto =>
-                !string.IsNullOrWhiteSpace(gusto.Nombre) && normalizado.Contains(Normalizar(gusto.Nombre)))
+            {
+                if (string.IsNullOrWhiteSpace(gusto.Nombre)) return false;
+                var nombre = Normalizar(gusto.Nombre);
+                if (normalizado.Contains(nombre)) return true;
+                return EquivalenciasPorGusto.TryGetValue(nombre, out var equivalencias)
+                    && equivalencias.Any(normalizado.Contains);
+            })
             .ToHashSet();
     }
 

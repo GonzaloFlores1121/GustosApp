@@ -40,6 +40,35 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         resultado.GustosSugeridos.Should().ContainSingle().Which.Nombre.Should().Be("Pizza");
         resultado.CatalogoGustos.Should().ContainSingle().Which.Nombre.Should().Be("Pizza");
         resultado.AnalizadoConIa.Should().BeTrue();
+        resultado.DetalleAnalisis.Should().Contain("Gemini complementó");
+    }
+
+    [Fact]
+    public async Task Analizar_SinIa_DebeReconocerEquivalenciasDeCafeteriaYExplicarElResultado()
+    {
+        var restaurante = CrearRestauranteImportado();
+        var cafeConLeche = new Gusto { Id = Guid.NewGuid(), Nombre = "Café con leche" };
+        var pasteleria = new Gusto { Id = Guid.NewGuid(), Nombre = "Pastelería" };
+        var restaurantes = new Mock<IRestauranteRepository>();
+        restaurantes.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restaurante);
+        var gustos = new Mock<IGustoRepository>();
+        gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([cafeConLeche, pasteleria]);
+        var ia = new Mock<IRecomendacionAIService>();
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+            .ReturnsAsync("Error de límite de uso");
+        var useCase = new AnalizarMenuRestauranteImportadoUseCase(
+            restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object);
+
+        var resultado = await useCase.HandleAsync(
+            restaurante.Id,
+            "Flat White con leche microtexturada. Croissant clásico de manteca.",
+            []);
+
+        resultado.AnalizadoConIa.Should().BeFalse();
+        resultado.GustosSugeridos.Select(g => g.Nombre).Should().BeEquivalentTo("Café con leche", "Pastelería");
+        resultado.DetalleAnalisis.Should().Contain("no estuvo disponible");
     }
 
     [Fact]
