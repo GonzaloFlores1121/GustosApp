@@ -157,7 +157,9 @@ namespace GustosApp.Application.Tests
             _menuRepo.Setup(m => m.GetByRestauranteIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((RestauranteMenu?)null);
 
+            Dictionary<string, string>? valoresPlantilla = null;
             _templates.Setup(t => t.Render("SolicitudAprobada.html", It.IsAny<Dictionary<string, string>>()))
+                .Callback<string, Dictionary<string, string>>((_, valores) => valoresPlantilla = valores)
                 .Returns("HTML");
 
             _email.Setup(e => e.EnviarEmailAsync(usuario.Email, "Tu solicitud fue aprobada",
@@ -176,6 +178,8 @@ namespace GustosApp.Application.Tests
 
             _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Once);
             _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            valoresPlantilla.Should().NotBeNull();
+            valoresPlantilla!["LINK"].Should().Be($"http://localhost:3000/restaurante/{res.Id}/dashboard");
         }
 
         [Theory]

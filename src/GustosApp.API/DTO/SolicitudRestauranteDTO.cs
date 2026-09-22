@@ -2,6 +2,18 @@
 
 namespace GustosApp.API.DTO
 {
+    public sealed class MiSolicitudRestauranteDto
+    {
+        public Guid Id { get; set; }
+        public string NombreRestaurante { get; set; } = string.Empty;
+        public string Direccion { get; set; } = string.Empty;
+        public string Estado { get; set; } = string.Empty;
+        public string Tipo { get; set; } = string.Empty;
+        public string? MotivoRechazo { get; set; }
+        public Guid? RestauranteAprobadoId { get; set; }
+        public DateTime FechaCreacionUtc { get; set; }
+    }
+
     public class SolicitudRestaurantePendienteDto
     {
         public Guid? RestauranteExistenteId { get; set; }

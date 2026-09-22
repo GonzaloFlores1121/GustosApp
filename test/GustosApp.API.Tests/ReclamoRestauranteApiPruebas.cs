@@ -60,6 +60,14 @@ public class ReclamoRestauranteApiPruebas
         var repetida = await cliente.PostAsync(ruta, Formulario());
         Assert.Equal(HttpStatusCode.OK, repetida.StatusCode);
         Assert.Equal(solicitudId, await repetida.Content.ReadFromJsonAsync<Guid>());
+        var estadoRespuesta = await cliente.GetAsync("/api/Restaurantes/mi-solicitud");
+        Assert.Equal(HttpStatusCode.OK, estadoRespuesta.StatusCode);
+        var estado = await estadoRespuesta.Content.ReadFromJsonAsync<MiSolicitudRespuesta>();
+        Assert.NotNull(estado);
+        Assert.Equal(solicitudId, estado.Id);
+        Assert.Equal("Pendiente", estado.Estado);
+        Assert.Equal("Reclamo", estado.Tipo);
+        Assert.Equal("Importado", estado.NombreRestaurante);
         using var verificacion = fabrica.Services.CreateScope();
         var contexto = verificacion.ServiceProvider.GetRequiredService<GustosDbContext>();
         var solicitud = await contexto.SolicitudesRestaurantes.SingleAsync();
@@ -81,4 +89,6 @@ public class ReclamoRestauranteApiPruebas
         Assert.Null((await contexto.Restaurantes.SingleAsync(r => r.Id == restauranteId)).DuenoId);
         Assert.Equal(RolUsuario.Usuario, (await contexto.Usuarios.SingleAsync(u => u.FirebaseUid == "usuario-pruebas-integracion")).Rol);
     }
+
+    private sealed record MiSolicitudRespuesta(Guid Id, string Estado, string Tipo, string NombreRestaurante);
 }

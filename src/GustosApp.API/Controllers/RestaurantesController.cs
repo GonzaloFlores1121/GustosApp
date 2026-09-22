@@ -37,6 +37,7 @@ namespace GustosApp.API.Controllers
         private readonly IActualizarImagenesRestauranteUseCase _actualizarImagenesUseCase;
         private readonly EliminarRestauranteUseCase _eliminarRestaurante;
         private readonly ObtenerRestauranteIdPorPropietarioUseCase _obtenerRestauranteIdPorPropietario;
+        private readonly ObtenerMiSolicitudRestauranteUseCase _obtenerMiSolicitudRestaurante;
 
         public RestaurantesController(
       ObtenerUsuarioUseCase obtenerUsuario,
@@ -50,7 +51,8 @@ namespace GustosApp.API.Controllers
     IBuscarRestaurantesRecomendadosOrquestador buscarRestauranteRecomendado,
     IActualizarImagenesRestauranteUseCase actualizarImagenesUseCase,
     EliminarRestauranteUseCase eliminarRestaurante,
-    ObtenerRestauranteIdPorPropietarioUseCase obtenerRestauranteIdPorPropietario)
+    ObtenerRestauranteIdPorPropietarioUseCase obtenerRestauranteIdPorPropietario,
+    ObtenerMiSolicitudRestauranteUseCase obtenerMiSolicitudRestaurante)
         {
             _obtenerUsuario = obtenerUsuario;
             _solicitudesRestaurantes = solicitudesRestaurantes;
@@ -65,6 +67,29 @@ namespace GustosApp.API.Controllers
             _actualizarImagenesUseCase = actualizarImagenesUseCase;
             _eliminarRestaurante = eliminarRestaurante;
             _obtenerRestauranteIdPorPropietario = obtenerRestauranteIdPorPropietario;
+            _obtenerMiSolicitudRestaurante = obtenerMiSolicitudRestaurante;
+        }
+
+        [HttpGet("mi-solicitud")]
+        [ProducesResponseType(typeof(MiSolicitudRestauranteDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> ObtenerMiSolicitud(CancellationToken ct)
+        {
+            var solicitud = await _obtenerMiSolicitudRestaurante.HandleAsync(GetFirebaseUid(), ct);
+            if (solicitud == null)
+                return NoContent();
+
+            return Ok(new MiSolicitudRestauranteDto
+            {
+                Id = solicitud.Id,
+                NombreRestaurante = solicitud.Nombre,
+                Direccion = solicitud.Direccion,
+                Estado = solicitud.Estado.ToString(),
+                Tipo = solicitud.RestauranteExistenteId.HasValue ? "Reclamo" : "Alta",
+                MotivoRechazo = solicitud.MotivoRechazo,
+                RestauranteAprobadoId = solicitud.RestauranteAprobadoId,
+                FechaCreacionUtc = solicitud.FechaCreacion
+            });
         }
 
         [HttpGet]

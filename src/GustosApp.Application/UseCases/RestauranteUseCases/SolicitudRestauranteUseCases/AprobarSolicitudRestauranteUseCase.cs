@@ -122,7 +122,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
               {
              { "USUARIO", solicitud.Usuario.Nombre },
             { "NOMBRE", restaurante.Nombre },
-            { "LINK", $"http://localhost:3000/restaurante/panel/{restaurante.Id}" }
+             { "LINK", $"http://localhost:3000/restaurante/{restaurante.Id}/dashboard" }
              }), ct
             );
 

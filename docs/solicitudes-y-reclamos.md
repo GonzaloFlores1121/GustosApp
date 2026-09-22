@@ -7,7 +7,7 @@ Solo puede existir una solicitud pendiente por usuario. La regla se valida en Ap
 El alta nueva continúa mediante `POST /api/Restaurantes` con el formulario existente.
 El reclamo usa `POST /api/Restaurantes/{id}/reclamo`, autenticado y con multipart de datos y comprobante privado. Ver [comprobantes de reclamos](comprobantes-reclamos.md).
 Devuelve el identificador de la solicitud pendiente. Repetirlo para el mismo
-usuario y restaurante devuelve la misma solicitud y reintenta sincronizar el rol.
+usuario y restaurante devuelve la misma solicitud.
 Los reclamos aparecen en el listado administrativo existente; no envían el correo
 de alta nueva. La evidencia de propiedad se revisa por el administrador antes de aprobar.
 
@@ -75,5 +75,6 @@ Pruebas: casos de uso con xUnit/Moq; API y concurrencia con EF InMemory. Estas �
 comprueban contratos, persistencia y tokens, pero no sustituyen una validación de
 migración y rollback transaccional en una instancia SQL Server de prueba.
 
-Siguiente bloque: selector frontend «Crear nuevo / Reclamar existente», identificación
-del reclamo en el panel administrativo y presentación de restaurantes sin valoraciones.
+`GET /api/Restaurantes/mi-solicitud` devuelve la última solicitud del usuario
+autenticado, su estado, el motivo de rechazo y el restaurante aprobado. El frontend
+usa esta consulta para impedir cargas duplicadas y ofrecer el acceso al dashboard.

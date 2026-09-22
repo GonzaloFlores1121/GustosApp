@@ -25,6 +25,12 @@ namespace GustosApp.Infraestructure.Repositories
             => _db.SolicitudesRestaurantes.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.UsuarioId == usuarioId && s.Estado == EstadoSolicitudRestaurante.Pendiente, ct);
 
+        public Task<SolicitudRestaurante?> BuscarUltimaPorUsuarioAsync(Guid usuarioId, CancellationToken ct)
+            => _db.SolicitudesRestaurantes.AsNoTracking()
+                .Where(s => s.UsuarioId == usuarioId)
+                .OrderByDescending(s => s.FechaCreacion)
+                .FirstOrDefaultAsync(ct);
+
         public Task<SolicitudRestaurante?> GetByIdAsync(Guid id, CancellationToken ct)
         {
             return _db.SolicitudesRestaurantes
