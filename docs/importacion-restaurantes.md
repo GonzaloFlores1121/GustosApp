@@ -54,6 +54,30 @@ Este endpoint importa únicamente datos básicos del catálogo. La asociación d
 y restricciones estimados requiere un proceso separado y revisable para no confundir
 una inferencia con compatibilidad verificada.
 
+## Descubrir restaurantes cercanos
+
+El endpoint administrativo `POST /Admin/restaurantes/descubrir-cercanos` consulta
+Nearby Search de Google Places y siempre devuelve una vista previa comparada con la
+base actual. Este endpoint no acepta `confirmar` y nunca escribe en SQL Server.
+
+```json
+{
+  "latitud": -34.6037,
+  "longitud": -58.3816,
+  "radioMetros": 1500,
+  "cantidadMaxima": 20
+}
+```
+
+El radio permitido es de 1 a 50.000 metros y Google devuelve como máximo 20 lugares
+por búsqueda. La respuesta contiene `restaurantes`, con las fichas completas para una
+selección posterior, y `vistaPrevia`, con la comparación frente a SQL Server.
+
+Se solicitan solamente los campos necesarios para identificar y ubicar el
+establecimiento; las valoraciones, horarios, fotos, menú, gustos y compatibilidad no
+se inventan. Para guardar candidatos se utiliza después el endpoint de importación
+con una selección revisada por el administrador.
+
 ## Preparar el dataset histórico
 
 Desde PowerShell, en la raíz del backend:

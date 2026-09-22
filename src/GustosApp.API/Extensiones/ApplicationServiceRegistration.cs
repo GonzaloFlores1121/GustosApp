@@ -121,6 +121,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<EliminarRestauranteUseCase>();
             services.AddScoped<ObtenerRestauranteIdPorPropietarioUseCase>();
             services.AddScoped<ImportarRestaurantesUseCase>();
+            services.AddScoped<DescubrirRestaurantesCercanosUseCase>();
 
             return services;
         }

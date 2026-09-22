@@ -34,6 +34,7 @@ public sealed class PruebasAutorizacionApi : IClassFixture<FabricaApiGustosAppAu
     [Theory]
     [InlineData("/Admin/solicitudes/aprobar/11111111-1111-1111-1111-111111111111")]
     [InlineData("/Admin/solicitudes/11111111-1111-1111-1111-111111111111/reprocesar-menu")]
+    [InlineData("/Admin/restaurantes/descubrir-cercanos")]
     public async Task GestionarSolicitud_SinRolAdministrador_DevuelveProhibido(string ruta)
     {
         var respuesta = await _cliente.PostAsync(ruta, null);

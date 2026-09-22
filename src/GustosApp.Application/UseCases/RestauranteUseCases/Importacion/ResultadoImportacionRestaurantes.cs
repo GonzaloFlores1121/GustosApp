@@ -15,7 +15,10 @@ public sealed record ItemImportacionRestaurante(
     string PlaceId,
     string Nombre,
     AccionImportacionRestaurante Accion,
-    string? Motivo = null);
+    string? Motivo = null)
+{
+    public string AccionNombre => Accion.ToString();
+}
 
 public sealed record ResultadoImportacionRestaurantes(
     bool Confirmada,

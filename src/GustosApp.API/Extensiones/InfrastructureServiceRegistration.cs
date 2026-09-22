@@ -14,6 +14,7 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Infraestructure.Parsing;
 using GustosApp.Infraestructure.Repositories;
 using GustosApp.Infraestructure.Services;
+using GustosApp.Infraestructure.Extrerno.GooglePlacesModel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
@@ -76,6 +77,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<IPagoService, MercadoPagoService>();
             services.AddScoped<IBuscarRestaurantesRecomendadosOrquestador, BuscarRestaurantesRecomendadosOrquestador>();
             services.AddScoped<IUsuarioPreferenciasService, UsuarioPreferenciasService>();
+            services.AddHttpClient<IBuscadorRestaurantesExternos, BuscadorRestaurantesGooglePlaces>();
 
 
 
