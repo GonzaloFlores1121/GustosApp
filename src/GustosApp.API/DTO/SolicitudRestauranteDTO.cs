@@ -26,6 +26,7 @@ namespace GustosApp.API.DTO
         public string UsuarioNombre { get; set; } = string.Empty;
         public string UsuarioEmail { get; set; } = string.Empty;
         public string imgLogo { get; set; }
+        public bool TieneComprobante { get; set; }
 
         public EstadoSolicitudRestaurante Estado { get; set; }
 
