@@ -15,6 +15,10 @@ namespace GustosApp.Domain.Interfaces
                 IReadOnlyCollection<string> placeIds,
                 CancellationToken ct = default);
 
+            Task<List<Restaurante>> ObtenerPendientesClasificacionAsync(
+                int cantidadMaxima,
+                CancellationToken ct = default);
+
             Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct);
             Task<Restaurante?> GetRestauranteConImagenesAsync(Guid id, CancellationToken ct);
             Task AddAsync(Restaurante restaurante, CancellationToken ct);

@@ -126,6 +126,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<AnalizarMenuRestauranteImportadoUseCase>();
             services.AddScoped<ConfirmarMenuRestauranteImportadoUseCase>();
             services.AddScoped<BuscarRestaurantesParaGestionMenuUseCase>();
+            services.AddScoped<ObtenerPendientesClasificacionRestauranteUseCase>();
 
             return services;
         }

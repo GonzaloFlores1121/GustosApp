@@ -16,6 +16,7 @@ public sealed record ResultadoAnalisisMenuRestaurante(
     string TextoExtraido,
     string CategoriaSugerida,
     IReadOnlyCollection<GustoSugeridoMenu> GustosSugeridos,
+    IReadOnlyCollection<GustoSugeridoMenu> CatalogoGustos,
     bool AnalizadoConIa,
     string Advertencia);
 
@@ -25,6 +26,15 @@ public sealed record RestauranteParaGestionMenu(
     string Direccion,
     string? Categoria,
     bool TieneMenu,
+    IReadOnlyCollection<GustoSugeridoMenu> Gustos);
+
+public sealed record RestaurantePendienteClasificacion(
+    Guid Id,
+    string Nombre,
+    string Direccion,
+    string? Categoria,
+    bool TieneMenu,
+    IReadOnlyCollection<string> Motivos,
     IReadOnlyCollection<GustoSugeridoMenu> Gustos);
 
 public sealed class AnalizarMenuRestauranteImportadoUseCase
@@ -95,6 +105,8 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
             texto,
             categoria,
             sugerenciasLocales.OrderBy(gusto => gusto.Nombre)
+                .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray(),
+            catalogo.OrderBy(gusto => gusto.Nombre)
                 .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray(),
             analizadoConIa,
             "Las sugerencias deben revisarse antes de guardarlas. El menú no demuestra ausencia de contaminación cruzada ni compatibilidad médica.");
@@ -167,6 +179,42 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
         return new string(descompuesto.Where(c =>
                 CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray())
             .Normalize(NormalizationForm.FormC).ToLowerInvariant();
+    }
+}
+
+public sealed class ObtenerPendientesClasificacionRestauranteUseCase
+{
+    public const int CantidadMaxima = 100;
+    private readonly IRestauranteRepository _restaurantes;
+
+    public ObtenerPendientesClasificacionRestauranteUseCase(IRestauranteRepository restaurantes) =>
+        _restaurantes = restaurantes;
+
+    public async Task<IReadOnlyCollection<RestaurantePendienteClasificacion>> HandleAsync(
+        CancellationToken ct = default)
+    {
+        var restaurantes = await _restaurantes.ObtenerPendientesClasificacionAsync(CantidadMaxima, ct);
+        return restaurantes.Select(restaurante => new RestaurantePendienteClasificacion(
+                restaurante.Id,
+                restaurante.Nombre,
+                restaurante.Direccion,
+                restaurante.Categoria,
+                restaurante.MenuProcesado == true,
+                ObtenerMotivos(restaurante),
+                restaurante.GustosQueSirve.OrderBy(gusto => gusto.Nombre)
+                    .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray()))
+            .ToArray();
+    }
+
+    private static IReadOnlyCollection<string> ObtenerMotivos(Restaurante restaurante)
+    {
+        var motivos = new List<string>();
+        if (!string.IsNullOrWhiteSpace(restaurante.MenuError)) motivos.Add("Error al procesar menú");
+        if (restaurante.MenuProcesado != true) motivos.Add("Sin menú procesado");
+        if (restaurante.GustosQueSirve.Count == 0) motivos.Add("Sin gustos");
+        if (restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces)
+            motivos.Add("Clasificación automática");
+        return motivos;
     }
 }
 

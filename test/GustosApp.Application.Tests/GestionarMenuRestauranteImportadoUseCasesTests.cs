@@ -38,7 +38,34 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
 
         resultado.CategoriaSugerida.Should().Be("Pizzería");
         resultado.GustosSugeridos.Should().ContainSingle().Which.Nombre.Should().Be("Pizza");
+        resultado.CatalogoGustos.Should().ContainSingle().Which.Nombre.Should().Be("Pizza");
         resultado.AnalizadoConIa.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Pendientes_DebeInformarTodosLosMotivosDeRevision()
+    {
+        var restaurante = CrearRestauranteImportado();
+        restaurante.MenuProcesado = false;
+        restaurante.MenuError = "Imagen ilegible";
+        restaurante.RegistrarDatosCompatibilidadEstimados(
+            OrigenDatosCompatibilidadRestaurante.GooglePlaces,
+            DateTime.UtcNow);
+        var repositorio = new Mock<IRestauranteRepository>();
+        repositorio.Setup(r => r.ObtenerPendientesClasificacionAsync(
+                ObtenerPendientesClasificacionRestauranteUseCase.CantidadMaxima,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([restaurante]);
+        var useCase = new ObtenerPendientesClasificacionRestauranteUseCase(repositorio.Object);
+
+        var resultado = await useCase.HandleAsync();
+
+        resultado.Should().ContainSingle();
+        resultado.Single().Motivos.Should().Equal(
+            "Error al procesar menú",
+            "Sin menú procesado",
+            "Sin gustos",
+            "Clasificación automática");
     }
 
     [Fact]

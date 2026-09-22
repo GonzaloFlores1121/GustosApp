@@ -9,6 +9,11 @@ namespace GustosApp.API.Controllers;
 [Route("Admin/restaurantes/menu")]
 public sealed class AdminRestaurantesMenuController : ControllerBase
 {
+    [HttpGet("pendientes")]
+    public async Task<IActionResult> ObtenerPendientes(
+        [FromServices] ObtenerPendientesClasificacionRestauranteUseCase useCase,
+        CancellationToken ct) => Ok(await useCase.HandleAsync(ct));
+
     [HttpGet("buscar")]
     public async Task<IActionResult> Buscar(
         [FromQuery] string texto,

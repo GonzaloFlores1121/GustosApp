@@ -21,6 +21,16 @@ public sealed class PruebasAutorizacionApi : IClassFixture<FabricaApiGustosAppAu
         respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Theory]
+    [InlineData("/Admin/restaurantes/menu/pendientes")]
+    [InlineData("/Admin/restaurantes/menu/buscar?texto=pizza")]
+    public async Task GestionarMenusImportados_SinRolAdministrador_DevuelveProhibido(string ruta)
+    {
+        var respuesta = await _cliente.GetAsync(ruta);
+
+        respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     [Fact]
     public async Task ActualizarGustos_ConJsonMalformado_DevuelveSolicitudInvalida()
     {

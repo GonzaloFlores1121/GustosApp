@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Model;
 using GustosApp.Infraestructure;
 using Microsoft.EntityFrameworkCore;
@@ -44,6 +45,28 @@ namespace GustosApp.Infraestructure.Repositories
             return await _db.Restaurantes
                 .Include(restaurante => restaurante.GustosQueSirve)
                 .Where(restaurante => placeIds.Contains(restaurante.PlaceId))
+                .ToListAsync(ct);
+        }
+
+        public Task<List<Restaurante>> ObtenerPendientesClasificacionAsync(
+            int cantidadMaxima,
+            CancellationToken ct = default)
+        {
+            return _db.Restaurantes
+                .AsNoTracking()
+                .Include(restaurante => restaurante.GustosQueSirve)
+                .Where(restaurante =>
+                    !restaurante.DuenoId.HasValue &&
+                    string.IsNullOrEmpty(restaurante.PropietarioUid) &&
+                    (restaurante.MenuProcesado != true ||
+                     !restaurante.GustosQueSirve.Any() ||
+                     restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces ||
+                     restaurante.MenuError != null))
+                .OrderByDescending(restaurante => restaurante.MenuError != null)
+                .ThenBy(restaurante => restaurante.MenuProcesado == true)
+                .ThenByDescending(restaurante => !restaurante.GustosQueSirve.Any())
+                .ThenBy(restaurante => restaurante.Nombre)
+                .Take(cantidadMaxima)
                 .ToListAsync(ct);
         }
 
