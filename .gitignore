@@ -20,3 +20,6 @@ appsettings.Development.json
 
 # Configuración privada de Docker Compose
 .env
+
+# Archivos locales generados para revisar importaciones
+/local-data/

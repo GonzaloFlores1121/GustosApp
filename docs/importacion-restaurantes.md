@@ -44,6 +44,7 @@ La importación:
 - detecta `PlaceId` repetidos dentro del mismo lote;
 - no reemplaza datos más recientes con datos viejos;
 - no sobrescribe automáticamente un restaurante que ya tiene propietario;
+- deja para revisión los lugares cuyo tipo principal no es gastronómico;
 - conserva gustos, restricciones, imágenes, reseñas y demás relaciones existentes;
 - guarda todos los cambios confirmados una sola vez por lote.
 
@@ -58,10 +59,15 @@ Desde PowerShell, en la raíz del backend:
 ```powershell
 .\scripts\catalogo\Convertir-DatasetRestaurantes.ps1 `
   -RutaEntrada "D:\Downloads\InsertAndUpdateRestaurantDataset.sql" `
-  -RutaSalida ".\restaurantes-vista-previa.json"
+  -RutaSalida ".\local-data\restaurantes-vista-previa.json"
 ```
 
 El conversor extrae las 57 fichas básicas y siempre genera el pedido con
 `confirmar: false`. No ejecuta el SQL original, no conecta con SQL Server y no importa
 los gustos o restricciones estimados. El JSON resultante puede enviarse al endpoint y
 revisarse antes de cambiar `confirmar` a `true`.
+
+Las fichas con tipos como `gas_station`, `event_venue` o `entertainment_venue`
+quedan como `RequiereRevision`. Si el administrador comprueba que allí realmente
+funciona un restaurante, puede reenviar esa ficha con
+`permitirTipoNoGastronomico: true`.

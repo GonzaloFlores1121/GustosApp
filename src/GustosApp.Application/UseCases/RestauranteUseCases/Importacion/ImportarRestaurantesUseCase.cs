@@ -7,6 +7,24 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
 public sealed class ImportarRestaurantesUseCase
 {
     public const int CantidadMaximaPorLote = 500;
+    private static readonly HashSet<string> TiposGastronomicos = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "american_restaurant",
+        "argentinian_restaurant",
+        "bakery",
+        "bar",
+        "bar_and_grill",
+        "barbecue_restaurant",
+        "cafe",
+        "fast_food_restaurant",
+        "german_restaurant",
+        "hamburger_restaurant",
+        "ice_cream_shop",
+        "italian_restaurant",
+        "pizza_restaurant",
+        "pub",
+        "restaurant"
+    };
 
     private readonly IRestauranteRepository _restauranteRepository;
     private readonly TimeProvider _timeProvider;
@@ -53,6 +71,17 @@ public sealed class ImportarRestaurantesUseCase
                     entrada.Nombre,
                     AccionImportacionRestaurante.DuplicadoEnLote,
                     "El mismo PlaceId aparece más de una vez en el lote."));
+                continue;
+            }
+
+            if (!entrada.PermitirTipoNoGastronomico &&
+                !TiposGastronomicos.Contains(entrada.PrimaryType.Trim()))
+            {
+                items.Add(new ItemImportacionRestaurante(
+                    placeId,
+                    entrada.Nombre,
+                    AccionImportacionRestaurante.RequiereRevision,
+                    $"El tipo principal '{entrada.PrimaryType}' no identifica un establecimiento gastronómico."));
                 continue;
             }
 
@@ -162,6 +191,8 @@ public sealed class ImportarRestaurantesUseCase
             throw new ArgumentException($"El restaurante {entrada.PlaceId} tiene un rating inválido.");
         if (entrada.CantidadResenas < 0)
             throw new ArgumentException($"El restaurante {entrada.PlaceId} tiene una cantidad de reseñas inválida.");
+        if (string.IsNullOrWhiteSpace(entrada.PrimaryType))
+            throw new ArgumentException($"El restaurante {entrada.PlaceId} no tiene tipo principal.");
 
         ValidarJson(entrada.HorariosJson, entrada.PlaceId, "horarios");
         ValidarJson(entrada.TypesJson, entrada.PlaceId, "tipos");

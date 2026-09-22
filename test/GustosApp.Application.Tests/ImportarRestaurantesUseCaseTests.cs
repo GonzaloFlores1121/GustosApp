@@ -177,6 +177,51 @@ public class ImportarRestaurantesUseCaseTests
         existente.TypesJson.Should().Be("[\"restaurant\",\"pizza_restaurant\"]");
     }
 
+    [Fact]
+    public async Task TipoNoGastronomico_DebeQuedarPendienteDeRevision()
+    {
+        PrepararExistentes();
+        var entrada = CrearEntrada() with
+        {
+            PrimaryType = "gas_station",
+            TypesJson = "[\"gas_station\",\"convenience_store\"]"
+        };
+
+        var resultado = await _useCase.HandleAsync([entrada], confirmar: true);
+
+        resultado.Omitidos.Should().Be(1);
+        resultado.Items.Single().Accion.Should().Be(AccionImportacionRestaurante.RequiereRevision);
+        resultado.Items.Single().Motivo.Should().Contain("gas_station");
+        _restauranteRepository.Verify(
+            repository => repository.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task TipoNoGastronomicoAutorizado_DebePoderImportarse()
+    {
+        PrepararExistentes();
+        _restauranteRepository
+            .Setup(repository => repository.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _restauranteRepository
+            .Setup(repository => repository.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var entrada = CrearEntrada() with
+        {
+            PrimaryType = "event_venue",
+            TypesJson = "[\"event_venue\",\"restaurant\"]",
+            PermitirTipoNoGastronomico = true
+        };
+
+        var resultado = await _useCase.HandleAsync([entrada], confirmar: true);
+
+        resultado.Creados.Should().Be(1);
+        _restauranteRepository.Verify(
+            repository => repository.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     private void PrepararExistentes(params Restaurante[] restaurantes)
     {
         _restauranteRepository

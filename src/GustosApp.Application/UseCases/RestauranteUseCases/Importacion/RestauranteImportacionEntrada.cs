@@ -16,4 +16,5 @@ public sealed record RestauranteImportacionEntrada
     public string PrimaryType { get; init; } = "restaurant";
     public string TypesJson { get; init; } = "[]";
     public string? ImagenUrl { get; init; }
+    public bool PermitirTipoNoGastronomico { get; init; }
 }
