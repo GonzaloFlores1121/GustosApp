@@ -16,7 +16,8 @@ public class ReclamarRestaurantePruebas
     private readonly Usuario usuario = new() { Id = Guid.NewGuid(), FirebaseUid = "solicitante", Rol = RolUsuario.Usuario };
     private readonly Restaurante restaurante = new() { Id = Guid.NewGuid(), Nombre = "Importado", PlaceId = "google-id" };
 
-    private static DatosReclamo DatosValidos() => new("Ana Pérez", "Propietaria", "1122334455", true, "%PDF-1.4 comprobante"u8.ToArray(), "prueba.pdf");
+    private static readonly byte[] PdfValido = "%PDF-1.4\ncomprobante\n%%EOF"u8.ToArray();
+    private static DatosReclamo DatosValidos() => new("Ana Pérez", "Propietaria", "1122334455", true, PdfValido, "prueba.pdf");
 
     [Theory]
     [InlineData("nombre")]
@@ -26,6 +27,11 @@ public class ReclamarRestaurantePruebas
     [InlineData("vacio")]
     [InlineData("grande")]
     [InlineData("formato")]
+    [InlineData("telefonoLetras")]
+    [InlineData("telefonoLargo")]
+    [InlineData("control")]
+    [InlineData("pdfTruncado")]
+    [InlineData("pdfActivo")]
     public async Task Reclamar_DatosInvalidos_NoPersisteNiCambiaRol(string campo)
     {
         var datos = DatosValidos();
@@ -34,9 +40,14 @@ public class ReclamarRestaurantePruebas
             "nombre" => datos with { NombreSolicitante = " " },
             "relacion" => datos with { RelacionRestaurante = " " },
             "telefono" => datos with { TelefonoContacto = "abc" },
+            "telefonoLetras" => datos with { TelefonoContacto = "11abc223344" },
+            "telefonoLargo" => datos with { TelefonoContacto = "1234567890123456" },
+            "control" => datos with { NombreSolicitante = "Ana\u0000Pérez" },
             "autorizacion" => datos with { DeclaraAutorizacion = false },
             "vacio" => datos with { Comprobante = [] },
             "grande" => datos with { Comprobante = new byte[DatosReclamo.LimiteBytes + 1] },
+            "pdfTruncado" => datos with { Comprobante = "%PDF-1.4 incompleto"u8.ToArray() },
+            "pdfActivo" => datos with { Comprobante = "%PDF-1.4 /JavaScript peligroso %%EOF"u8.ToArray() },
             _ => datos with { Comprobante = "<html>archivo disfrazado</html>"u8.ToArray() }
         };
         await Assert.ThrowsAsync<ArgumentException>(() => CrearCaso().HandleAsync(usuario.FirebaseUid, restaurante.Id, default, datos));
@@ -64,6 +75,24 @@ public class ReclamarRestaurantePruebas
         Assert.Equal(RolUsuario.Usuario, usuario.Rol);
         firebase.VerifyNoOtherCalls();
         restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Never);
+    }
+
+    [Fact]
+    public async Task Reclamar_NormalizaTextosYConservaApostrofes()
+    {
+        var datos = DatosValidos() with
+        {
+            NombreSolicitante = "  Ana O'Connor  ",
+            RelacionRestaurante = "  Representante autorizada  ",
+            TelefonoContacto = "  +54 (11) 2233-4455  "
+        };
+
+        await CrearCaso().HandleAsync(usuario.FirebaseUid, restaurante.Id, default, datos);
+
+        solicitudes.Verify(r => r.AddAsync(It.Is<SolicitudRestaurante>(s =>
+            s.NombreSolicitante == "Ana O'Connor"
+            && s.RelacionRestaurante == "Representante autorizada"
+            && s.TelefonoContacto == "+54 (11) 2233-4455"), default), Times.Once);
     }
 
     [Theory]

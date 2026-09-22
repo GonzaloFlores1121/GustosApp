@@ -10,6 +10,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 {
     public class BuscarRestaurantesUseCase
     {
+        public const int LongitudMaximaBusqueda = 100;
         private readonly IRestauranteRepository _repo;
 
         public BuscarRestaurantesUseCase(IRestauranteRepository repo)
@@ -29,7 +30,12 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
         public async Task<List<Restaurante>> HandleAsync(string texto, CancellationToken ct)
         {
-            var resultado = await _repo.BuscarPorPrefijo(texto, ct);
+            if (string.IsNullOrWhiteSpace(texto)) return [];
+            var textoNormalizado = texto.Trim().Normalize(NormalizationForm.FormC);
+            if (textoNormalizado.Length > LongitudMaximaBusqueda || textoNormalizado.Any(char.IsControl))
+                throw new ArgumentException($"La búsqueda admite hasta {LongitudMaximaBusqueda} caracteres.");
+
+            var resultado = await _repo.BuscarPorPrefijo(textoNormalizado, ct);
 
             return resultado;
             // return await Task.FromResult(resultado);

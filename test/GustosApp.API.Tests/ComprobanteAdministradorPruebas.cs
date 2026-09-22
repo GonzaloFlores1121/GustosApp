@@ -24,6 +24,9 @@ public class ComprobanteAdministradorPruebas
         var archivo = Assert.IsType<FileContentResult>(await controlador.Descargar(solicitud.Id, default));
         Assert.Equal(solicitud.ComprobanteReclamo, archivo.FileContents);
         Assert.Equal("comprobante.pdf", archivo.FileDownloadName);
-        Assert.Equal("no-store", controlador.Response.Headers.CacheControl);
+        Assert.Contains("private", controlador.Response.Headers.CacheControl.ToString());
+        Assert.Contains("no-store", controlador.Response.Headers.CacheControl.ToString());
+        Assert.Equal("nosniff", controlador.Response.Headers["X-Content-Type-Options"]);
+        Assert.Equal("sandbox; default-src 'none'", controlador.Response.Headers["Content-Security-Policy"]);
     }
 }

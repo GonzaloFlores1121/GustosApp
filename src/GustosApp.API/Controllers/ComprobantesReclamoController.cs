@@ -22,8 +22,9 @@ public sealed class ComprobantesReclamoController(ISolicitudRestauranteRepositor
             if (usuario is null || usuario.Id != solicitud.UsuarioId) return Forbid();
         }
         if (solicitud.ComprobanteReclamo is null || solicitud.TipoComprobante is null) return NotFound();
-        Response.Headers.CacheControl = "no-store";
+        Response.Headers.CacheControl = "private, no-store";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'";
         var extension = solicitud.TipoComprobante switch { "application/pdf" => "pdf", "image/png" => "png", _ => "jpg" };
         return File(solicitud.ComprobanteReclamo, solicitud.TipoComprobante, $"comprobante.{extension}");
     }

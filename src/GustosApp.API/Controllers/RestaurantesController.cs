@@ -6,6 +6,7 @@ using GustosApp.Application.UseCases.UsuarioUseCases;
 using GustosApp.Domain.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Common;
@@ -181,6 +182,7 @@ namespace GustosApp.API.Controllers
 
 
         [HttpPost("{id:guid}/reclamo")]
+        [EnableRateLimiting("ReclamosRestaurante")]
         [RequestSizeLimit(3 * 1024 * 1024)]
         [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -423,6 +425,7 @@ namespace GustosApp.API.Controllers
 
 
         [HttpGet("buscar")]
+        [EnableRateLimiting("BusquedaRestaurantes")]
         [ProducesResponseType(typeof(RestauranteResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]

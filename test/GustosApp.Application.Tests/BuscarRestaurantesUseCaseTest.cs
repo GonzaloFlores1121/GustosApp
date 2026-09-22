@@ -46,6 +46,31 @@ namespace GustosApp.Application.Tests
             Assert.Empty(result);
         }
 
+        [Fact]
+        public async Task HandleAsync_NormalizaEspaciosAntesDeBuscar()
+        {
+            var repoMock = new Mock<IRestauranteRepository>();
+            var useCase = new BuscarRestaurantesUseCase(repoMock.Object);
+            repoMock.Setup(r => r.BuscarPorPrefijo("Las Leñas", It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+
+            await useCase.HandleAsync("  Las Leñas  ", CancellationToken.None);
+
+            repoMock.Verify(r => r.BuscarPorPrefijo("Las Leñas", It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleAsync_TextoDemasiadoLargo_NoConsultaRepositorio()
+        {
+            var repoMock = new Mock<IRestauranteRepository>();
+            var useCase = new BuscarRestaurantesUseCase(repoMock.Object);
+
+            await Assert.ThrowsAsync<ArgumentException>(() => useCase.HandleAsync(
+                new string('a', BuscarRestaurantesUseCase.LongitudMaximaBusqueda + 1), CancellationToken.None));
+
+            repoMock.Verify(r => r.BuscarPorPrefijo(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
 
 
 

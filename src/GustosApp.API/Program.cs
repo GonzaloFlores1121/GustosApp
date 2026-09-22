@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
 using System.Globalization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +46,27 @@ builder.Services.AddAutoMapper(cfg => {}, AppDomain.CurrentDomain.GetAssemblies(
 //    Autorización explícita
 // ===========================
 builder.Services.AgregarAutorizacion();
+
+builder.Services.AddRateLimiter(opciones =>
+{
+    opciones.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    opciones.AddPolicy("ReclamosRestaurante", contexto => RateLimitPartition.GetFixedWindowLimiter(
+        ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+    opciones.AddPolicy("BusquedaRestaurantes", contexto => RateLimitPartition.GetFixedWindowLimiter(
+        ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+});
 
 // =====================
 //        CORS
@@ -205,6 +227,7 @@ app.UseStaticFiles(); // Habilitar archivos estáticos
 app.UseRouting();
 
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 
@@ -215,5 +238,11 @@ app.MapHub<SolicitudesAmistadHub>("/solicitudesAmistadHub");
 app.MapHub<VotacionesHub>("/votacionesHub");
 
 app.Run();
+
+static string ObtenerClaveCliente(HttpContext contexto) =>
+    contexto.User.FindFirst("user_id")?.Value
+    ?? contexto.User.FindFirst("sub")?.Value
+    ?? contexto.Connection.RemoteIpAddress?.ToString()
+    ?? "anonimo";
 
 public partial class Program;
