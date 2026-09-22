@@ -7,6 +7,7 @@ public enum AccionImportacionRestaurante
     SinCambios,
     DuplicadoEnLote,
     IgnorarPorAntiguedad,
+    DescartarSinOfertaGastronomica,
     RequiereRevision
 }
 

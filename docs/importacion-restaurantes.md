@@ -44,7 +44,9 @@ La importación:
 - detecta `PlaceId` repetidos dentro del mismo lote;
 - no reemplaza datos más recientes con datos viejos;
 - no sobrescribe automáticamente un restaurante que ya tiene propietario;
-- deja para revisión los lugares cuyo tipo principal no es gastronómico;
+- acepta lugares cuyo tipo principal no es gastronómico cuando otra categoría indica
+  que ofrecen restaurante, bar, café o comida;
+- descarta lugares cuyas categorías sólo indican estación, comercio o entretenimiento;
 - conserva gustos, restricciones, imágenes, reseñas y demás relaciones existentes;
 - guarda todos los cambios confirmados una sola vez por lote.
 
@@ -67,7 +69,7 @@ El conversor extrae las 57 fichas básicas y siempre genera el pedido con
 los gustos o restricciones estimados. El JSON resultante puede enviarse al endpoint y
 revisarse antes de cambiar `confirmar` a `true`.
 
-Las fichas con tipos como `gas_station`, `event_venue` o `entertainment_venue`
-quedan como `RequiereRevision`. Si el administrador comprueba que allí realmente
-funciona un restaurante, puede reenviar esa ficha con
-`permitirTipoNoGastronomico: true`.
+El filtro considera tanto `primaryType` como `typesJson`. Por ejemplo, una estación
+con `coffee_shop` se admite y un salón con `restaurant` también. Una estación que sólo
+tenga `gas_station` y `convenience_store` se devuelve como
+`DescartarSinOfertaGastronomica` y nunca se guarda, incluso si el lote se confirma.

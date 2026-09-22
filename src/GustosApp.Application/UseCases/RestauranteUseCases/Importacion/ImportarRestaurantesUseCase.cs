@@ -9,21 +9,22 @@ public sealed class ImportarRestaurantesUseCase
     public const int CantidadMaximaPorLote = 500;
     private static readonly HashSet<string> TiposGastronomicos = new(StringComparer.OrdinalIgnoreCase)
     {
-        "american_restaurant",
-        "argentinian_restaurant",
         "bakery",
         "bar",
         "bar_and_grill",
-        "barbecue_restaurant",
         "cafe",
-        "fast_food_restaurant",
-        "german_restaurant",
-        "hamburger_restaurant",
+        "coffee_shop",
+        "deli",
+        "dessert_shop",
+        "food",
+        "food_court",
         "ice_cream_shop",
-        "italian_restaurant",
-        "pizza_restaurant",
+        "meal_delivery",
+        "meal_takeaway",
         "pub",
-        "restaurant"
+        "restaurant",
+        "sandwich_shop",
+        "snacks"
     };
 
     private readonly IRestauranteRepository _restauranteRepository;
@@ -74,14 +75,13 @@ public sealed class ImportarRestaurantesUseCase
                 continue;
             }
 
-            if (!entrada.PermitirTipoNoGastronomico &&
-                !TiposGastronomicos.Contains(entrada.PrimaryType.Trim()))
+            if (!TieneOfertaGastronomica(entrada))
             {
                 items.Add(new ItemImportacionRestaurante(
                     placeId,
                     entrada.Nombre,
-                    AccionImportacionRestaurante.RequiereRevision,
-                    $"El tipo principal '{entrada.PrimaryType}' no identifica un establecimiento gastronómico."));
+                    AccionImportacionRestaurante.DescartarSinOfertaGastronomica,
+                    "Las categorías informadas no indican que el lugar ofrezca comida o bebidas preparadas."));
                 continue;
             }
 
@@ -195,10 +195,14 @@ public sealed class ImportarRestaurantesUseCase
             throw new ArgumentException($"El restaurante {entrada.PlaceId} no tiene tipo principal.");
 
         ValidarJson(entrada.HorariosJson, entrada.PlaceId, "horarios");
-        ValidarJson(entrada.TypesJson, entrada.PlaceId, "tipos");
+        ValidarJson(entrada.TypesJson, entrada.PlaceId, "tipos", JsonValueKind.Array);
     }
 
-    private static void ValidarJson(string json, string placeId, string campo)
+    private static void ValidarJson(
+        string json,
+        string placeId,
+        string campo,
+        JsonValueKind? tipoRaizEsperado = null)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -208,7 +212,12 @@ public sealed class ImportarRestaurantesUseCase
 
         try
         {
-            using var _ = JsonDocument.Parse(json);
+            using var documento = JsonDocument.Parse(json);
+            if (tipoRaizEsperado.HasValue && documento.RootElement.ValueKind != tipoRaizEsperado.Value)
+            {
+                throw new ArgumentException(
+                    $"El restaurante {placeId} debe informar {campo} como un arreglo JSON.");
+            }
         }
         catch (JsonException ex)
         {
@@ -216,6 +225,28 @@ public sealed class ImportarRestaurantesUseCase
                 $"El restaurante {placeId} tiene JSON inválido en {campo}.",
                 ex);
         }
+    }
+
+    private static bool TieneOfertaGastronomica(RestauranteImportacionEntrada entrada)
+    {
+        if (EsTipoGastronomico(entrada.PrimaryType))
+        {
+            return true;
+        }
+
+        using var documento = JsonDocument.Parse(entrada.TypesJson);
+        return documento.RootElement
+            .EnumerateArray()
+            .Where(elemento => elemento.ValueKind == JsonValueKind.String)
+            .Select(elemento => elemento.GetString())
+            .Any(tipo => tipo is not null && EsTipoGastronomico(tipo));
+    }
+
+    private static bool EsTipoGastronomico(string tipo)
+    {
+        var tipoNormalizado = tipo.Trim();
+        return TiposGastronomicos.Contains(tipoNormalizado) ||
+               tipoNormalizado.EndsWith("_restaurant", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Restaurante CrearRestaurante(

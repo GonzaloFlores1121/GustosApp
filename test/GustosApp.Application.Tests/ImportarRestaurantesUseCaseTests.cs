@@ -178,7 +178,7 @@ public class ImportarRestaurantesUseCaseTests
     }
 
     [Fact]
-    public async Task TipoNoGastronomico_DebeQuedarPendienteDeRevision()
+    public async Task EstacionSinOfertaGastronomica_DebeDescartarse()
     {
         PrepararExistentes();
         var entrada = CrearEntrada() with
@@ -190,15 +190,20 @@ public class ImportarRestaurantesUseCaseTests
         var resultado = await _useCase.HandleAsync([entrada], confirmar: true);
 
         resultado.Omitidos.Should().Be(1);
-        resultado.Items.Single().Accion.Should().Be(AccionImportacionRestaurante.RequiereRevision);
-        resultado.Items.Single().Motivo.Should().Contain("gas_station");
+        resultado.Items.Single().Accion.Should().Be(AccionImportacionRestaurante.DescartarSinOfertaGastronomica);
+        resultado.Items.Single().Motivo.Should().Contain("comida");
         _restauranteRepository.Verify(
             repository => repository.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
-    [Fact]
-    public async Task TipoNoGastronomicoAutorizado_DebePoderImportarse()
+    [Theory]
+    [InlineData("event_venue", "[\"event_venue\",\"restaurant\"]")]
+    [InlineData("entertainment_venue", "[\"casino\",\"bar\"]")]
+    [InlineData("gas_station", "[\"gas_station\",\"coffee_shop\"]")]
+    public async Task TipoPrincipalNoGastronomico_ConOfertaEnCategorias_DebeImportarse(
+        string primaryType,
+        string typesJson)
     {
         PrepararExistentes();
         _restauranteRepository
@@ -209,9 +214,8 @@ public class ImportarRestaurantesUseCaseTests
             .Returns(Task.CompletedTask);
         var entrada = CrearEntrada() with
         {
-            PrimaryType = "event_venue",
-            TypesJson = "[\"event_venue\",\"restaurant\"]",
-            PermitirTipoNoGastronomico = true
+            PrimaryType = primaryType,
+            TypesJson = typesJson
         };
 
         var resultado = await _useCase.HandleAsync([entrada], confirmar: true);
