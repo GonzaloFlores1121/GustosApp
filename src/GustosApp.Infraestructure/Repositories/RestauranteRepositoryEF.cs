@@ -32,6 +32,21 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<Restaurante?> GetByPlaceIdAsync(string placeId, CancellationToken ct = default)
             => await _db.Restaurantes.AsNoTracking().FirstOrDefaultAsync(r => r.PlaceId == placeId, ct);
 
+        public async Task<List<Restaurante>> ObtenerPorPlaceIdsAsync(
+            IReadOnlyCollection<string> placeIds,
+            CancellationToken ct = default)
+        {
+            if (placeIds.Count == 0)
+            {
+                return new List<Restaurante>();
+            }
+
+            return await _db.Restaurantes
+                .AsNoTracking()
+                .Where(restaurante => placeIds.Contains(restaurante.PlaceId))
+                .ToListAsync(ct);
+        }
+
         public async Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct = default)
             => await _db.Restaurantes.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
 

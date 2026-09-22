@@ -21,6 +21,7 @@ using GustosApp.Application.UseCases.UsuarioUseCases;
 using GustosApp.Application.UseCases;
 using Microsoft.Extensions.DependencyInjection;
 using GustosApp.Application.UseCases.VotacionUseCases;
+using GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
 
 namespace GustosApp.API.Extensiones
 {
@@ -119,6 +120,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<IActualizarImagenesRestauranteUseCase, ActualizarImagenesRestauranteUseCase>();
             services.AddScoped<EliminarRestauranteUseCase>();
             services.AddScoped<ObtenerRestauranteIdPorPropietarioUseCase>();
+            services.AddScoped<ImportarRestaurantesUseCase>();
 
             return services;
         }

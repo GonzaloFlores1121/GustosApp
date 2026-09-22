@@ -7,6 +7,7 @@ using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUse
 using GustosApp.Application.UseCases.AmistadUseCases;
 using AutoMapper;
 using GustosApp.API.DTO;
+using GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
 
 namespace GustosApp.API.Controllers
 {
@@ -21,17 +22,20 @@ namespace GustosApp.API.Controllers
         private readonly RechazarSolicitudRestauranteUseCase _rechazarSolicitud;
         private readonly ObtenerSolicitudesPorTipoUseCase _getPorTipo;
         private readonly IMapper _mapper;
+        private readonly ImportarRestaurantesUseCase _importarRestaurantes;
        
         public AdminController(AprobarSolicitudRestauranteUseCase aprobarSolicitud,
            ObtenerSolicitudRestaurantesPorIdUseCase getDetalle,
            RechazarSolicitudRestauranteUseCase rechazarSolicitud,
            ObtenerSolicitudesPorTipoUseCase getPorTipo,
+           ImportarRestaurantesUseCase importarRestaurantes,
             IMapper mapper)
         {
             _aprobarSolicitud = aprobarSolicitud;
             _getDetalle = getDetalle;
             _rechazarSolicitud = rechazarSolicitud;
             _getPorTipo = getPorTipo;
+            _importarRestaurantes = importarRestaurantes;
             _mapper = mapper;
         }
 
@@ -65,6 +69,30 @@ namespace GustosApp.API.Controllers
         {
             await _aprobarSolicitud.ReprocesarMenuAsync(id, ct);
             return NoContent();
+        }
+
+        [HttpPost("restaurantes/importar")]
+        [ProducesResponseType(typeof(ResultadoImportacionRestaurantes), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> ImportarRestaurantes(
+            [FromBody] ImportacionRestaurantesDto solicitud,
+            CancellationToken ct)
+        {
+            try
+            {
+                var resultado = await _importarRestaurantes.HandleAsync(
+                    solicitud.Restaurantes,
+                    solicitud.Confirmar,
+                    ct);
+
+                return Ok(resultado);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
 
         [HttpDelete("{id:guid}")]
