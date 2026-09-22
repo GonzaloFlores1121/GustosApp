@@ -11,7 +11,6 @@ public sealed class ClasificadorRestaurantesImportadosTests
     [InlineData("pizza_restaurant", "Pizzería", "Pizza")]
     [InlineData("sushi_restaurant", "Restaurante de sushi", "Sushi")]
     [InlineData("ice_cream_shop", "Heladería", "Helado")]
-    [InlineData("cafe", "Cafetería", "Café con leche")]
     public void TipoEspecifico_DebeAsignarCategoriaYGustoDeAltaConfianza(
         string tipo,
         string categoria,
@@ -23,6 +22,20 @@ public sealed class ClasificadorRestaurantesImportadosTests
 
         resultado.Categoria.Should().Be(categoria);
         resultado.GustosEstimados.Should().ContainSingle().Which.Should().Be(gusto);
+    }
+
+    [Theory]
+    [InlineData("cafe", "Cafetería")]
+    [InlineData("coffee_shop", "Cafetería")]
+    [InlineData("sandwich_shop", "Sandwichería")]
+    public void TipoAmplio_NoDebeInventarUnProductoEspecifico(string tipo, string categoria)
+    {
+        var entrada = CrearEntrada("Local de prueba", tipo, $"[\"{tipo}\",\"restaurant\"]");
+
+        var resultado = _clasificador.Clasificar(entrada);
+
+        resultado.Categoria.Should().Be(categoria);
+        resultado.GustosEstimados.Should().BeEmpty();
     }
 
     [Fact]

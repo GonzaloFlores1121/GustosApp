@@ -1,0 +1,72 @@
+using GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace GustosApp.API.Controllers;
+
+[Authorize(Policy = "Admin")]
+[ApiController]
+[Route("Admin/restaurantes/menu")]
+public sealed class AdminRestaurantesMenuController : ControllerBase
+{
+    [HttpGet("buscar")]
+    public async Task<IActionResult> Buscar(
+        [FromQuery] string texto,
+        [FromServices] BuscarRestaurantesParaGestionMenuUseCase useCase,
+        CancellationToken ct)
+    {
+        try { return Ok(await useCase.HandleAsync(texto, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("{restauranteId:guid}/analizar")]
+    [RequestSizeLimit(15_000_000)]
+    public async Task<IActionResult> Analizar(
+        Guid restauranteId,
+        [FromForm] AnalizarMenuRestauranteRequest request,
+        [FromServices] AnalizarMenuRestauranteImportadoUseCase useCase,
+        CancellationToken ct)
+    {
+        var archivos = request.Imagenes ?? [];
+        if (archivos.Count > 5) return BadRequest(new { error = "Podés adjuntar hasta cinco imágenes." });
+        if (archivos.Any(a => a.Length > 5_000_000 || !a.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            return BadRequest(new { error = "Cada archivo debe ser una imagen de hasta 5 MB." });
+
+        var streams = archivos.Select(a => a.OpenReadStream()).ToArray();
+        try { return Ok(await useCase.HandleAsync(restauranteId, request.Texto, streams, ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+        finally { foreach (var stream in streams) await stream.DisposeAsync(); }
+    }
+
+    [HttpPut("{restauranteId:guid}")]
+    public async Task<IActionResult> Confirmar(
+        Guid restauranteId,
+        [FromBody] ConfirmarMenuRestauranteRequest request,
+        [FromServices] ConfirmarMenuRestauranteImportadoUseCase useCase,
+        CancellationToken ct)
+    {
+        try
+        {
+            await useCase.HandleAsync(restauranteId, request.Texto, request.Categoria, request.GustoIds ?? [], ct);
+            return NoContent();
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+    }
+}
+
+public sealed class AnalizarMenuRestauranteRequest
+{
+    public string? Texto { get; set; }
+    public List<IFormFile>? Imagenes { get; set; }
+}
+
+public sealed class ConfirmarMenuRestauranteRequest
+{
+    public string Texto { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
+    public List<Guid>? GustoIds { get; set; }
+}

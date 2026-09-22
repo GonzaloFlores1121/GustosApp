@@ -123,6 +123,9 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ImportarRestaurantesUseCase>();
             services.AddScoped<DescubrirRestaurantesCercanosUseCase>();
             services.AddSingleton<ClasificadorRestaurantesImportados>();
+            services.AddScoped<AnalizarMenuRestauranteImportadoUseCase>();
+            services.AddScoped<ConfirmarMenuRestauranteImportadoUseCase>();
+            services.AddScoped<BuscarRestaurantesParaGestionMenuUseCase>();
 
             return services;
         }
