@@ -18,6 +18,8 @@ public sealed record ItemImportacionRestaurante(
     string? Motivo = null)
 {
     public string AccionNombre => Accion.ToString();
+    public string? CategoriaAsignada { get; init; }
+    public IReadOnlyCollection<string> GustosEstimados { get; init; } = [];
 }
 
 public sealed record ResultadoImportacionRestaurantes(

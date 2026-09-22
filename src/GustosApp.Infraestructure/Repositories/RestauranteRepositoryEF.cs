@@ -42,7 +42,7 @@ namespace GustosApp.Infraestructure.Repositories
             }
 
             return await _db.Restaurantes
-                .AsNoTracking()
+                .Include(restaurante => restaurante.GustosQueSirve)
                 .Where(restaurante => placeIds.Contains(restaurante.PlaceId))
                 .ToListAsync(ct);
         }

@@ -10,6 +10,7 @@ public class ImportarRestaurantesUseCaseTests
 {
     private static readonly DateTime FechaActualUtc = new(2026, 9, 21, 12, 0, 0, DateTimeKind.Utc);
     private readonly Mock<IRestauranteRepository> _restauranteRepository = new();
+    private readonly Mock<IGustoRepository> _gustoRepository = new();
     private readonly ImportarRestaurantesUseCase _useCase;
 
     public ImportarRestaurantesUseCaseTests()
@@ -18,9 +19,14 @@ public class ImportarRestaurantesUseCaseTests
         timeProvider
             .Setup(provider => provider.GetUtcNow())
             .Returns(new DateTimeOffset(FechaActualUtc));
+        _gustoRepository
+            .Setup(repository => repository.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CrearCatalogoGustos());
 
         _useCase = new ImportarRestaurantesUseCase(
             _restauranteRepository.Object,
+            _gustoRepository.Object,
+            new ClasificadorRestaurantesImportados(),
             timeProvider.Object);
     }
 
@@ -65,6 +71,9 @@ public class ImportarRestaurantesUseCaseTests
         agregado.DuenoId.Should().BeNull();
         agregado.PropietarioUid.Should().BeEmpty();
         agregado.Rating.Should().Be(4.5);
+        agregado.Categoria.Should().Be("Restaurante");
+        agregado.GustosQueSirve.Should().BeEmpty();
+        agregado.OrigenDatosCompatibilidad.Should().Be(GustosApp.Domain.Common.OrigenDatosCompatibilidadRestaurante.GooglePlaces);
         _restauranteRepository.Verify(
             repository => repository.SaveChangesAsync(It.IsAny<CancellationToken>()),
             Times.Once);
@@ -226,6 +235,63 @@ public class ImportarRestaurantesUseCaseTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task RestauranteImportado_DebeAsignarCategoriaYGustoEstimadosConEvidenciaFuerte()
+    {
+        PrepararExistentes();
+        Restaurante? agregado = null;
+        _restauranteRepository
+            .Setup(repository => repository.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()))
+            .Callback<Restaurante, CancellationToken>((restaurante, _) => agregado = restaurante)
+            .Returns(Task.CompletedTask);
+        _restauranteRepository
+            .Setup(repository => repository.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var entrada = CrearEntrada(nombre: "La pizza del barrio") with
+        {
+            Categoria = "pizza_restaurant",
+            PrimaryType = "pizza_restaurant",
+            TypesJson = "[\"pizza_restaurant\",\"restaurant\"]"
+        };
+
+        var resultado = await _useCase.HandleAsync([entrada], confirmar: true);
+
+        agregado.Should().NotBeNull();
+        agregado!.Categoria.Should().Be("Pizzería");
+        agregado.GustosQueSirve.Should().ContainSingle(gusto => gusto.Nombre == "Pizza");
+        resultado.Items.Single().CategoriaAsignada.Should().Be("Pizzería");
+        resultado.Items.Single().GustosEstimados.Should().Equal("Pizza");
+    }
+
+    [Fact]
+    public async Task RestauranteConClasificacionVerificada_NoDebeReemplazarSusGustos()
+    {
+        var gustoManual = new Gusto { Id = Guid.NewGuid(), Nombre = "Paella" };
+        var existente = CrearRestauranteExistente();
+        existente.GustosQueSirve.Add(gustoManual);
+        existente.RegistrarVerificacionDatosCompatibilidad(
+            GustosApp.Domain.Common.OrigenDatosCompatibilidadRestaurante.Administracion,
+            FechaActualUtc.AddDays(-2));
+        PrepararExistentes(existente);
+        _restauranteRepository
+            .Setup(repository => repository.UpdateAsync(existente, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _restauranteRepository
+            .Setup(repository => repository.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var entrada = CrearEntrada(nombre: "Pizzería nueva") with
+        {
+            PrimaryType = "pizza_restaurant",
+            TypesJson = "[\"pizza_restaurant\"]"
+        };
+
+        await _useCase.HandleAsync([entrada], confirmar: true);
+
+        existente.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(gustoManual);
+        existente.OrigenDatosCompatibilidad.Should().Be(
+            GustosApp.Domain.Common.OrigenDatosCompatibilidadRestaurante.Administracion);
+    }
+
     private void PrepararExistentes(params Restaurante[] restaurantes)
     {
         _restauranteRepository
@@ -266,11 +332,22 @@ public class ImportarRestaurantesUseCaseTests
         HorariosJson = "{}",
         Rating = 4.5,
         CantidadResenas = 120,
-        Categoria = "restaurant",
+        Categoria = "Restaurante",
         PrimaryType = "restaurant",
         TypesJson = "[\"restaurant\"]",
         ImagenUrl = "https://example.com/restaurante.jpg",
         ActualizadoUtc = FechaActualUtc.AddDays(-1),
         UltimaActualizacion = FechaActualUtc.AddDays(-1)
     };
+
+    private static List<Gusto> CrearCatalogoGustos() =>
+    [
+        new() { Id = Guid.Parse("22222222-0001-0001-0001-000000000001"), Nombre = "Pizza" },
+        new() { Id = Guid.Parse("22222222-0001-0001-0001-000000000002"), Nombre = "Sushi" },
+        new() { Id = Guid.Parse("22222222-0001-0001-0001-000000000003"), Nombre = "Paella" },
+        new() { Id = Guid.Parse("22222222-0001-0001-0001-000000000010"), Nombre = "Helado" },
+        new() { Id = Guid.Parse("22222222-0001-0001-0001-000000000011"), Nombre = "Hamburguesa" },
+        new() { Id = Guid.Parse("22222222-0001-0001-0001-000000000016"), Nombre = "Asado" },
+        new() { Id = Guid.Parse("22222222-0001-0001-0001-000000000019"), Nombre = "Café con leche" }
+    ];
 }

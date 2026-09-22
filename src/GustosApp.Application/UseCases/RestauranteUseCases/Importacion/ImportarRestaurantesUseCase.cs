@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 
@@ -28,13 +29,19 @@ public sealed class ImportarRestaurantesUseCase
     };
 
     private readonly IRestauranteRepository _restauranteRepository;
+    private readonly IGustoRepository _gustoRepository;
+    private readonly ClasificadorRestaurantesImportados _clasificador;
     private readonly TimeProvider _timeProvider;
 
     public ImportarRestaurantesUseCase(
         IRestauranteRepository restauranteRepository,
+        IGustoRepository gustoRepository,
+        ClasificadorRestaurantesImportados clasificador,
         TimeProvider timeProvider)
     {
         _restauranteRepository = restauranteRepository;
+        _gustoRepository = gustoRepository;
+        _clasificador = clasificador;
         _timeProvider = timeProvider;
     }
 
@@ -52,6 +59,7 @@ public sealed class ImportarRestaurantesUseCase
             .ToArray();
 
         var existentes = await _restauranteRepository.ObtenerPorPlaceIdsAsync(placeIds, ct);
+        var catalogoGustos = await _gustoRepository.GetAllAsync(ct);
         var existentesPorPlaceId = existentes.ToDictionary(
             restaurante => restaurante.PlaceId,
             StringComparer.OrdinalIgnoreCase);
@@ -65,22 +73,28 @@ public sealed class ImportarRestaurantesUseCase
             ValidarEntrada(entrada);
 
             var placeId = NormalizarPlaceId(entrada.PlaceId);
+            var clasificacion = _clasificador.Clasificar(entrada);
+            var gustosEstimados = ResolverGustos(clasificacion, catalogoGustos);
             if (!procesados.Add(placeId))
             {
-                items.Add(new ItemImportacionRestaurante(
+                items.Add(CrearItem(
                     placeId,
                     entrada.Nombre,
                     AccionImportacionRestaurante.DuplicadoEnLote,
+                    clasificacion,
+                    gustosEstimados,
                     "El mismo PlaceId aparece más de una vez en el lote."));
                 continue;
             }
 
             if (!TieneOfertaGastronomica(entrada))
             {
-                items.Add(new ItemImportacionRestaurante(
+                items.Add(CrearItem(
                     placeId,
                     entrada.Nombre,
                     AccionImportacionRestaurante.DescartarSinOfertaGastronomica,
+                    clasificacion,
+                    gustosEstimados,
                     "Las categorías informadas no indican que el lugar ofrezca comida o bebidas preparadas."));
                 continue;
             }
@@ -88,15 +102,23 @@ public sealed class ImportarRestaurantesUseCase
             if (!existentesPorPlaceId.TryGetValue(placeId, out var restaurante))
             {
                 var fechaDatosUtc = NormalizarFechaUtc(entrada.FechaDatosUtc ?? fechaActualUtc);
-                items.Add(new ItemImportacionRestaurante(
+                items.Add(CrearItem(
                     placeId,
                     entrada.Nombre,
-                    AccionImportacionRestaurante.Crear));
+                    AccionImportacionRestaurante.Crear,
+                    clasificacion,
+                    gustosEstimados));
 
                 if (confirmar)
                 {
                     await _restauranteRepository.AddAsync(
-                        CrearRestaurante(entrada, placeId, fechaDatosUtc, fechaActualUtc),
+                        CrearRestaurante(
+                            entrada,
+                            placeId,
+                            fechaDatosUtc,
+                            fechaActualUtc,
+                            clasificacion,
+                            gustosEstimados),
                         ct);
                 }
 
@@ -108,41 +130,53 @@ public sealed class ImportarRestaurantesUseCase
 
             if (restaurante.DuenoId.HasValue || !string.IsNullOrWhiteSpace(restaurante.PropietarioUid))
             {
-                items.Add(new ItemImportacionRestaurante(
+                items.Add(CrearItem(
                     placeId,
                     entrada.Nombre,
                     AccionImportacionRestaurante.RequiereRevision,
+                    clasificacion,
+                    gustosEstimados,
                     "El restaurante tiene propietario y no se sobrescribe automáticamente."));
                 continue;
             }
 
             if (fechaDatosExistenteUtc < NormalizarFechaUtc(restaurante.UltimaActualizacion))
             {
-                items.Add(new ItemImportacionRestaurante(
+                items.Add(CrearItem(
                     placeId,
                     entrada.Nombre,
                     AccionImportacionRestaurante.IgnorarPorAntiguedad,
+                    clasificacion,
+                    gustosEstimados,
                     "Los datos recibidos son anteriores a los ya almacenados."));
                 continue;
             }
 
-            if (!TieneCambios(restaurante, entrada, placeId, fechaDatosExistenteUtc))
+            var actualizarClasificacion = DebeActualizarClasificacionAutomatica(restaurante);
+            if (!TieneCambios(restaurante, entrada, placeId, fechaDatosExistenteUtc, clasificacion) &&
+                (!actualizarClasificacion || TieneMismosGustos(restaurante, gustosEstimados)))
             {
-                items.Add(new ItemImportacionRestaurante(
+                items.Add(CrearItem(
                     placeId,
                     entrada.Nombre,
-                    AccionImportacionRestaurante.SinCambios));
+                    AccionImportacionRestaurante.SinCambios,
+                    clasificacion,
+                    gustosEstimados));
                 continue;
             }
 
-            items.Add(new ItemImportacionRestaurante(
+            items.Add(CrearItem(
                 placeId,
                 entrada.Nombre,
-                AccionImportacionRestaurante.Actualizar));
+                AccionImportacionRestaurante.Actualizar,
+                clasificacion,
+                gustosEstimados));
 
             if (confirmar)
             {
-                AplicarDatos(restaurante, entrada, placeId, fechaDatosExistenteUtc);
+                AplicarDatos(restaurante, entrada, placeId, fechaDatosExistenteUtc, clasificacion);
+                if (actualizarClasificacion)
+                    AplicarClasificacionAutomatica(restaurante, gustosEstimados, fechaDatosExistenteUtc);
                 await _restauranteRepository.UpdateAsync(restaurante, ct);
             }
         }
@@ -253,7 +287,9 @@ public sealed class ImportarRestaurantesUseCase
         RestauranteImportacionEntrada entrada,
         string placeId,
         DateTime fechaDatosUtc,
-        DateTime fechaActualUtc)
+        DateTime fechaActualUtc,
+        ClasificacionRestauranteImportado clasificacion,
+        IReadOnlyCollection<Gusto> gustosEstimados)
     {
         var restaurante = new Restaurante
         {
@@ -261,7 +297,8 @@ public sealed class ImportarRestaurantesUseCase
             CreadoUtc = fechaActualUtc
         };
 
-        AplicarDatos(restaurante, entrada, placeId, fechaDatosUtc);
+        AplicarDatos(restaurante, entrada, placeId, fechaDatosUtc, clasificacion);
+        AplicarClasificacionAutomatica(restaurante, gustosEstimados, fechaDatosUtc);
         return restaurante;
     }
 
@@ -269,7 +306,8 @@ public sealed class ImportarRestaurantesUseCase
         Restaurante restaurante,
         RestauranteImportacionEntrada entrada,
         string placeId,
-        DateTime fechaDatosUtc)
+        DateTime fechaDatosUtc,
+        ClasificacionRestauranteImportado clasificacion)
     {
         restaurante.PlaceId = placeId;
         restaurante.Nombre = entrada.Nombre.Trim();
@@ -282,7 +320,7 @@ public sealed class ImportarRestaurantesUseCase
             : entrada.HorariosJson;
         restaurante.Rating = entrada.Rating ?? restaurante.Rating;
         restaurante.CantidadResenas = entrada.CantidadResenas ?? restaurante.CantidadResenas;
-        restaurante.Categoria = LimpiarOpcional(entrada.Categoria) ?? restaurante.Categoria;
+        restaurante.Categoria = clasificacion.Categoria;
         restaurante.WebUrl = LimpiarOpcional(entrada.WebUrl) ?? restaurante.WebUrl;
         restaurante.PrimaryType = string.IsNullOrWhiteSpace(entrada.PrimaryType)
             ? "restaurant"
@@ -299,7 +337,8 @@ public sealed class ImportarRestaurantesUseCase
         Restaurante restaurante,
         RestauranteImportacionEntrada entrada,
         string placeId,
-        DateTime fechaDatosUtc)
+        DateTime fechaDatosUtc,
+        ClasificacionRestauranteImportado clasificacion)
     {
         var copia = new Restaurante
         {
@@ -321,7 +360,7 @@ public sealed class ImportarRestaurantesUseCase
             UltimaActualizacion = restaurante.UltimaActualizacion
         };
 
-        AplicarDatos(copia, entrada, placeId, fechaDatosUtc);
+        AplicarDatos(copia, entrada, placeId, fechaDatosUtc, clasificacion);
 
         return restaurante.PlaceId != copia.PlaceId ||
                restaurante.Nombre != copia.Nombre ||
@@ -339,6 +378,48 @@ public sealed class ImportarRestaurantesUseCase
                restaurante.ImagenUrl != copia.ImagenUrl ||
                NormalizarFechaUtc(restaurante.UltimaActualizacion) != copia.UltimaActualizacion;
     }
+
+    private static IReadOnlyCollection<Gusto> ResolverGustos(
+        ClasificacionRestauranteImportado clasificacion,
+        IReadOnlyCollection<Gusto> catalogo)
+    {
+        var nombres = clasificacion.GustosEstimados.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return catalogo.Where(gusto => nombres.Contains(gusto.Nombre)).ToArray();
+    }
+
+    private static bool DebeActualizarClasificacionAutomatica(Restaurante restaurante) =>
+        restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces ||
+        (restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.Estimacion &&
+         restaurante.GustosQueSirve.Count == 0);
+
+    private static bool TieneMismosGustos(
+        Restaurante restaurante,
+        IReadOnlyCollection<Gusto> gustosEstimados) =>
+        restaurante.GustosQueSirve.Select(gusto => gusto.Id).ToHashSet()
+            .SetEquals(gustosEstimados.Select(gusto => gusto.Id));
+
+    private static void AplicarClasificacionAutomatica(
+        Restaurante restaurante,
+        IReadOnlyCollection<Gusto> gustosEstimados,
+        DateTime fechaDatosUtc)
+    {
+        restaurante.SetGustos(gustosEstimados);
+        restaurante.RegistrarDatosCompatibilidadEstimados(
+            OrigenDatosCompatibilidadRestaurante.GooglePlaces,
+            fechaDatosUtc);
+    }
+
+    private static ItemImportacionRestaurante CrearItem(
+        string placeId,
+        string nombre,
+        AccionImportacionRestaurante accion,
+        ClasificacionRestauranteImportado clasificacion,
+        IReadOnlyCollection<Gusto> gustosEstimados,
+        string? motivo = null) => new(placeId, nombre, accion, motivo)
+        {
+            CategoriaAsignada = clasificacion.Categoria,
+            GustosEstimados = gustosEstimados.Select(gusto => gusto.Nombre).OrderBy(nombreGusto => nombreGusto).ToArray()
+        };
 
     private static ResultadoImportacionRestaurantes CrearResultado(
         bool confirmar,

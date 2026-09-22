@@ -11,6 +11,7 @@ public sealed class DescubrirRestaurantesCercanosUseCaseTests
 {
     private readonly Mock<IBuscadorRestaurantesExternos> _buscador = new();
     private readonly Mock<IRestauranteRepository> _restauranteRepository = new();
+    private readonly Mock<IGustoRepository> _gustoRepository = new();
     private readonly DescubrirRestaurantesCercanosUseCase _useCase;
 
     public DescubrirRestaurantesCercanosUseCaseTests()
@@ -20,9 +21,14 @@ public sealed class DescubrirRestaurantesCercanosUseCaseTests
                 It.IsAny<IReadOnlyCollection<string>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+        _gustoRepository
+            .Setup(repository => repository.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         var importador = new ImportarRestaurantesUseCase(
             _restauranteRepository.Object,
+            _gustoRepository.Object,
+            new ClasificadorRestaurantesImportados(),
             TimeProvider.System);
         _useCase = new DescubrirRestaurantesCercanosUseCase(_buscador.Object, importador);
     }
