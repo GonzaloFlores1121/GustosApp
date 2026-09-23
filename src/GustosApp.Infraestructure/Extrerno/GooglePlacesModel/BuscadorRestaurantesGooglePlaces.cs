@@ -78,7 +78,8 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
         pedido.Headers.TryAddWithoutValidation("X-Goog-Api-Key", apiKey);
         pedido.Headers.TryAddWithoutValidation(
             "X-Goog-FieldMask",
-            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types");
+            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType," +
+            "places.types,places.rating,places.userRatingCount,places.photos.name");
 
         using var respuesta = await _httpClient.SendAsync(pedido, ct);
 
@@ -99,7 +100,7 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
         return (contenido?.Places ?? [])
             .Where(EsImportable)
             .DistinctBy(place => place.Id, StringComparer.Ordinal)
-            .Select(place => Convertir(place, fechaDatosUtc))
+            .Select(place => Convertir(place, fechaDatosUtc, apiKey))
             .ToArray();
     }
 
@@ -109,7 +110,10 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
         !string.IsNullOrWhiteSpace(place.FormattedAddress) &&
         place.Location is not null;
 
-    private static RestauranteImportacionEntrada Convertir(PlaceDetails place, DateTime fechaDatosUtc)
+    private static RestauranteImportacionEntrada Convertir(
+        PlaceDetails place,
+        DateTime fechaDatosUtc,
+        string apiKey)
     {
         var tipos = place.Types?
             .Where(tipo => !string.IsNullOrWhiteSpace(tipo))
@@ -125,14 +129,24 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
             Latitud = place.Location!.Latitude,
             Longitud = place.Location.Longitude,
             HorariosJson = "{}",
-            Rating = null,
-            CantidadResenas = null,
+            Rating = place.Rating,
+            CantidadResenas = place.UserRatingCount,
             Categoria = tipoPrincipal,
             FechaDatosUtc = fechaDatosUtc,
             PrimaryType = tipoPrincipal,
             TypesJson = JsonSerializer.Serialize(tipos),
-            ImagenUrl = null
+            ImagenUrl = CrearUrlFoto(place.Photos?.FirstOrDefault()?.Name, apiKey)
         };
+    }
+
+    private static string? CrearUrlFoto(string? nombreFoto, string apiKey)
+    {
+        if (string.IsNullOrWhiteSpace(nombreFoto)) return null;
+        var recurso = string.Join(
+            "/",
+            nombreFoto.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+        return $"https://places.googleapis.com/v1/{recurso}/media?maxWidthPx=800&key={Uri.EscapeDataString(apiKey)}";
     }
 
     private sealed class RespuestaBusquedaCercana

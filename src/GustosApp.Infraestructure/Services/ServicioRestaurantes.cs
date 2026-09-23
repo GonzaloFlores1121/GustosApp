@@ -7,6 +7,8 @@ using GustosApp.Infraestructure.Extrerno.GooglePlacesLegacy;
 using GustosApp.Infraestructure.Extrerno.GooglePlacesModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -19,14 +21,17 @@ namespace GustosApp.Infraestructure.Services
         private readonly IConfiguration _config;
         private readonly HttpClient _http;
         private readonly IRestauranteRepository _repo;
+        private readonly ILogger<ServicioRestaurantes> _logger;
 
         public ServicioRestaurantes(GustosDbContext db,
-        IConfiguration config, HttpClient http, IRestauranteRepository repo)
+        IConfiguration config, HttpClient http, IRestauranteRepository repo,
+        ILogger<ServicioRestaurantes>? logger = null)
         {
             _db = db;
             _config = config;
             _http = http;
             _repo = repo;
+            _logger = logger ?? NullLogger<ServicioRestaurantes>.Instance;
         }
         public async Task ActualizarReviewsDesdeGoogleLegacyAsync(
     Guid restauranteId,
@@ -328,21 +333,45 @@ namespace GustosApp.Infraestructure.Services
             req.Headers.TryAddWithoutValidation("X-Goog-Api-Key", apiKey);
             req.Headers.TryAddWithoutValidation("X-Goog-FieldMask", fieldMask);
 
-            var resp = await _http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode)
-            {
-                Console.WriteLine($" Google Places API error: {resp.StatusCode}");
-                return await _repo.GetByPlaceIdAsync(placeId, ct)
-                    ?? new Restaurante { PlaceId = placeId, Nombre = "(sin datos)" };
-            }
-
-            var details = await resp.Content.ReadFromJsonAsync<PlaceDetails>(cancellationToken: ct);
-            if (details is null)
-                return await _repo.GetByPlaceIdAsync(placeId, ct)
-                    ?? new Restaurante { PlaceId = placeId, Nombre = "(sin datos)" };
-
-            // Buscar restaurante existente
             var existente = await _repo.GetByPlaceIdAsync(placeId, ct);
+
+            try
+            {
+                using var resp = await _http.SendAsync(req, ct);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var detalle = $"Google Places respondió {(int)resp.StatusCode} ({resp.StatusCode}).";
+                    return await RegistrarFalloActualizacionExternaAsync(existente, placeId, detalle, ct);
+                }
+
+                var details = await resp.Content.ReadFromJsonAsync<PlaceDetails>(cancellationToken: ct);
+                if (details is null)
+                    return await RegistrarFalloActualizacionExternaAsync(
+                        existente,
+                        placeId,
+                        "Google Places devolvió una respuesta vacía.",
+                        ct);
+
+                return await AplicarDetallesGoogleAsync(existente, placeId, details, apiKey, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error técnico al actualizar el restaurante {PlaceId} desde Google Places", placeId);
+                return await RegistrarFalloActualizacionExternaAsync(existente, placeId, ex.Message, ct);
+            }
+        }
+
+        private async Task<Restaurante> AplicarDetallesGoogleAsync(
+            Restaurante? existente,
+            string placeId,
+            PlaceDetails details,
+            string apiKey,
+            CancellationToken ct)
+        {
 
             if (existente is null)
             {
@@ -397,6 +426,8 @@ namespace GustosApp.Infraestructure.Services
                 await _repo.UpdateAsync(existente, ct);
             }
 
+            existente.RegistrarActualizacionExternaExitosa(DateTime.UtcNow);
+
             // Procesar opiniones desde Google
             if (details.Reviews is { Count: > 0 })
             {
@@ -437,6 +468,26 @@ namespace GustosApp.Infraestructure.Services
                 }
             }
 
+            await _repo.SaveChangesAsync(ct);
+            return existente;
+        }
+
+        private async Task<Restaurante> RegistrarFalloActualizacionExternaAsync(
+            Restaurante? existente,
+            string placeId,
+            string detalle,
+            CancellationToken ct)
+        {
+            _logger.LogWarning(
+                "No se pudo actualizar el restaurante {PlaceId} desde Google Places: {Detalle}",
+                placeId,
+                detalle);
+
+            if (existente is null)
+                return new Restaurante { PlaceId = placeId, Nombre = "(sin datos)" };
+
+            existente.RegistrarErrorActualizacionExterna(DateTime.UtcNow, detalle);
+            await _repo.UpdateAsync(existente, ct);
             await _repo.SaveChangesAsync(ct);
             return existente;
         }

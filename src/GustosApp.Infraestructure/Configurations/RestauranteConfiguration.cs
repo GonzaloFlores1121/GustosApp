@@ -43,6 +43,14 @@ namespace GustosApp.Infraestructure.Configurations
             b.Property(r => r.WebUrl)
                 .HasMaxLength(2048);
 
+            b.Property(r => r.EstadoUltimaActualizacionExterna)
+                .HasConversion<string>()
+                .HasMaxLength(16)
+                .HasDefaultValue(GustosApp.Domain.Common.EstadoActualizacionExternaRestaurante.Nunca);
+
+            b.Property(r => r.ErrorUltimaActualizacionExterna)
+                .HasMaxLength(2000);
+
             b.Property(r => r.PrimaryType)
                 .HasMaxLength(80)
                 .IsRequired()

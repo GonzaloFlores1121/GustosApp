@@ -22,7 +22,10 @@ public sealed class BuscadorRestaurantesGooglePlacesPruebas
                   "formattedAddress": "Av. Corrientes 123",
                   "location": { "latitude": -34.6037, "longitude": -58.3816 },
                   "primaryType": "cafe",
-                  "types": ["cafe", "food", "establishment"]
+                  "types": ["cafe", "food", "establishment"],
+                  "rating": 4.7,
+                  "userRatingCount": 128,
+                  "photos": [{ "name": "places/place-1/photos/foto-1" }]
                 }
               ]
             }
@@ -50,12 +53,16 @@ public sealed class BuscadorRestaurantesGooglePlacesPruebas
         restaurante.Nombre.Should().Be("Café de prueba");
         restaurante.PrimaryType.Should().Be("cafe");
         restaurante.TypesJson.Should().Be("[\"cafe\",\"food\",\"establishment\"]");
-        restaurante.Rating.Should().BeNull();
+        restaurante.Rating.Should().Be(4.7);
+        restaurante.CantidadResenas.Should().Be(128);
+        restaurante.ImagenUrl.Should().Be(
+            "https://places.googleapis.com/v1/places/place-1/photos/foto-1/media?maxWidthPx=800&key=clave-prueba");
         restaurante.FechaDatosUtc.Should().Be(fecha.UtcDateTime);
         manejador.Metodo.Should().Be(HttpMethod.Post);
         manejador.Url.Should().Be("https://places.googleapis.com/v1/places:searchNearby");
         manejador.ClaveApi.Should().Be("clave-prueba");
-        manejador.MascaraCampos.Should().NotContain("rating");
+        manejador.MascaraCampos.Should().Contain("places.rating");
+        manejador.MascaraCampos.Should().Contain("places.photos.name");
         manejador.Cuerpo.Should().Contain("\"radius\":1200");
         manejador.Cuerpo.Should().Contain("\"maxResultCount\":10");
     }

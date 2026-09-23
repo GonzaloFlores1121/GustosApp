@@ -1743,6 +1743,10 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<string>("EmbeddingVector")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ErrorUltimaActualizacionExterna")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<string>("EstadoDatosCompatibilidad")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1750,10 +1754,23 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasColumnType("nvarchar(24)")
                         .HasDefaultValue("Estimado");
 
+                    b.Property<string>("EstadoUltimaActualizacionExterna")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("Nunca");
+
                     b.Property<DateTime?>("FechaObtencionDatosCompatibilidadUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("FechaUltimaActualizacionExternaExitosaUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("FechaUltimaVerificacionDatosCompatibilidadUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaUltimoIntentoActualizacionExternaUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("HorariosJson")

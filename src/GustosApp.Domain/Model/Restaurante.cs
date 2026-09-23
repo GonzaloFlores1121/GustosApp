@@ -41,6 +41,11 @@ namespace GustosApp.Domain.Model
         public string? Categoria { get; set; }
 
         public DateTime UltimaActualizacion { get; set; } = DateTime.UtcNow;
+        public DateTime? FechaUltimoIntentoActualizacionExternaUtc { get; private set; }
+        public DateTime? FechaUltimaActualizacionExternaExitosaUtc { get; private set; }
+        public EstadoActualizacionExternaRestaurante EstadoUltimaActualizacionExterna { get; private set; } =
+            EstadoActualizacionExternaRestaurante.Nunca;
+        public string? ErrorUltimaActualizacionExterna { get; private set; }
 
         public string? WebUrl { get; set; }
         public string? EmbeddingVector { get; set; }
@@ -128,6 +133,24 @@ namespace GustosApp.Domain.Model
             foreach (var r in nuevasRestricciones)
                 if (!idsViejos.Contains(r.Id))
                     RestriccionesQueRespeta.Add(r);
+        }
+
+        public void RegistrarActualizacionExternaExitosa(DateTime fechaUtc)
+        {
+            var fecha = NormalizarFechaUtc(fechaUtc);
+            FechaUltimoIntentoActualizacionExternaUtc = fecha;
+            FechaUltimaActualizacionExternaExitosaUtc = fecha;
+            EstadoUltimaActualizacionExterna = EstadoActualizacionExternaRestaurante.Exitosa;
+            ErrorUltimaActualizacionExterna = null;
+        }
+
+        public void RegistrarErrorActualizacionExterna(DateTime fechaUtc, string detalleTecnico)
+        {
+            FechaUltimoIntentoActualizacionExternaUtc = NormalizarFechaUtc(fechaUtc);
+            EstadoUltimaActualizacionExterna = EstadoActualizacionExternaRestaurante.Error;
+            ErrorUltimaActualizacionExterna = string.IsNullOrWhiteSpace(detalleTecnico)
+                ? "Error externo sin detalle."
+                : detalleTecnico.Trim()[..Math.Min(detalleTecnico.Trim().Length, 2000)];
         }
 
         public void RegistrarDatosCompatibilidadEstimados(

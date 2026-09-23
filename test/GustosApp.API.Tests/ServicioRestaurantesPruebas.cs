@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using FluentAssertions;
 using GustosApp.Domain.Model;
+using GustosApp.Domain.Common;
 using GustosApp.Infraestructure.Repositories;
 using GustosApp.Infraestructure.Services;
 using GustosApp.API.Tests.Infraestructura;
@@ -103,11 +104,51 @@ public class ServicioRestaurantesPruebas
         guardado.ImagenUrl.Should().Contain("photos/foto-google");
         guardado.Rating.Should().Be(4.9);
         guardado.CantidadResenas.Should().Be(250);
+        guardado.EstadoUltimaActualizacionExterna.Should().Be(EstadoActualizacionExternaRestaurante.Exitosa);
+        guardado.FechaUltimoIntentoActualizacionExternaUtc.Should().NotBeNull();
+        guardado.FechaUltimaActualizacionExternaExitosaUtc.Should().NotBeNull();
+        guardado.ErrorUltimaActualizacionExterna.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ObtenerResenas_CuandoGoogleFalla_ConservaDatosYRegistraErrorInterno()
+    {
+        await using var contexto = DbContextEnMemoria.Crear(Guid.NewGuid().ToString());
+        var restauranteId = Guid.NewGuid();
+        contexto.Restaurantes.Add(new Restaurante
+        {
+            Id = restauranteId,
+            PlaceId = "place-error",
+            Nombre = "Ficha conservada",
+            NombreNormalizado = "ficha conservada",
+            Direccion = "Dirección conservada",
+            Rating = 4.2
+        });
+        await contexto.SaveChangesAsync();
+        contexto.ChangeTracker.Clear();
+
+        var servicio = CrearServicioConRespuestaGoogle(
+            contexto,
+            "{}",
+            HttpStatusCode.ServiceUnavailable);
+
+        var resultado = await servicio.ObtenerResenasDesdeGooglePlaces("place-error", CancellationToken.None);
+
+        resultado.Nombre.Should().Be("Ficha conservada");
+        contexto.ChangeTracker.Clear();
+        var guardado = await contexto.Restaurantes.SingleAsync(r => r.Id == restauranteId);
+        guardado.Nombre.Should().Be("Ficha conservada");
+        guardado.Rating.Should().Be(4.2);
+        guardado.EstadoUltimaActualizacionExterna.Should().Be(EstadoActualizacionExternaRestaurante.Error);
+        guardado.FechaUltimoIntentoActualizacionExternaUtc.Should().NotBeNull();
+        guardado.FechaUltimaActualizacionExternaExitosaUtc.Should().BeNull();
+        guardado.ErrorUltimaActualizacionExterna.Should().Contain("503");
     }
 
     private static ServicioRestaurantes CrearServicioConRespuestaGoogle(
         GustosApp.Infraestructure.GustosDbContext contexto,
-        string respuesta)
+        string respuesta,
+        HttpStatusCode statusCode = HttpStatusCode.OK)
     {
         var configuracion = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -115,7 +156,7 @@ public class ServicioRestaurantesPruebas
                 ["GooglePlaces:ApiKey"] = "api-key-pruebas"
             })
             .Build();
-        var http = new HttpClient(new RespuestaHttpHandler(respuesta));
+        var http = new HttpClient(new RespuestaHttpHandler(respuesta, statusCode));
         var repositorio = new RestauranteRepositoryEF(contexto);
 
         return new ServicioRestaurantes(contexto, configuracion, http, repositorio);
@@ -142,13 +183,15 @@ public class ServicioRestaurantesPruebas
         }
         """;
 
-    private sealed class RespuestaHttpHandler(string respuesta) : HttpMessageHandler
+    private sealed class RespuestaHttpHandler(
+        string respuesta,
+        HttpStatusCode statusCode) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            var response = new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(respuesta, Encoding.UTF8, "application/json")
             };

@@ -73,6 +73,12 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<IMenuParser, SimpleMenuParser>();
             services.AddSingleton<IUserIdProvider, FirebaseUserIdProvider>();
             services.AddScoped<IServicioRestaurantes, ServicioRestaurantes>();
+            services.AddScoped<IActualizadorExternoRestaurantes, ActualizadorExternoRestaurantes>();
+            services.AddOptions<ActualizacionExternaRestaurantesOptions>()
+                .Bind(config.GetSection(ActualizacionExternaRestaurantesOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+            services.AddHostedService<ActualizacionExternaRestaurantesHostedService>();
             services.AddScoped<ISolicitudAmistadRepository, SolicitudAmistadRepositoryEF>();
             services.AddScoped<IPagoService, MercadoPagoService>();
             services.AddScoped<IBuscarRestaurantesRecomendadosOrquestador, BuscarRestaurantesRecomendadosOrquestador>();
