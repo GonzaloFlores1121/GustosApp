@@ -175,6 +175,8 @@ namespace GustosApp.Application.Tests
             // === ASSERT ===
             res.MenuProcesado.Should().BeTrue();
             res.MenuError.Should().BeNull();
+            res.DuenoId.Should().Be(usuario.Id);
+            res.PropietarioUid.Should().Be(usuario.FirebaseUid);
 
             _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Once);
             _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -199,7 +201,22 @@ namespace GustosApp.Application.Tests
         public async Task Reclamo_ConservaFichaRatingYMenuExistentes()
         {
             var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), false);
-            var existente = new Restaurante { Id = Guid.NewGuid(), Nombre = "Ficha original", PlaceId = "google-123", Rating = 4.7, MenuProcesado = true };
+            var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+            var restriccion = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin gluten" };
+            var menu = new RestauranteMenu { RestauranteId = Guid.NewGuid(), Json = "{\"menu\":true}" };
+            var imagen = new RestauranteImagen { Id = Guid.NewGuid(), Url = "https://img.test/interior.jpg" };
+            var existente = new Restaurante
+            {
+                Id = menu.RestauranteId,
+                Nombre = "Ficha original",
+                PlaceId = "google-123",
+                Rating = 4.7,
+                MenuProcesado = true,
+                Menu = menu,
+                GustosQueSirve = new List<Gusto> { gusto },
+                RestriccionesQueRespeta = new List<Restriccion> { restriccion },
+                Imagenes = new List<RestauranteImagen> { imagen }
+            };
             solicitud.RestauranteExistenteId = existente.Id;
             _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
             _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(existente.Id, default)).ReturnsAsync(existente);
@@ -208,10 +225,15 @@ namespace GustosApp.Application.Tests
 
             resultado.Should().BeSameAs(existente);
             resultado.DuenoId.Should().Be(solicitud.UsuarioId);
+            resultado.PropietarioUid.Should().Be(solicitud.Usuario.FirebaseUid);
             resultado.PlaceId.Should().Be("google-123");
             resultado.Nombre.Should().Be("Ficha original");
             resultado.Rating.Should().Be(4.7);
             resultado.MenuProcesado.Should().BeTrue();
+            resultado.Menu.Should().BeSameAs(menu);
+            resultado.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(gusto);
+            resultado.RestriccionesQueRespeta.Should().ContainSingle().Which.Should().BeSameAs(restriccion);
+            resultado.Imagenes.Should().ContainSingle().Which.Should().BeSameAs(imagen);
             solicitud.RestauranteAprobadoId.Should().Be(existente.Id);
             _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()), Times.Never);
             _downloader.VerifyNoOtherCalls();

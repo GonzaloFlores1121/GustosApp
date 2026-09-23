@@ -98,11 +98,16 @@ public class ImportarRestaurantesUseCaseTests
             Times.Never);
     }
 
-    [Fact]
-    public async Task RestauranteConPropietario_NoDebeSobrescribirloAutomaticamente()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RestauranteConPropietario_NoDebeSobrescribirloAutomaticamente(bool usaDuenoId)
     {
         var existente = CrearRestauranteExistente();
-        existente.DuenoId = Guid.NewGuid();
+        existente.DuenoId = usaDuenoId ? Guid.NewGuid() : null;
+        existente.PropietarioUid = usaDuenoId ? string.Empty : "firebase-propietario";
+        var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Gusto del propietario" };
+        existente.GustosQueSirve.Add(gusto);
         PrepararExistentes(existente);
 
         var resultado = await _useCase.HandleAsync(
@@ -112,6 +117,7 @@ public class ImportarRestaurantesUseCaseTests
         resultado.Omitidos.Should().Be(1);
         resultado.Items.Single().Accion.Should().Be(AccionImportacionRestaurante.RequiereRevision);
         existente.Nombre.Should().Be("Restaurante de prueba");
+        existente.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(gusto);
         _restauranteRepository.Verify(
             repository => repository.UpdateAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()),
             Times.Never);

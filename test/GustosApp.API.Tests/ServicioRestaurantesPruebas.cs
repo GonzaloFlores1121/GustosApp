@@ -3,14 +3,159 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using FluentAssertions;
-
+using GustosApp.Domain.Model;
+using GustosApp.Infraestructure.Repositories;
+using GustosApp.Infraestructure.Services;
 using GustosApp.API.Tests.Infraestructura;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using System.Net;
+using System.Text;
 using Xunit;
 
 namespace GustosApp.API.Tests.Servicios;
 
 public class ServicioRestaurantesPruebas
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ObtenerResenas_EnFichaConPropietario_ConservaDatosEditables(
+        bool propietarioConDuenoId)
+    {
+        await using var contexto = DbContextEnMemoria.Crear(Guid.NewGuid().ToString());
+        var restauranteId = Guid.NewGuid();
+        var restaurante = new Restaurante
+        {
+            Id = restauranteId,
+            PlaceId = "place-reclamado",
+            DuenoId = propietarioConDuenoId ? Guid.NewGuid() : null,
+            PropietarioUid = propietarioConDuenoId ? string.Empty : "firebase-propietario",
+            Nombre = "Nombre del propietario",
+            NombreNormalizado = "nombre del propietario",
+            Direccion = "Dirección del propietario",
+            Latitud = -34.60,
+            Longitud = -58.40,
+            Categoria = "Categoría elegida",
+            ImagenUrl = "https://imagenes.test/propietario.jpg",
+            Rating = 3.5,
+            CantidadResenas = 10
+        };
+        contexto.Restaurantes.Add(restaurante);
+        await contexto.SaveChangesAsync();
+        contexto.ChangeTracker.Clear();
+
+        var servicio = CrearServicioConRespuestaGoogle(contexto, RespuestaGoogleActualizada());
+
+        await servicio.ObtenerResenasDesdeGooglePlaces("place-reclamado", CancellationToken.None);
+
+        contexto.ChangeTracker.Clear();
+        var guardado = await contexto.Restaurantes
+            .Include(r => r.Reviews)
+            .SingleAsync(r => r.Id == restauranteId);
+        guardado.Nombre.Should().Be("Nombre del propietario");
+        guardado.NombreNormalizado.Should().Be("nombre del propietario");
+        guardado.Direccion.Should().Be("Dirección del propietario");
+        guardado.Latitud.Should().Be(-34.60);
+        guardado.Longitud.Should().Be(-58.40);
+        guardado.Categoria.Should().Be("Categoría elegida");
+        guardado.ImagenUrl.Should().Be("https://imagenes.test/propietario.jpg");
+        guardado.Rating.Should().Be(4.9);
+        guardado.CantidadResenas.Should().Be(250);
+        guardado.Reviews.Should().ContainSingle(r =>
+            r.EsImportada &&
+            r.AutorExterno == "Cliente Google" &&
+            r.Opinion == "Excelente");
+    }
+
+    [Fact]
+    public async Task ObtenerResenas_EnFichaImportada_ActualizaDatosGoogleYPersisteCambios()
+    {
+        await using var contexto = DbContextEnMemoria.Crear(Guid.NewGuid().ToString());
+        var restauranteId = Guid.NewGuid();
+        contexto.Restaurantes.Add(new Restaurante
+        {
+            Id = restauranteId,
+            PlaceId = "place-importado",
+            Nombre = "Nombre anterior",
+            NombreNormalizado = "nombre anterior",
+            Direccion = "Dirección anterior",
+            Latitud = -34.60,
+            Longitud = -58.40,
+            Categoria = "restaurant",
+            ImagenUrl = "https://imagenes.test/anterior.jpg"
+        });
+        await contexto.SaveChangesAsync();
+        contexto.ChangeTracker.Clear();
+
+        var servicio = CrearServicioConRespuestaGoogle(contexto, RespuestaGoogleActualizada());
+
+        await servicio.ObtenerResenasDesdeGooglePlaces("place-importado", CancellationToken.None);
+
+        contexto.ChangeTracker.Clear();
+        var guardado = await contexto.Restaurantes.SingleAsync(r => r.Id == restauranteId);
+        guardado.Nombre.Should().Be("Nombre desde Google");
+        guardado.NombreNormalizado.Should().Be("nombre desde google");
+        guardado.Direccion.Should().Be("Dirección desde Google");
+        guardado.Latitud.Should().Be(-31.42);
+        guardado.Longitud.Should().Be(-64.18);
+        guardado.Categoria.Should().Be("italian_restaurant");
+        guardado.ImagenUrl.Should().Contain("photos/foto-google");
+        guardado.Rating.Should().Be(4.9);
+        guardado.CantidadResenas.Should().Be(250);
+    }
+
+    private static ServicioRestaurantes CrearServicioConRespuestaGoogle(
+        GustosApp.Infraestructure.GustosDbContext contexto,
+        string respuesta)
+    {
+        var configuracion = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["GooglePlaces:ApiKey"] = "api-key-pruebas"
+            })
+            .Build();
+        var http = new HttpClient(new RespuestaHttpHandler(respuesta));
+        var repositorio = new RestauranteRepositoryEF(contexto);
+
+        return new ServicioRestaurantes(contexto, configuracion, http, repositorio);
+    }
+
+    private static string RespuestaGoogleActualizada() => """
+        {
+          "id": "place-google",
+          "displayName": { "text": "Nombre desde Google" },
+          "formattedAddress": "Dirección desde Google",
+          "location": { "latitude": -31.42, "longitude": -64.18 },
+          "primaryType": "italian_restaurant",
+          "rating": 4.9,
+          "userRatingCount": 250,
+          "photos": [{ "name": "places/place-google/photos/foto-google" }],
+          "reviews": [{
+            "rating": 5,
+            "text": { "text": "Excelente" },
+            "authorAttribution": {
+              "displayName": "Cliente Google",
+              "photoUri": "https://imagenes.test/cliente.jpg"
+            }
+          }]
+        }
+        """;
+
+    private sealed class RespuestaHttpHandler(string respuesta) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(respuesta, Encoding.UTF8, "application/json")
+            };
+            return Task.FromResult(response);
+        }
+    }
+
    /* private static CrearRestauranteDto DtoBasico() => new CrearRestauranteDto
     {
         Nombre = "Parrilla Demo",

@@ -23,7 +23,9 @@ namespace GustosApp.Infraestructure.Repositories
         }
         private void ConstruirIndice()
         {
-            var restaurantes = _db.Restaurantes.ToList();
+            // El índice es sólo de lectura. Evitar dejar todas las fichas seguidas por el
+            // DbContext previene conflictos al adjuntar luego una entidad consultada sin tracking.
+            var restaurantes = _db.Restaurantes.AsNoTracking().ToList();
             foreach (var restaurante in restaurantes)
             {
                 Indexar(restaurante);

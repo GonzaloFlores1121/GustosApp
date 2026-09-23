@@ -97,10 +97,19 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                 ?? throw new KeyNotFoundException("Restaurante no encontrado");
             if (restaurante.DuenoId.HasValue || !string.IsNullOrWhiteSpace(restaurante.PropietarioUid))
                 throw new InvalidOperationException("El restaurante ya tiene propietario.");
-            restaurante.DuenoId = solicitud.UsuarioId;
-            restaurante.PropietarioUid = solicitud.UsuarioId.ToString();
-            restaurante.ActualizadoUtc = DateTime.UtcNow;
+            AsignarPropietario(restaurante, solicitud);
             return restaurante;
+        }
+
+        private static void AsignarPropietario(Restaurante restaurante, SolicitudRestaurante solicitud)
+        {
+            if (string.IsNullOrWhiteSpace(solicitud.Usuario.FirebaseUid))
+                throw new InvalidOperationException("El solicitante no tiene una identidad de Firebase válida.");
+
+            restaurante.DuenoId = solicitud.UsuarioId;
+            restaurante.Dueno = solicitud.Usuario;
+            restaurante.PropietarioUid = solicitud.Usuario.FirebaseUid;
+            restaurante.ActualizadoUtc = DateTime.UtcNow;
         }
 
         private async Task SincronizarAprobacionAsync(SolicitudRestaurante solicitud, Restaurante restaurante, CancellationToken ct)
@@ -154,8 +163,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             var restaurante = new Restaurante
             {
                 Id = Guid.NewGuid(),
-                PropietarioUid= solicitud.UsuarioId.ToString(),
-                DuenoId = solicitud.UsuarioId,
                 Nombre = solicitud.Nombre,
                 NombreNormalizado = solicitud.Nombre.ToLower().Trim(),
                 Direccion = solicitud.Direccion,
@@ -169,6 +176,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                 WebUrl = solicitud.WebsiteUrl,
                 Rating = null,
             };
+
+            AsignarPropietario(restaurante, solicitud);
 
             // Relaciones
             restaurante.SetGustos(await _gustos.GetByIdsAsync(solicitud.GustosIds, ct));

@@ -368,17 +368,33 @@ namespace GustosApp.Infraestructure.Services
             }
             else
             {
-                // Actualizar información básica del restaurante
-                existente.Nombre = details.DisplayName?.Text ?? existente.Nombre;
-                existente.Direccion = details.FormattedAddress ?? existente.Direccion;
-                existente.Latitud = details.Location?.Latitude ?? existente.Latitud;
-                existente.Longitud = details.Location?.Longitude ?? existente.Longitud;
+                var administradoPorPropietario = existente.DuenoId.HasValue ||
+                    !string.IsNullOrWhiteSpace(existente.PropietarioUid);
+
+                // Una vez reclamada la ficha, los datos editables quedan bajo control del propietario.
+                // Google continúa siendo la fuente de métricas y opiniones externas.
+                if (!administradoPorPropietario)
+                {
+                    existente.Nombre = details.DisplayName?.Text ?? existente.Nombre;
+                    existente.NombreNormalizado = NormalizarNombre(existente.Nombre);
+                    existente.Direccion = details.FormattedAddress ?? existente.Direccion;
+                    existente.Latitud = details.Location?.Latitude ?? existente.Latitud;
+                    existente.Longitud = details.Location?.Longitude ?? existente.Longitud;
+                    existente.Categoria = details.PrimaryType ?? existente.Categoria;
+                    existente.ImagenUrl = GetPhotoUrl(
+                            details.Photos?.FirstOrDefault()?.Name,
+                            apiKey)
+                        ?? existente.ImagenUrl;
+                    existente.ActualizadoUtc = DateTime.UtcNow;
+                }
+
                 existente.Rating = details.Rating ?? existente.Rating;
                 existente.CantidadResenas = details.UserRatingCount ?? existente.CantidadResenas;
-                existente.Categoria = details.PrimaryType ?? existente.Categoria;
-                existente.ImagenUrl = GetPhotoUrl(details.Photos?.FirstOrDefault()?.Name, apiKey);
-                existente.ActualizadoUtc = DateTime.UtcNow;
                 existente.UltimaActualizacion = DateTime.UtcNow;
+
+                // GetByPlaceIdAsync es una consulta sin seguimiento: adjuntar explícitamente
+                // la entidad garantiza que los cambios se persistan.
+                await _repo.UpdateAsync(existente, ct);
             }
 
             // Procesar opiniones desde Google
@@ -414,9 +430,6 @@ namespace GustosApp.Infraestructure.Services
                 if (nuevas.Any())
                 {
                     await _db.OpinionesRestaurantes.AddRangeAsync(nuevas, ct);
-                    await _db.SaveChangesAsync(ct);
-
-
                     foreach (var nueva in nuevas)
                     {
                         existente.Reviews.Add(nueva);
@@ -424,14 +437,18 @@ namespace GustosApp.Infraestructure.Services
                 }
             }
 
-            await _db.SaveChangesAsync(ct);
+            await _repo.SaveChangesAsync(ct);
             return existente;
         }
 
         private static string? GetPhotoUrl(string? fotoName, string apiKey)
         {
             if (string.IsNullOrWhiteSpace(fotoName)) return null;
-            return $"https://places.googleapis.com/v1/{Uri.EscapeDataString(fotoName)}/media?maxWidthPx=800&key={apiKey}";
+            var recursoFoto = string.Join(
+                "/",
+                fotoName.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(Uri.EscapeDataString));
+            return $"https://places.googleapis.com/v1/{recursoFoto}/media?maxWidthPx=800&key={Uri.EscapeDataString(apiKey)}";
         }
 
         public async Task<List<Restaurante>> BuscarAsync(
