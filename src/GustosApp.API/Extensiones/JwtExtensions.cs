@@ -37,31 +37,9 @@ namespace GustosApp.API.Extensiones
 
                   logger.LogInformation("Request a: {Path}", context.Request.Path);
 
-                  // Prioridad 1: Cookie
-                  if (context.Request.Cookies.TryGetValue("token", out var raw))
-                  {
-                      logger.LogInformation("Token encontrado en cookie.");
-                      context.Token = raw.Replace("\"", "").Trim();
+                  context.Token = ObtenerTokenAutenticacion(context.Request);
+                  if (!string.IsNullOrEmpty(context.Token))
                       return Task.CompletedTask;
-                  }
-
-                  // Prioridad 2: Query (SignalR)
-                  var accessToken = context.Request.Query["access_token"];
-                  if (!string.IsNullOrEmpty(accessToken))
-                  {
-                      logger.LogInformation("Token encontrado en QueryString (SignalR)");
-                      context.Token = accessToken;
-                      return Task.CompletedTask;
-                  }
-
-                  // Prioridad 3: Header Authorization
-                  var authHeader = context.Request.Headers["Authorization"].ToString();
-                  if (!string.IsNullOrEmpty(authHeader) &&
-                      authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                  {
-                      context.Token = authHeader.Substring("Bearer ".Length).Replace("\"", "").Trim();
-                      return Task.CompletedTask;
-                  }
 
                   logger.LogWarning("No se recibió token por Cookie, QueryString ni Header.");
                   return Task.CompletedTask;
@@ -92,6 +70,39 @@ namespace GustosApp.API.Extensiones
       });
 
             return services;
+        }
+
+        internal static string? ObtenerTokenAutenticacion(HttpRequest request)
+        {
+            var authHeader = request.Headers.Authorization.ToString();
+            if (!string.IsNullOrWhiteSpace(authHeader) &&
+                authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                return LimpiarToken(authHeader["Bearer ".Length..]);
+            }
+
+            if (EsRutaSignalR(request.Path))
+            {
+                var accessToken = request.Query["access_token"].ToString();
+                if (!string.IsNullOrWhiteSpace(accessToken))
+                    return LimpiarToken(accessToken);
+            }
+
+            return request.Cookies.TryGetValue("token", out var cookieToken)
+                ? LimpiarToken(cookieToken)
+                : null;
+        }
+
+        private static bool EsRutaSignalR(PathString path) =>
+            path.StartsWithSegments("/chatHub") ||
+            path.StartsWithSegments("/notificacionesHub") ||
+            path.StartsWithSegments("/solicitudesAmistadHub") ||
+            path.StartsWithSegments("/votacionesHub");
+
+        private static string? LimpiarToken(string token)
+        {
+            var tokenLimpio = token.Replace("\"", string.Empty).Trim();
+            return string.IsNullOrEmpty(tokenLimpio) ? null : tokenLimpio;
         }
     }
 }
