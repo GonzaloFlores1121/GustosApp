@@ -141,6 +141,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
                         var entidad = new RestauranteImagen
                         {
+                            // La imagen se agrega a una ficha ya seguida por EF. Mantener la clave
+                            // temporal permite que el proveedor la reconozca como una fila nueva.
+                            Id = Guid.Empty,
                             RestauranteId = id,
                             Tipo = tipo,
                             Url = url,

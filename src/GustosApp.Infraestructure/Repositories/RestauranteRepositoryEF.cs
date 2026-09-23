@@ -84,9 +84,11 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task SaveChangesAsync(CancellationToken ct = default)
         {
             try { await _db.SaveChangesAsync(ct); }
-            catch (DbUpdateConcurrencyException)
+            catch (DbUpdateConcurrencyException ex)
             {
-                throw new InvalidOperationException("Los datos cambiaron durante la operación. Volvé a consultar la solicitud.");
+                throw new InvalidOperationException(
+                    "Los datos cambiaron durante la operación. Volvé a consultar la solicitud.",
+                    ex);
             }
         }
         public Task UpdateAsync(Restaurante restaurante, CancellationToken ct)

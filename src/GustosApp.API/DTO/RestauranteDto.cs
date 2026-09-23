@@ -218,6 +218,7 @@ namespace GustosApp.API.DTO
         public string? ImagenDestacada { get; set; }  // Tipo 0
         public List<string> ImagenesInterior { get; set; } = new();
         public List<string> ImagenesComida { get; set; } = new();
+        public string? ImagenMenu { get; set; }
 
         // ==================
         // HORARIOS
