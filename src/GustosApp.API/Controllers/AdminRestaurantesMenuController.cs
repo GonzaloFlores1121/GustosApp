@@ -25,6 +25,17 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
         catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpGet("{restauranteId:guid}")]
+    public async Task<IActionResult> ObtenerDetalle(
+        Guid restauranteId,
+        [FromServices] ObtenerDetalleGestionRestauranteUseCase useCase,
+        CancellationToken ct)
+    {
+        try { return Ok(await useCase.HandleAsync(restauranteId, ct)); }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+    }
+
     [HttpPost("{restauranteId:guid}/analizar")]
     [RequestSizeLimit(15_000_000)]
     public async Task<IActionResult> Analizar(
@@ -73,6 +84,23 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
     }
+
+    [HttpPut("{restauranteId:guid}/gustos")]
+    public async Task<IActionResult> GuardarClasificacion(
+        Guid restauranteId,
+        [FromBody] GuardarClasificacionRestauranteRequest request,
+        [FromServices] GuardarClasificacionRestauranteImportadoUseCase useCase,
+        CancellationToken ct)
+    {
+        try
+        {
+            await useCase.HandleAsync(restauranteId, request.Categoria, request.GustoIds ?? [], ct);
+            return NoContent();
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+    }
 }
 
 public sealed class AnalizarMenuRestauranteRequest
@@ -84,6 +112,12 @@ public sealed class AnalizarMenuRestauranteRequest
 public sealed class ConfirmarMenuRestauranteRequest
 {
     public string Texto { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
+    public List<Guid>? GustoIds { get; set; }
+}
+
+public sealed class GuardarClasificacionRestauranteRequest
+{
     public string Categoria { get; set; } = string.Empty;
     public List<Guid>? GustoIds { get; set; }
 }

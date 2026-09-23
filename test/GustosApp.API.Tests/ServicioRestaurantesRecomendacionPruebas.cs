@@ -1,7 +1,14 @@
 using FluentAssertions;
 using GustosApp.API.Tests.Infraestructura;
+using GustosApp.Application.Interfaces;
+using GustosApp.Application.Services;
+using GustosApp.Application.UseCases.RestauranteUseCases;
+using GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Infraestructure;
+using GustosApp.Infraestructure.Repositories;
 using GustosApp.Infraestructure.Services;
 using Microsoft.Extensions.Configuration;
 using Moq;
@@ -74,6 +81,124 @@ namespace GustosApp.API.Tests.Servicios
             else resultado.Should().NotContain(r => r.Id == nuevo.Id);
         }
 
+        [Fact]
+        public async Task GuardarClasificacion_SinMenu_PersisteGustosQueLleganALaRecomendacion()
+        {
+            await using var contexto = DbContextEnMemoria.Crear(
+                nameof(GuardarClasificacion_SinMenu_PersisteGustosQueLleganALaRecomendacion));
+            var restaurante = CrearRestauranteImportado("Importado clasificado");
+            contexto.Restaurantes.Add(restaurante);
+            await contexto.SaveChangesAsync();
+            var pizza = contexto.Gustos.Single(gusto => gusto.Nombre == "Pizza");
+            var repositorioRestaurantes = new RestauranteRepositoryEF(contexto);
+            var casoGuardar = new GuardarClasificacionRestauranteImportadoUseCase(
+                repositorioRestaurantes,
+                new GustoRepositoryEF(contexto),
+                TimeProvider.System);
+
+            await casoGuardar.HandleAsync(
+                restaurante.Id,
+                "Pizzería",
+                [pizza.Id]);
+            contexto.ChangeTracker.Clear();
+
+            var servicio = CrearServicio(contexto);
+            var candidatos = await servicio.BuscarAsync(
+                0, null, null, null, ["Pizza"], []);
+            var recomendador = new SugerirGustosSobreUnRadioUseCase(
+                new EmbeddingConstante(),
+                new RestauranteRepositoryEF(contexto),
+                new EvaluadorCompatibilidadRestaurante());
+            var resultado = await recomendador.Handle(
+                new UsuarioPreferencias { Gustos = ["Pizza"] },
+                candidatos);
+
+            resultado.Should().ContainSingle();
+            var recomendado = resultado.Single();
+            recomendado.Id.Should().Be(restaurante.Id);
+            recomendado.MenuProcesado.Should().BeFalse();
+            recomendado.GustosQueSirve.Should().ContainSingle(gusto => gusto.Id == pizza.Id);
+            recomendado.OrigenDatosCompatibilidad.Should().Be(
+                OrigenDatosCompatibilidadRestaurante.Administracion);
+        }
+
+        [Fact]
+        public async Task RestauranteSinMenuYSinGustos_EsCandidatoPeroNoSeRecomiendaPorDatosInsuficientes()
+        {
+            await using var contexto = DbContextEnMemoria.Crear(
+                nameof(RestauranteSinMenuYSinGustos_EsCandidatoPeroNoSeRecomiendaPorDatosInsuficientes));
+            var restaurante = CrearRestauranteImportado("Importado sin clasificar");
+            contexto.Restaurantes.Add(restaurante);
+            await contexto.SaveChangesAsync();
+            contexto.ChangeTracker.Clear();
+
+            var candidatos = await CrearServicio(contexto).BuscarAsync(
+                0, null, null, null, ["Pizza"], []);
+            var recomendador = new SugerirGustosSobreUnRadioUseCase(
+                new EmbeddingConstante(),
+                new RestauranteRepositoryEF(contexto),
+                new EvaluadorCompatibilidadRestaurante());
+
+            candidatos.Should().ContainSingle(item => item.Id == restaurante.Id);
+            var resultado = await recomendador.Handle(
+                new UsuarioPreferencias { Gustos = ["Pizza"] },
+                candidatos);
+
+            resultado.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task RestauranteSinMenuConIncompatibilidadConocida_NoSeRecomienda()
+        {
+            await using var contexto = DbContextEnMemoria.Crear(
+                nameof(RestauranteSinMenuConIncompatibilidadConocida_NoSeRecomienda));
+            var restaurante = CrearRestauranteImportado("Pizzería con gluten");
+            contexto.Restaurantes.Add(restaurante);
+            await contexto.SaveChangesAsync();
+            var pizza = contexto.Gustos.Single(gusto => gusto.Nombre == "Pizza");
+            await new GuardarClasificacionRestauranteImportadoUseCase(
+                    new RestauranteRepositoryEF(contexto),
+                    new GustoRepositoryEF(contexto),
+                    TimeProvider.System)
+                .HandleAsync(restaurante.Id, "Pizzería", [pizza.Id]);
+            contexto.ChangeTracker.Clear();
+
+            var candidatos = await CrearServicio(contexto).BuscarAsync(
+                0, null, null, null, ["Pizza"], ["Sin gluten"]);
+            var recomendador = new SugerirGustosSobreUnRadioUseCase(
+                new EmbeddingConstante(),
+                new RestauranteRepositoryEF(contexto),
+                new EvaluadorCompatibilidadRestaurante());
+            var resultado = await recomendador.Handle(
+                new UsuarioPreferencias
+                {
+                    Gustos = ["Pizza"],
+                    Restricciones = ["Sin gluten"]
+                },
+                candidatos);
+
+            resultado.Should().BeEmpty();
+        }
+
+        private static ServicioRestaurantes CrearServicio(GustosDbContext contexto) => new(
+            contexto,
+            new ConfigurationBuilder().Build(),
+            new HttpClient(),
+            new RestauranteRepositoryEF(contexto));
+
+        private static Restaurante CrearRestauranteImportado(string nombre) => new()
+        {
+            Id = Guid.NewGuid(),
+            Nombre = nombre,
+            NombreNormalizado = nombre.ToLowerInvariant(),
+            Direccion = "Dirección de prueba",
+            PlaceId = Guid.NewGuid().ToString("N"),
+            PropietarioUid = string.Empty,
+            Categoria = "Restaurante",
+            Rating = 4,
+            MenuProcesado = false
+        };
+
         private static Restaurante CrearRestaurante(string nombre, Gusto gusto)
         {
             return new Restaurante
@@ -86,6 +211,11 @@ namespace GustosApp.API.Tests.Servicios
                 Rating = 4,
                 GustosQueSirve = new List<Gusto> { gusto }
             };
+        }
+
+        private sealed class EmbeddingConstante : IEmbeddingService
+        {
+            public float[] GetEmbedding(string text) => [1, 1, 1, 1];
         }
     }
 }

@@ -53,7 +53,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 CalcularSimilitudUsuarioRestaurante(usuario, restaurantesCercanos, embeddingUsuario);
 
             if (!resultados.Any())
-                throw new KeyNotFoundException("No se obtuvo ningun restaurante en la zona para el usuario");
+                return new List<Restaurante>();
 
             List<Restaurante> restaurantesConResenas =
                 await ConsultarRestaurantesConResenas(resultados);

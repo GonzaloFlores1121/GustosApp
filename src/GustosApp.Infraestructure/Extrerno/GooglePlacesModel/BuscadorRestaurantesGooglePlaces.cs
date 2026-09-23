@@ -81,7 +81,17 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
             "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types");
 
         using var respuesta = await _httpClient.SendAsync(pedido, ct);
-        respuesta.EnsureSuccessStatusCode();
+
+        if (!respuesta.IsSuccessStatusCode)
+        {
+            var contenidoError = await respuesta.Content.ReadAsStringAsync(ct);
+
+            throw new HttpRequestException(
+                $"Google Places respondió {(int)respuesta.StatusCode} " +
+                $"{respuesta.StatusCode}. Respuesta: {contenidoError}",
+                null,
+                respuesta.StatusCode);
+        }
 
         var contenido = await respuesta.Content.ReadFromJsonAsync<RespuestaBusquedaCercana>(cancellationToken: ct);
         var fechaDatosUtc = _timeProvider.GetUtcNow().UtcDateTime;

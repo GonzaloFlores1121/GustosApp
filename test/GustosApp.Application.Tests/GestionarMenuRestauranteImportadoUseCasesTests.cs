@@ -5,6 +5,7 @@ using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GustosApp.Application.Tests;
 
@@ -28,7 +29,8 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
             restaurantes.Object,
             gustos.Object,
             Mock.Of<IOcrService>(),
-            ia.Object);
+            ia.Object,
+            NullLogger<AnalizarMenuRestauranteImportadoUseCase>.Instance);
 
         var resultado = await useCase.HandleAsync(
             restaurante.Id,
@@ -59,7 +61,8 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
             .ReturnsAsync("Error de límite de uso");
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
-            restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object);
+            restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
+            NullLogger<AnalizarMenuRestauranteImportadoUseCase>.Instance);
 
         var resultado = await useCase.HandleAsync(
             restaurante.Id,
@@ -69,6 +72,61 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         resultado.AnalizadoConIa.Should().BeFalse();
         resultado.GustosSugeridos.Select(g => g.Nombre).Should().BeEquivalentTo("Café con leche", "Pastelería");
         resultado.DetalleAnalisis.Should().Contain("no estuvo disponible");
+    }
+
+    [Fact]
+    public async Task Analizar_FalloDeGemini_ConservaAnalisisLocalYNoExponeElErrorTecnico()
+    {
+        var restaurante = CrearRestauranteImportado();
+        var pizza = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+        restaurante.GustosQueSirve.Add(pizza);
+        var restaurantes = new Mock<IRestauranteRepository>();
+        restaurantes.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restaurante);
+        var gustos = new Mock<IGustoRepository>();
+        gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([pizza]);
+        var ia = new Mock<IRecomendacionAIService>();
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+            .ThrowsAsync(new InvalidOperationException("API key secreta inválida"));
+        var useCase = new AnalizarMenuRestauranteImportadoUseCase(
+            restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
+            NullLogger<AnalizarMenuRestauranteImportadoUseCase>.Instance);
+
+        var resultado = await useCase.HandleAsync(restaurante.Id, "Pizza napolitana", []);
+
+        resultado.AnalizadoConIa.Should().BeFalse();
+        resultado.GustosSugeridos.Should().ContainSingle().Which.Id.Should().Be(pizza.Id);
+        resultado.DetalleAnalisis.Should().Contain("no estuvo disponible");
+        resultado.DetalleAnalisis.Should().NotContain("API key");
+        restaurante.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(pizza);
+    }
+
+    [Fact]
+    public async Task Analizar_SugerenciasNuevas_NoModificaLosGustosPersistidosAntesDeConfirmar()
+    {
+        var restaurante = CrearRestauranteImportado();
+        var pizza = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+        var empanadas = new Gusto { Id = Guid.NewGuid(), Nombre = "Empanadas" };
+        restaurante.GustosQueSirve.Add(pizza);
+        var restaurantes = new Mock<IRestauranteRepository>();
+        restaurantes.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restaurante);
+        var gustos = new Mock<IGustoRepository>();
+        gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([pizza, empanadas]);
+        var ia = new Mock<IRecomendacionAIService>();
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+            .ReturnsAsync("{\"categoria\":\"Restaurante\",\"gustos\":[\"Empanadas\"]}");
+        var useCase = new AnalizarMenuRestauranteImportadoUseCase(
+            restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
+            NullLogger<AnalizarMenuRestauranteImportadoUseCase>.Instance);
+
+        var resultado = await useCase.HandleAsync(restaurante.Id, "Empanadas de carne", []);
+
+        resultado.GustosSugeridos.Should().Contain(gusto => gusto.Id == empanadas.Id);
+        restaurante.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(pizza);
+        restaurantes.Verify(r => r.UpdateAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()), Times.Never);
+        restaurantes.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -92,9 +150,78 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         resultado.Should().ContainSingle();
         resultado.Single().Motivos.Should().Equal(
             "Error al procesar menú",
-            "Sin menú procesado",
             "Sin gustos",
             "Clasificación automática");
+    }
+
+    [Fact]
+    public async Task ObtenerDetalle_SinMenu_DebeIncluirGustosActualesYCatalogoCompleto()
+    {
+        var restaurante = CrearRestauranteImportado();
+        var pizza = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+        var empanadas = new Gusto { Id = Guid.NewGuid(), Nombre = "Empanadas" };
+        restaurante.GustosQueSirve.Add(pizza);
+        var restaurantes = new Mock<IRestauranteRepository>();
+        restaurantes.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restaurante);
+        var gustos = new Mock<IGustoRepository>();
+        gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([pizza, empanadas]);
+        var useCase = new ObtenerDetalleGestionRestauranteUseCase(restaurantes.Object, gustos.Object);
+
+        var resultado = await useCase.HandleAsync(restaurante.Id);
+
+        resultado.EstadoMenu.Should().Be("Sin procesar");
+        resultado.Gustos.Should().ContainSingle().Which.Id.Should().Be(pizza.Id);
+        resultado.CatalogoGustos.Select(gusto => gusto.Id).Should()
+            .BeEquivalentTo(new[] { pizza.Id, empanadas.Id });
+    }
+
+    [Fact]
+    public async Task GuardarClasificacion_SinMenu_DebeQuitarSoloGustosDesmarcadosYSinCambiarEstadoMenu()
+    {
+        var restaurante = CrearRestauranteImportado();
+        restaurante.MenuProcesado = false;
+        restaurante.MenuError = "Error anterior";
+        var pizza = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+        var empanadas = new Gusto { Id = Guid.NewGuid(), Nombre = "Empanadas" };
+        var cafe = new Gusto { Id = Guid.NewGuid(), Nombre = "Café" };
+        restaurante.GustosQueSirve.Add(pizza);
+        restaurante.GustosQueSirve.Add(empanadas);
+        var restaurantes = new Mock<IRestauranteRepository>();
+        restaurantes.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restaurante);
+        var gustos = new Mock<IGustoRepository>();
+        gustos.Setup(r => r.GetByIdsAsync(
+                It.Is<List<Guid>>(ids => ids.Contains(pizza.Id) && ids.Contains(cafe.Id)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([pizza, cafe]);
+        var useCase = new GuardarClasificacionRestauranteImportadoUseCase(
+            restaurantes.Object, gustos.Object, TimeProvider.System);
+
+        await useCase.HandleAsync(restaurante.Id, "Cafetería", [pizza.Id, cafe.Id]);
+
+        restaurante.GustosQueSirve.Should().BeEquivalentTo([pizza, cafe]);
+        restaurante.MenuProcesado.Should().BeFalse();
+        restaurante.MenuError.Should().Be("Error anterior");
+        restaurantes.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GuardarClasificacion_RestauranteConPropietario_DebeRechazarLaEdicion()
+    {
+        var restaurante = CrearRestauranteImportado();
+        restaurante.PropietarioUid = "propietario";
+        var restaurantes = new Mock<IRestauranteRepository>();
+        restaurantes.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restaurante);
+        var useCase = new GuardarClasificacionRestauranteImportadoUseCase(
+            restaurantes.Object, Mock.Of<IGustoRepository>(), TimeProvider.System);
+
+        var accion = () => useCase.HandleAsync(restaurante.Id, "Restaurante", []);
+
+        await accion.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*sólo para restaurantes importados*");
     }
 
     [Fact]

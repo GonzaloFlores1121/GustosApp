@@ -2,6 +2,7 @@
 using Google.GenAI.Types;
 using GustosApp.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Environment = System.Environment;
 
@@ -10,13 +11,18 @@ namespace GustosApp.Application.Services
     public class RecomendacionAIService : IRecomendacionAIService
     {
         private readonly Client _client;
-        private readonly string _apiKey;
+        private readonly string _model;
+        private readonly ILogger<RecomendacionAIService> _logger;
 
         
-        public RecomendacionAIService(IOptions<GeminiSettings> opts, HttpClient http, IConfiguration config)
+        public RecomendacionAIService(
+            IOptions<GeminiSettings> opts,
+            HttpClient http,
+            IConfiguration config,
+            ILogger<RecomendacionAIService> logger)
         {
             var cfg = opts?.Value ?? throw new ArgumentNullException(nameof(opts));
-            var apiKey = cfg.ApiKey ?? throw new ArgumentNullException("GeminiSettings:ApiKey");
+            var apiKey = cfg.ApiKey;
 
             if (string.IsNullOrWhiteSpace(apiKey))
                 apiKey = config["GeminiSettings:ApiKey"];
@@ -26,9 +32,12 @@ namespace GustosApp.Application.Services
 
             if (string.IsNullOrWhiteSpace(apiKey))
                 throw new InvalidOperationException("GeminiSettings:ApiKey no configurada. Use user-secrets, appsettings o la variable de entorno GOOGLE_API_KEY.");
+            if (string.IsNullOrWhiteSpace(cfg.Model))
+                throw new InvalidOperationException("GeminiSettings:Model no está configurado.");
 
-            _apiKey = apiKey;
-            _client = new Client(apiKey: _apiKey);
+            _model = cfg.Model;
+            _logger = logger;
+            _client = new Client(apiKey: apiKey);
         }
 
         public async Task<string> GenerarRecomendacion(string prompt)
@@ -36,15 +45,20 @@ namespace GustosApp.Application.Services
             try
             {
                 var response = await _client.Models.GenerateContentAsync(
-                    model: "gemini-2.0-flash",
+                    model: _model,
                     contents: prompt
                 );
 
-                return response.Candidates[0].Content.Parts[0].Text;
+                var texto = response.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
+                if (string.IsNullOrWhiteSpace(texto))
+                    throw new InvalidOperationException("Gemini devolvió una respuesta sin contenido de texto.");
+                return texto;
             }
             catch (Exception ex)
             {
-                return $"Error generando recomendación: {ex.Message}";
+                _logger.LogError(ex, "Falló la generación con Gemini usando el modelo {Modelo}", _model);
+                throw new InvalidOperationException(
+                    "No se pudo obtener una respuesta de Gemini en este momento.", ex);
             }
         }
     }

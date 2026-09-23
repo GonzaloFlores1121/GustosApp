@@ -2,6 +2,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Application.Services;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Model;
+using Microsoft.Extensions.Logging;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases
 {
@@ -18,13 +19,16 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
         private readonly IRecomendacionAIService _ia;
         private readonly EvaluadorCompatibilidadRestaurante _evaluadorCompatibilidad;
+        private readonly ILogger<RecomendacionIAUseCase> _logger;
 
         public RecomendacionIAUseCase(
             IRecomendacionAIService ia,
-            EvaluadorCompatibilidadRestaurante evaluadorCompatibilidad)
+            EvaluadorCompatibilidadRestaurante evaluadorCompatibilidad,
+            ILogger<RecomendacionIAUseCase> logger)
         {
             _ia = ia;
             _evaluadorCompatibilidad = evaluadorCompatibilidad;
+            _logger = logger;
         }
 
         public async Task<string> Handle(
@@ -39,6 +43,12 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 CondicionesMedicas = usuario.CondicionesMedicas.Select(c => c.Nombre).ToList()
             };
 
+            if (!restaurante.GustosQueSirve.Any(gusto =>
+                    !string.IsNullOrWhiteSpace(gusto.Nombre)))
+            {
+                return MensajeCompatibilidadDesconocida;
+            }
+
             var compatibilidad = _evaluadorCompatibilidad.Evaluar(preferencias, restaurante);
 
             if (compatibilidad == NivelCompatibilidadRestaurante.Incompatible)
@@ -49,8 +59,19 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            var explicacion = await _ia.GenerarRecomendacion(
-                ConstruirPromptDeGustos(usuario, restaurante));
+            string explicacion;
+            try
+            {
+                explicacion = await _ia.GenerarRecomendacion(
+                    ConstruirPromptDeGustos(usuario, restaurante));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex,
+                    "No se pudo generar la explicación del restaurante {RestauranteId}",
+                    restaurante.Id);
+                return "No pudimos generar la explicación personalizada en este momento. Podés seguir consultando la información del restaurante.";
+            }
             var tieneCuidadosDeSalud = preferencias.Restricciones.Count > 0 ||
                 preferencias.CondicionesMedicas.Count > 0;
 

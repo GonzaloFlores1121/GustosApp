@@ -256,8 +256,12 @@ namespace GustosApp.Application.Tests
             _repoMock.Setup(x => x.obtenerRestauranteConResenias(It.IsAny<List<Guid>>()))
                 .ReturnsAsync(new List<Restaurante>());
 
-            await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-                _sut.Handle(usuario, restaurantes));
+            var resultado = await _sut.Handle(usuario, restaurantes);
+
+            Assert.Empty(resultado);
+            _repoMock.Verify(
+                x => x.obtenerRestauranteConResenias(It.IsAny<List<Guid>>()),
+                Times.Never);
         }
 
         [Fact]

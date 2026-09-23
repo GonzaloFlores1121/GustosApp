@@ -147,9 +147,6 @@ builder.Services.AddDbContext<GustosDbContext>(options =>
 
 
 
-builder.Services.AddHttpClient<IRecomendacionAIService, RecomendacionAIService>();
-builder.Services.Configure<GeminiSettings>(builder.Configuration.GetSection("GeminiSettings"));
-
 // Para notificaciones en tiempo real
 builder.Services.AddSignalR(options =>
 {

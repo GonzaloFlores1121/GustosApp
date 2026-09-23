@@ -24,6 +24,7 @@ public sealed class PruebasAutorizacionApi : IClassFixture<FabricaApiGustosAppAu
     [Theory]
     [InlineData("/Admin/restaurantes/menu/pendientes")]
     [InlineData("/Admin/restaurantes/menu/buscar?texto=pizza")]
+    [InlineData("/Admin/restaurantes/menu/11111111-1111-1111-1111-111111111111")]
     public async Task GestionarMenusImportados_SinRolAdministrador_DevuelveProhibido(string ruta)
     {
         var respuesta = await _cliente.GetAsync(ruta);

@@ -99,14 +99,16 @@ namespace GustosApp.API.Controllers
         }
 
         [HttpPost("restaurantes/descubrir-cercanos")]
-        [ProducesResponseType(typeof(ResultadoDescubrimientoRestaurantes), StatusCodes.Status200OK)]
+        [ProducesResponseType(
+      typeof(ResultadoDescubrimientoRestaurantes),
+      StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status502BadGateway)]
         public async Task<IActionResult> DescubrirRestaurantesCercanos(
-            [FromBody] DescubrimientoRestaurantesDto solicitud,
-            CancellationToken ct)
+      [FromBody] DescubrimientoRestaurantesDto solicitud,
+      CancellationToken ct)
         {
             try
             {
@@ -124,11 +126,16 @@ namespace GustosApp.API.Controllers
             {
                 return BadRequest(new { error = ex.Message });
             }
-            catch (HttpRequestException)
+            catch (HttpRequestException ex)
             {
                 return StatusCode(
                     StatusCodes.Status502BadGateway,
-                    new { error = "Google Places no pudo completar la búsqueda." });
+                    new
+                    {
+                        error = "Google Places no pudo completar la búsqueda.",
+                        googleStatusCode = (int?)ex.StatusCode,
+                        detalle = ex.Message
+                    });
             }
         }
 

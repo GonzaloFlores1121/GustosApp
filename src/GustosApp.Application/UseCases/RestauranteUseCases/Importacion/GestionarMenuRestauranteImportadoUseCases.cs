@@ -5,6 +5,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using Microsoft.Extensions.Logging;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
 
@@ -26,15 +27,24 @@ public sealed record RestauranteParaGestionMenu(
     string Nombre,
     string Direccion,
     string? Categoria,
-    bool TieneMenu,
+    string EstadoMenu,
     IReadOnlyCollection<GustoSugeridoMenu> Gustos);
+
+public sealed record DetalleGestionRestaurante(
+    Guid Id,
+    string Nombre,
+    string Direccion,
+    string? Categoria,
+    string EstadoMenu,
+    IReadOnlyCollection<GustoSugeridoMenu> Gustos,
+    IReadOnlyCollection<GustoSugeridoMenu> CatalogoGustos);
 
 public sealed record RestaurantePendienteClasificacion(
     Guid Id,
     string Nombre,
     string Direccion,
     string? Categoria,
-    bool TieneMenu,
+    string EstadoMenu,
     IReadOnlyCollection<string> Motivos,
     IReadOnlyCollection<GustoSugeridoMenu> Gustos);
 
@@ -53,17 +63,20 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
     private readonly IGustoRepository _gustos;
     private readonly IOcrService _ocr;
     private readonly IRecomendacionAIService _ia;
+    private readonly ILogger<AnalizarMenuRestauranteImportadoUseCase> _logger;
 
     public AnalizarMenuRestauranteImportadoUseCase(
         IRestauranteRepository restaurantes,
         IGustoRepository gustos,
         IOcrService ocr,
-        IRecomendacionAIService ia)
+        IRecomendacionAIService ia,
+        ILogger<AnalizarMenuRestauranteImportadoUseCase> logger)
     {
         _restaurantes = restaurantes;
         _gustos = gustos;
         _ocr = ocr;
         _ia = ia;
+        _logger = logger;
     }
 
     public async Task<ResultadoAnalisisMenuRestaurante> HandleAsync(
@@ -108,9 +121,11 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
             else if (!string.IsNullOrWhiteSpace(respuesta) && !respuesta.StartsWith("Error ", StringComparison.OrdinalIgnoreCase))
                 detalleAnalisis = "Gemini respondió, pero el formato no se pudo interpretar; se conservaron las coincidencias locales.";
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // El análisis local sigue siendo una vista previa válida si Gemini no está disponible.
+            _logger.LogWarning(ex,
+                "Gemini no pudo complementar el análisis del menú del restaurante {RestauranteId}",
+                restauranteId);
         }
 
         return new ResultadoAnalisisMenuRestaurante(
@@ -220,7 +235,7 @@ public sealed class ObtenerPendientesClasificacionRestauranteUseCase
                 restaurante.Nombre,
                 restaurante.Direccion,
                 restaurante.Categoria,
-                restaurante.MenuProcesado == true,
+                ObtenerEstadoMenu(restaurante),
                 ObtenerMotivos(restaurante),
                 restaurante.GustosQueSirve.OrderBy(gusto => gusto.Nombre)
                     .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray()))
@@ -231,11 +246,102 @@ public sealed class ObtenerPendientesClasificacionRestauranteUseCase
     {
         var motivos = new List<string>();
         if (!string.IsNullOrWhiteSpace(restaurante.MenuError)) motivos.Add("Error al procesar menú");
-        if (restaurante.MenuProcesado != true) motivos.Add("Sin menú procesado");
+        else if (restaurante.MenuProcesado != true) motivos.Add("Sin menú procesado");
         if (restaurante.GustosQueSirve.Count == 0) motivos.Add("Sin gustos");
         if (restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces)
             motivos.Add("Clasificación automática");
         return motivos;
+    }
+
+    internal static string ObtenerEstadoMenu(Restaurante restaurante) =>
+        !string.IsNullOrWhiteSpace(restaurante.MenuError)
+            ? "Error de procesamiento"
+            : restaurante.MenuProcesado == true ? "Procesado" : "Sin procesar";
+}
+
+public sealed class ObtenerDetalleGestionRestauranteUseCase
+{
+    private readonly IRestauranteRepository _restaurantes;
+    private readonly IGustoRepository _gustos;
+
+    public ObtenerDetalleGestionRestauranteUseCase(
+        IRestauranteRepository restaurantes,
+        IGustoRepository gustos)
+    {
+        _restaurantes = restaurantes;
+        _gustos = gustos;
+    }
+
+    public async Task<DetalleGestionRestaurante> HandleAsync(Guid restauranteId, CancellationToken ct = default)
+    {
+        var restaurante = await ObtenerRestauranteImportadoAsync(_restaurantes, restauranteId, ct);
+        var catalogo = await _gustos.GetAllAsync(ct);
+
+        return new DetalleGestionRestaurante(
+            restaurante.Id,
+            restaurante.Nombre,
+            restaurante.Direccion,
+            restaurante.Categoria,
+            ObtenerPendientesClasificacionRestauranteUseCase.ObtenerEstadoMenu(restaurante),
+            restaurante.GustosQueSirve.OrderBy(gusto => gusto.Nombre)
+                .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray(),
+            catalogo.OrderBy(gusto => gusto.Nombre)
+                .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray());
+    }
+
+    internal static async Task<Restaurante> ObtenerRestauranteImportadoAsync(
+        IRestauranteRepository restaurantes,
+        Guid restauranteId,
+        CancellationToken ct)
+    {
+        var restaurante = await restaurantes.GetByIdAsync(restauranteId, ct)
+            ?? throw new KeyNotFoundException("Restaurante no encontrado.");
+        if (restaurante.DuenoId.HasValue || !string.IsNullOrWhiteSpace(restaurante.PropietarioUid))
+            throw new InvalidOperationException("Este flujo es sólo para restaurantes importados sin propietario.");
+        return restaurante;
+    }
+}
+
+public sealed class GuardarClasificacionRestauranteImportadoUseCase
+{
+    private readonly IRestauranteRepository _restaurantes;
+    private readonly IGustoRepository _gustos;
+    private readonly TimeProvider _reloj;
+
+    public GuardarClasificacionRestauranteImportadoUseCase(
+        IRestauranteRepository restaurantes,
+        IGustoRepository gustos,
+        TimeProvider reloj)
+    {
+        _restaurantes = restaurantes;
+        _gustos = gustos;
+        _reloj = reloj;
+    }
+
+    public async Task HandleAsync(
+        Guid restauranteId,
+        string categoria,
+        IReadOnlyCollection<Guid> gustoIds,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(categoria) || categoria.Trim().Length > 100)
+            throw new ArgumentException("La categoría debe tener entre 1 y 100 caracteres.");
+
+        var restaurante = await ObtenerDetalleGestionRestauranteUseCase.ObtenerRestauranteImportadoAsync(
+            _restaurantes, restauranteId, ct);
+        var idsUnicos = gustoIds.Distinct().ToList();
+        var gustos = await _gustos.GetByIdsAsync(idsUnicos, ct);
+        if (gustos.Count != idsUnicos.Count)
+            throw new ArgumentException("Uno o más gustos seleccionados no existen.");
+
+        var ahora = _reloj.GetUtcNow().UtcDateTime;
+        restaurante.Categoria = categoria.Trim();
+        restaurante.SetGustos(gustos);
+        restaurante.ActualizadoUtc = ahora;
+        restaurante.RegistrarDatosCompatibilidadEstimados(
+            OrigenDatosCompatibilidadRestaurante.Administracion, ahora);
+        await _restaurantes.UpdateAsync(restaurante, ct);
+        await _restaurantes.SaveChangesAsync(ct);
     }
 }
 
@@ -268,10 +374,8 @@ public sealed class ConfirmarMenuRestauranteImportadoUseCase
         if (string.IsNullOrWhiteSpace(categoria) || categoria.Trim().Length > 100)
             throw new ArgumentException("La categoría debe tener entre 1 y 100 caracteres.");
 
-        var restaurante = await _restaurantes.GetByIdAsync(restauranteId, ct)
-            ?? throw new KeyNotFoundException("Restaurante no encontrado.");
-        if (restaurante.DuenoId.HasValue || !string.IsNullOrWhiteSpace(restaurante.PropietarioUid))
-            throw new InvalidOperationException("Este flujo es sólo para restaurantes importados sin propietario.");
+        var restaurante = await ObtenerDetalleGestionRestauranteUseCase.ObtenerRestauranteImportadoAsync(
+            _restaurantes, restauranteId, ct);
 
         var gustos = await _gustos.GetByIdsAsync(gustoIds.Distinct().ToList(), ct);
         if (gustos.Count != gustoIds.Distinct().Count())
@@ -321,7 +425,8 @@ public sealed class BuscarRestaurantesParaGestionMenuUseCase
         return encontrados.Where(r => !r.DuenoId.HasValue && string.IsNullOrWhiteSpace(r.PropietarioUid))
             .Take(20)
             .Select(r => new RestauranteParaGestionMenu(r.Id, r.Nombre, r.Direccion, r.Categoria,
-                r.MenuProcesado == true, r.GustosQueSirve.Select(g => new GustoSugeridoMenu(g.Id, g.Nombre)).ToArray()))
+                ObtenerPendientesClasificacionRestauranteUseCase.ObtenerEstadoMenu(r),
+                r.GustosQueSirve.Select(g => new GustoSugeridoMenu(g.Id, g.Nombre)).ToArray()))
             .ToArray();
     }
 }

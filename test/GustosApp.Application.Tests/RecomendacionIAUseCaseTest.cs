@@ -4,6 +4,7 @@ using GustosApp.Application.Services;
 using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Domain.Model;
 using Moq;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GustosApp.Application.Tests
 {
@@ -48,6 +49,45 @@ namespace GustosApp.Application.Tests
             _ia.Verify(
                 servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
                 Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_RestauranteSinGustos_NoConsultaLaIAPorqueLosDatosSonInsuficientes()
+        {
+            var casoDeUso = CrearCasoDeUso();
+            var restaurante = CrearRestaurante(gustos: []);
+
+            var resultado = await casoDeUso.Handle(
+                CrearUsuario(gustos: ["Pizza"]),
+                restaurante,
+                CancellationToken.None);
+
+            resultado.Should().Contain("No hay información suficiente");
+            _ia.Verify(
+                servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_RestauranteSinMenuConGustos_UsaLosGustosGuardados()
+        {
+            string? promptEnviado = null;
+            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>()))
+                .Callback<string>(prompt => promptEnviado = prompt)
+                .ReturnsAsync("Coincide con tu gusto por la pizza.");
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            restaurante.MenuProcesado = false;
+
+            var resultado = await CrearCasoDeUso().Handle(
+                CrearUsuario(gustos: ["Pizza"]),
+                restaurante,
+                CancellationToken.None);
+
+            resultado.Should().Contain("pizza");
+            promptEnviado.Should().Contain("Propuesta del restaurante: Pizza");
+            _ia.Verify(
+                servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
+                Times.Once);
         }
 
         [Fact]
@@ -98,11 +138,29 @@ namespace GustosApp.Application.Tests
             resultado.Should().Be("Coincide con tus gustos.");
         }
 
+        [Fact]
+        public async Task Handle_FalloDeGemini_DevuelveMensajeComprensibleSinDetalleTecnico()
+        {
+            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("API key inválida: secreto-123"));
+            var casoDeUso = CrearCasoDeUso();
+
+            var resultado = await casoDeUso.Handle(
+                CrearUsuario(gustos: ["Pizza"]),
+                CrearRestaurante(gustos: ["Pizza"]),
+                CancellationToken.None);
+
+            resultado.Should().Contain("No pudimos generar la explicación personalizada");
+            resultado.Should().NotContain("API key");
+            resultado.Should().NotContain("secreto-123");
+        }
+
         private RecomendacionIAUseCase CrearCasoDeUso()
         {
             return new RecomendacionIAUseCase(
                 _ia.Object,
-                new EvaluadorCompatibilidadRestaurante());
+                new EvaluadorCompatibilidadRestaurante(),
+                NullLogger<RecomendacionIAUseCase>.Instance);
         }
 
         private static Usuario CrearUsuario(
