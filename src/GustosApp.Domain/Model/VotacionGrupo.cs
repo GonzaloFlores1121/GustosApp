@@ -64,11 +64,12 @@ namespace GustosApp.Domain.Model
 
         public void Cancelar()
         {
-            if (Estado == EstadoVotacion.Cerrada)
-                throw new InvalidOperationException("No se puede cancelar una votación cerrada");
+            if (Estado != EstadoVotacion.Activa)
+                throw new InvalidOperationException("Solo se pueden cancelar votaciones activas");
 
             Estado = EstadoVotacion.Cancelada;
             FechaCierre = DateTime.UtcNow;
+            RestauranteGanadorId = null;
         }
 
         public Dictionary<Guid, int> ObtenerResultados()

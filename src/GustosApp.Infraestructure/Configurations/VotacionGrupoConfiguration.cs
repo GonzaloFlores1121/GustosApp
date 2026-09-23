@@ -41,6 +41,10 @@ namespace GustosApp.Infraestructure.Configurations
                 .OnDelete(DeleteBehavior.Cascade);
 
             builder.HasIndex(v => new { v.GrupoId, v.Estado });
+
+            builder.HasIndex(v => v.GrupoId)
+                .IsUnique()
+                .HasFilter("[Estado] = N'Activa'");
         }
     }
 }

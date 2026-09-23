@@ -45,7 +45,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync((Usuario?)null);
 
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-                _useCase.HandleAsync(firebaseUid, votacionId, Guid.NewGuid()));
+                _useCase.HandleAsync(firebaseUid, votacionId));
         }
 
         [Fact]
@@ -64,7 +64,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync((VotacionGrupo?)null);
 
             var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-                _useCase.HandleAsync(firebaseUid, votacionId, Guid.NewGuid()));
+                _useCase.HandleAsync(firebaseUid, votacionId));
 
             Assert.Equal("Votación no encontrada", ex.Message);
         }
@@ -87,7 +87,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(votacion);
 
             var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
-                _useCase.HandleAsync(firebaseUid, votacionId, Guid.NewGuid()));
+                _useCase.HandleAsync(firebaseUid, votacionId));
 
             Assert.Equal("Solo el administrador puede seleccionar el ganador", ex.Message);
             _mockVotacionRepository.Verify(
@@ -118,7 +118,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(votacion);
 
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _useCase.HandleAsync(firebaseUid, votacionId, Guid.NewGuid()));
+                _useCase.HandleAsync(firebaseUid, votacionId));
 
             Assert.Equal("La votación no está activa", ex.Message);
         }
@@ -143,7 +143,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(votacion);
 
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
+                _useCase.HandleAsync(firebaseUid, Guid.NewGuid()));
 
             Assert.Equal("Ya se seleccionó un ganador para esta votación", ex.Message);
         }
@@ -163,13 +163,13 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(votacion);
 
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
+                _useCase.HandleAsync(firebaseUid, Guid.NewGuid()));
 
             Assert.Equal("La ruleta solo puede utilizarse cuando todos los participantes hayan votado", ex.Message);
         }
 
         [Fact]
-        public async Task HandleAsync_RestauranteNoEmpatado_LanzaArgumentException()
+        public async Task HandleAsync_RestauranteEmpatadoNoCandidato_LanzaInvalidOperationException()
         {
             var firebaseUid = "firebase123";
             var votacionId = Guid.NewGuid();
@@ -179,7 +179,6 @@ namespace GustosApp.Application.Tests
 
             var r1 = Guid.NewGuid();
             var r2 = Guid.NewGuid();
-            var noEmpatado = Guid.NewGuid();
             var segundoUsuarioId = Guid.NewGuid();
 
             var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
@@ -197,10 +196,12 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Setup(x => x.ObtenerPorIdConCandidatosAsync(votacionId, default))
                 .ReturnsAsync(votacion);
 
-            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-                _useCase.HandleAsync(firebaseUid, votacionId, noEmpatado));
+            votacion.RestaurantesCandidatos.Remove(votacion.RestaurantesCandidatos.Last());
 
-            Assert.Equal("El restaurante seleccionado no está entre los empatados", ex.Message);
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _useCase.HandleAsync(firebaseUid, votacionId));
+
+            Assert.Equal("Hay restaurantes empatados que no son candidatos válidos", ex.Message);
         }
 
 
@@ -234,9 +235,9 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(votacion);
 
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _useCase.HandleAsync(firebaseUid, votacionId, ganador));
+                _useCase.HandleAsync(firebaseUid, votacionId));
 
-            Assert.Equal("El restaurante seleccionado no es un candidato válido", ex.Message);
+            Assert.Equal("Hay restaurantes empatados que no son candidatos válidos", ex.Message);
         }
 
     
@@ -275,16 +276,16 @@ namespace GustosApp.Application.Tests
                 .Returns(Task.CompletedTask);
 
             // Act
-            var result = await _useCase.HandleAsync(firebaseUid, votacionId, r1);
+            var result = await _useCase.HandleAsync(firebaseUid, votacionId);
 
             // Assert
-            Assert.Equal(r1, result.RestauranteGanadorId);
+            Assert.Contains(result.RestauranteGanadorId, new Guid?[] { r1, r2 });
             Assert.Equal(EstadoVotacion.Cerrada, result.Estado);
             _mockNotificaciones.Verify(
-                n => n.NotificarGanador(grupo.Id, votacion.Id, r1),
+                n => n.NotificarGanador(grupo.Id, votacion.Id, result.RestauranteGanadorId!.Value),
                 Times.Once);
             _mockNotificaciones.Verify(
-                n => n.NotificarVotacionCerrada(grupo.Id, votacion.Id, r1),
+                n => n.NotificarVotacionCerrada(grupo.Id, votacion.Id, result.RestauranteGanadorId),
                 Times.Once);
         }
 
@@ -325,9 +326,9 @@ namespace GustosApp.Application.Tests
                 .Setup(x => x.ActualizarVotacionAsync(It.IsAny<VotacionGrupo>(), default))
                 .Returns(Task.CompletedTask);
 
-            var result = await _useCase.HandleAsync(firebaseUid, votacionId, r3);
+            var result = await _useCase.HandleAsync(firebaseUid, votacionId);
 
-            Assert.Equal(r3, result.RestauranteGanadorId);
+            Assert.Contains(result.RestauranteGanadorId, new Guid?[] { r1, r2, r3 });
             Assert.Equal(EstadoVotacion.Cerrada, result.Estado);
         }
 

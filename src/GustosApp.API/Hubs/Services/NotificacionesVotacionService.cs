@@ -44,6 +44,12 @@ namespace GustosApp.API.Hubs.Services
                 .SendAsync("VotacionCerrada", new { votacionId, restauranteGanadorId });
         }
 
+        public Task NotificarVotacionCancelada(Guid grupoId, Guid votacionId)
+        {
+            return _hub.Clients.Group(grupoId.ToString())
+                .SendAsync("VotacionCancelada", new { votacionId });
+        }
+
         public async Task NotificarVotacionIniciada(VotacionGrupo votacion)
         {
             await _hub.Clients.Group(votacion.GrupoId.ToString())

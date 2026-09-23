@@ -115,6 +115,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<RegistrarVotoUseCase>();
             services.AddScoped<ObtenerResultadosVotacionUseCase>();
             services.AddScoped<CerrarVotacionUseCase>();
+            services.AddScoped<CancelarVotacionUseCase>();
             services.AddScoped<SeleccionarGanadorRuletaUseCase>();
             services.AddScoped<ObtenerHistorialVotacionesUseCase>();
             services.AddScoped<IActualizarImagenesRestauranteUseCase, ActualizarImagenesRestauranteUseCase>();

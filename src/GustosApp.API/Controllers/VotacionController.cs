@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.API.DTO;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.VotacionUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -21,6 +22,7 @@ namespace GustosApp.API.Controllers
         private readonly RegistrarVotoUseCase _registrarVotoUseCase;
         private readonly ObtenerResultadosVotacionUseCase _obtenerResultadosUseCase;
         private readonly CerrarVotacionUseCase _cerrarVotacionUseCase;
+        private readonly CancelarVotacionUseCase _cancelarVotacionUseCase;
         private readonly SeleccionarGanadorRuletaUseCase _seleccionarGanadorRuletaUseCase;
         private readonly ObtenerHistorialVotacionesUseCase _obtenerHistorialVotacionesUseCase;
         private readonly IVotacionRepository _votacionRepository;
@@ -32,6 +34,7 @@ namespace GustosApp.API.Controllers
             RegistrarVotoUseCase registrarVotoUseCase,
             ObtenerResultadosVotacionUseCase obtenerResultadosUseCase,
             CerrarVotacionUseCase cerrarVotacionUseCase,
+            CancelarVotacionUseCase cancelarVotacionUseCase,
             SeleccionarGanadorRuletaUseCase seleccionarGanadorRuletaUseCase,
             ObtenerHistorialVotacionesUseCase obtenerHistorialVotacionesUseCase,
             IVotacionRepository votacionRepository,
@@ -42,6 +45,7 @@ namespace GustosApp.API.Controllers
             _registrarVotoUseCase = registrarVotoUseCase;
             _obtenerResultadosUseCase = obtenerResultadosUseCase;
             _cerrarVotacionUseCase = cerrarVotacionUseCase;
+            _cancelarVotacionUseCase = cancelarVotacionUseCase;
             _seleccionarGanadorRuletaUseCase = seleccionarGanadorRuletaUseCase;
             _obtenerHistorialVotacionesUseCase = obtenerHistorialVotacionesUseCase;
             _votacionRepository = votacionRepository;
@@ -130,6 +134,11 @@ namespace GustosApp.API.Controllers
                 ?? throw new ArgumentException("Grupo no encontrado");
 
             bool soyAdmin = grupo.AdministradorId == usuario.Id;
+            var esMiembroActivo = await _grupoRepository.UsuarioEsMiembroAsync(grupoId, firebaseUid, ct);
+
+            if (!soyAdmin && !esMiembroActivo)
+                throw new AccesoProhibidoException(
+                    "No eres un miembro activo del grupo.");
 
             // buscar votación activa
             var votacionActiva = await _votacionRepository.ObtenerVotacionActivaAsync(grupoId, ct);
@@ -200,6 +209,7 @@ namespace GustosApp.API.Controllers
                 Votaciones = resultado.Votaciones.Select(v => new VotacionHistorialResponse
                 {
                     VotacionId = v.VotacionId,
+                    Estado = v.Estado.ToString(),
                     Descripcion = v.Descripcion,
                     FechaInicio = v.FechaInicio,
                     FechaCierre = v.FechaCierre,
@@ -258,14 +268,12 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> SeleccionarGanadorRuleta(
             Guid votacionId,
-            [FromBody] SeleccionarGanadorRequest request,
             CancellationToken ct)
         {
             var firebaseUid = GetFirebaseUid();
             var votacion = await _seleccionarGanadorRuletaUseCase.HandleAsync(
                 firebaseUid,
                 votacionId,
-                request.RestauranteGanadorId,
                 ct);
 
             var response = new VotacionResponse
@@ -280,6 +288,33 @@ namespace GustosApp.API.Controllers
             };
 
             return Ok(response);
+        }
+
+        [HttpPost("{votacionId}/cancelar")]
+        [ProducesResponseType(typeof(VotacionResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> CancelarVotacion(
+            Guid votacionId,
+            CancellationToken ct)
+        {
+            var votacion = await _cancelarVotacionUseCase.HandleAsync(
+                GetFirebaseUid(),
+                votacionId,
+                ct);
+
+            return Ok(new VotacionResponse
+            {
+                Id = votacion.Id,
+                GrupoId = votacion.GrupoId,
+                Estado = votacion.Estado.ToString(),
+                FechaInicio = votacion.FechaInicio,
+                FechaCierre = votacion.FechaCierre,
+                RestauranteGanadorId = null,
+                Descripcion = votacion.Descripcion
+            });
         }
 
         private ResultadoVotacionResponse MapToResponse(ResultadoVotacion resultado)

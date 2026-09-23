@@ -101,6 +101,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 VotacionId = votacionId,
                 UsuarioId = usuario.Id,
                 UsuarioNombre = usuario.Nombre,
+                UsuarioFirebaseUid = usuario.FirebaseUid,
                 UsuarioFoto = usuario.FotoPerfilUrl ?? "",
                 RestauranteId = restaurante.Id,
                 RestauranteNombre = restaurante.Nombre,
@@ -118,6 +119,11 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             EventoVotoRegistrado evento,
             CancellationToken ct)
         {
+            // Otro participante puede haber confirmado su voto en paralelo. Volvemos a
+            // consultar participantes y votos antes de decidir el cierre para no dejar
+            // activa una votación que ya recibió todas las respuestas.
+            await _votacionRepository.RecargarVotacionAsync(votacion, ct);
+
             var seCerro = votacion.IntentarCerrarConGanadorUnico();
 
             if (seCerro)

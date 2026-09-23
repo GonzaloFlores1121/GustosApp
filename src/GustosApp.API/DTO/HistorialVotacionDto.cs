@@ -12,6 +12,7 @@ namespace GustosApp.API.DTO
     public class VotacionHistorialResponse
     {
         public Guid VotacionId { get; set; }
+        public string Estado { get; set; } = string.Empty;
         public string? Descripcion { get; set; }
         public DateTime FechaInicio { get; set; }
         public DateTime? FechaCierre { get; set; }

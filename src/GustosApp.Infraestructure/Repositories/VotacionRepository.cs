@@ -22,7 +22,19 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<VotacionGrupo> CrearVotacionAsync(VotacionGrupo votacion, CancellationToken ct = default)
         {
             _context.Votaciones.Add(votacion);
-            await _context.SaveChangesAsync(ct);
+            try
+            {
+                await _context.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (
+                ex.InnerException?.Message.Contains(
+                    "IX_Votaciones_GrupoId",
+                    StringComparison.Ordinal) == true)
+            {
+                throw new InvalidOperationException(
+                    "Ya existe una votación activa en este grupo",
+                    ex);
+            }
             return votacion;
         }
 
@@ -71,7 +83,8 @@ namespace GustosApp.Infraestructure.Repositories
                 .Include(v => v.Participantes)
                 .Include(v => v.Votos)
                 .Include(v => v.RestauranteGanador)
-                .Where(v => v.GrupoId == grupoId && v.Estado == EstadoVotacion.Cerrada);
+                .Where(v => v.GrupoId == grupoId &&
+                    (v.Estado == EstadoVotacion.Cerrada || v.Estado == EstadoVotacion.Cancelada));
 
             var total = await consulta.CountAsync(ct);
             var votaciones = await consulta
@@ -141,6 +154,13 @@ namespace GustosApp.Infraestructure.Repositories
         {
             _context.Votos.Update(voto);
             await _context.SaveChangesAsync(ct);
+        }
+
+        public async Task RecargarVotacionAsync(VotacionGrupo votacion, CancellationToken ct = default)
+        {
+            await _context.Entry(votacion).ReloadAsync(ct);
+            await _context.Entry(votacion).Collection(v => v.Participantes).Query().LoadAsync(ct);
+            await _context.Entry(votacion).Collection(v => v.Votos).Query().LoadAsync(ct);
         }
 
     }

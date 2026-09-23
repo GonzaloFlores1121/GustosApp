@@ -15,6 +15,7 @@ namespace GustosApp.Application.Interfaces
         Task NotificarEmpate(Guid grupoId, Guid votacionId);
         Task NotificarGanador(Guid grupoId, Guid votacionId, Guid restauranteGanadorId);
         Task NotificarVotacionCerrada(Guid grupoId, Guid votacionId, Guid? restauranteGanadorId);
+        Task NotificarVotacionCancelada(Guid grupoId, Guid votacionId);
 
         Task NotificarVotacionIniciada(VotacionGrupo votacion);
     }

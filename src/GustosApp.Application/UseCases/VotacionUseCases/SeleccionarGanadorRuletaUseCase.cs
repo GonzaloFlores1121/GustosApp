@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Application.Common.Exceptions;
@@ -28,7 +29,6 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
         public async Task<VotacionGrupo> HandleAsync(
        string firebaseUid,
        Guid votacionId,
-       Guid restauranteGanadorId,
        CancellationToken ct = default)
         {
             // 1. Verificar usuario
@@ -65,28 +65,29 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 throw new InvalidOperationException("No hay empate en esta votación");
 
 
-            // 7. Validar que el restaurante PEDIDO esté entre empatados
-            if (!restaurantesEmpatados.Contains(restauranteGanadorId))
-                throw new ArgumentException("El restaurante seleccionado no está entre los empatados");
+            // El servidor selecciona entre los empatados. El cliente solo anima el
+            // resultado confirmado y no puede imponer un ganador.
+            var candidatosOficiales = votacion.RestaurantesCandidatos
+                .Select(c => c.RestauranteId)
+                .ToHashSet();
 
+            var opciones = restaurantesEmpatados
+                .Where(candidatosOficiales.Contains)
+                .ToList();
 
-            // 8. Validar que el restaurante sea candidato oficial
-            var esCandidato = votacion.RestaurantesCandidatos
-                .Any(c => c.RestauranteId == restauranteGanadorId);
+            if (opciones.Count != restaurantesEmpatados.Count)
+                throw new InvalidOperationException("Hay restaurantes empatados que no son candidatos válidos");
 
-            if (!esCandidato)
-                throw new InvalidOperationException("El restaurante seleccionado no es un candidato válido");
+            var restauranteGanadorId = opciones[RandomNumberGenerator.GetInt32(opciones.Count)];
 
 
             // 9. Asignar ganador y cerrar la votación
             votacion.CerrarVotacion(restauranteGanadorId);
 
-            await _notificaciones.NotificarGanador(votacion.GrupoId, votacion.Id, restauranteGanadorId);
-
-
-            // 10. Guardar
+            // Guardar antes de anunciar el resultado.
             await _votacionRepository.ActualizarVotacionAsync(votacion, ct);
 
+            await _notificaciones.NotificarGanador(votacion.GrupoId, votacion.Id, restauranteGanadorId);
             await _notificaciones.NotificarVotacionCerrada(
                 votacion.GrupoId,
                 votacion.Id,

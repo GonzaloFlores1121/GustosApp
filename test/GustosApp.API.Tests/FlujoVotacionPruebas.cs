@@ -102,13 +102,13 @@ public sealed class FlujoVotacionPruebas
         using var cliente = fabrica.CreateClient();
         var respuesta = await cliente.PostAsJsonAsync(
             $"/Votacion/{votacionId}/seleccionar-ganador",
-            new SeleccionarGanadorRequest { RestauranteGanadorId = datos.RestauranteId });
+            new { });
 
         respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
-    public async Task ObtenerHistorial_DevuelveSoloVotacionesCerradasPaginadas()
+    public async Task ObtenerHistorial_DevuelveVotacionesFinalizadasPaginadas()
     {
         await using var fabrica = new FabricaApiGustosAppVotacion();
         var datos = await PrepararEscenarioAsync(
@@ -156,6 +156,46 @@ public sealed class FlujoVotacionPruebas
         var respuesta = await cliente.GetAsync($"/Votacion/grupo/{datos.GrupoId}/historial");
 
         respuesta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task AdministradorCancelaVotacion_LaConservaEnHistorialYPuedeIniciarOtra()
+    {
+        await using var fabrica = new FabricaApiGustosAppVotacion();
+        var datos = await PrepararEscenarioAsync(
+            fabrica,
+            usuarioAutenticadoEsAdministrador: true,
+            participa: true);
+        using var cliente = fabrica.CreateClient();
+
+        var inicio = await cliente.PostAsJsonAsync("/Votacion/iniciar", new IniciarVotacionRequest
+        {
+            GrupoId = datos.GrupoId,
+            Descripcion = "Elección que se cancela",
+            RestaurantesCandidatos = [datos.RestauranteId, datos.OtroRestauranteId]
+        });
+        var votacion = await inicio.Content.ReadFromJsonAsync<VotacionResponse>();
+
+        var cancelacion = await cliente.PostAsync($"/Votacion/{votacion!.Id}/cancelar", null);
+        cancelacion.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cancelada = await cancelacion.Content.ReadFromJsonAsync<VotacionResponse>();
+        cancelada!.Estado.Should().Be("Cancelada");
+        cancelada.RestauranteGanadorId.Should().BeNull();
+
+        var nuevoInicio = await cliente.PostAsJsonAsync("/Votacion/iniciar", new IniciarVotacionRequest
+        {
+            GrupoId = datos.GrupoId,
+            Descripcion = "Nueva elección",
+            RestaurantesCandidatos = [datos.RestauranteId, datos.OtroRestauranteId]
+        });
+        nuevoInicio.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var respuestaHistorial = await cliente.GetAsync($"/Votacion/grupo/{datos.GrupoId}/historial");
+        var historial = await respuestaHistorial.Content.ReadFromJsonAsync<HistorialVotacionesResponse>();
+        historial!.Votaciones.Should().ContainSingle(v =>
+            v.VotacionId == votacion.Id &&
+            v.Estado == "Cancelada" &&
+            v.Ganador == null);
     }
 
     private static void AgregarVotacionCerrada(

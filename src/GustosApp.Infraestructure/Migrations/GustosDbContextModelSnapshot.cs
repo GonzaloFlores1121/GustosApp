@@ -2519,6 +2519,10 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("GrupoId")
+                        .IsUnique()
+                        .HasFilter("[Estado] = N'Activa'");
+
                     b.HasIndex("RestauranteGanadorId");
 
                     b.HasIndex("GrupoId", "Estado");
