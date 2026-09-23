@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -88,7 +89,7 @@ namespace GustosApp.Application.Tests
 
        
         [Fact]
-        public async Task HandleAsync_usuarioNoEsMiembro_lanzaUnauthorized()
+        public async Task HandleAsync_UsuarioNoEsMiembro_LanzaAccesoProhibido()
         {
             var usuario = CrearUsuario("uid");
             var grupo = CrearGrupo(usuario.Id);
@@ -104,8 +105,35 @@ namespace GustosApp.Application.Tests
 
             Func<Task> act = () => _sut.HandleAsync("uid", grupo.Id, "Hola");
 
-            await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            await act.Should().ThrowAsync<AccesoProhibidoException>()
                 .WithMessage("No pertenecés a este grupo.");
+
+            _chatRepo.Verify(
+                r => r.AddMessageAsync(It.IsAny<ChatMensaje>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_MiembroInactivo_LanzaAccesoProhibidoYNoGuardaMensaje()
+        {
+            var usuario = CrearUsuario("uid");
+            var grupo = CrearGrupo(usuario.Id);
+            var miembro = new MiembroGrupo(grupo.Id, usuario.Id);
+            miembro.AbandonarGrupo();
+            grupo.Miembros.Add(miembro);
+
+            _usuarioRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(usuario);
+            _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+
+            Func<Task> accion = () => _sut.HandleAsync("uid", grupo.Id, "Hola");
+
+            await accion.Should().ThrowAsync<AccesoProhibidoException>()
+                .WithMessage("No pertenecés a este grupo.");
+            _chatRepo.Verify(
+                r => r.AddMessageAsync(It.IsAny<ChatMensaje>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
      

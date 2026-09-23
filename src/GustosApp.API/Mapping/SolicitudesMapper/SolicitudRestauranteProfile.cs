@@ -20,6 +20,8 @@ namespace GustosApp.API.Mapping.SolicitudesMapper
                         .Where(i => i.Tipo == TipoImagenSolicitud.Logo)
                         .Select(i => i.Url)
                         .FirstOrDefault()))
+                .ForMember(dest => dest.TieneComprobante, opt => opt.MapFrom(src =>
+                    src.ComprobanteReclamo != null && src.ComprobanteReclamo.Length > 0))
                 .ForMember(dest => dest.Estado, opt => opt.MapFrom(src => src.Estado));
         }
     }

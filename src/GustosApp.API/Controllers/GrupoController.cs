@@ -42,7 +42,7 @@ namespace GustosApp.API.Controllers
         private readonly EnviarMensajeGrupoUseCase _enviarMensajeGrupoUseCase;
         private readonly IMapper _mapper;
         private readonly ObtenerRestaurantesAleatoriosGrupoUseCase _obtenerRestaurantesAleatorios;
-        private readonly ConstruirPreferenciasUseCase _construirPreferencias;
+        private readonly ConstruirPreferenciasGrupoUseCase _grupoPreferencias;
         private readonly ActualizarNombreGrupoUseCase _actualizarNombreGrupoUseCase;
         private readonly RegistrarTop3GrupoRestaurantesUseCase _registrarTop3GrupoRestaurantesUseCase;
 
@@ -68,7 +68,7 @@ namespace GustosApp.API.Controllers
             ActualizarGustosAGrupoUseCase actualizarGustosAGrupoUseCase,
             IMapper mapper,
             ObtenerRestaurantesAleatoriosGrupoUseCase obtenerRestaurantesAleatorios,
-           ConstruirPreferenciasUseCase construirPreferencias,
+           ConstruirPreferenciasGrupoUseCase grupoPreferencias,
             ActualizarNombreGrupoUseCase actualizarNombreGrupoUseCase,
             RegistrarTop3GrupoRestaurantesUseCase registrarTop3GrupoRestaurantesUseCase
 
@@ -93,7 +93,7 @@ namespace GustosApp.API.Controllers
             _verificacionMiembroGrupo = verificacionMiembroGrupo;
             _mapper = mapper;
             _obtenerRestaurantesAleatorios = obtenerRestaurantesAleatorios;
-            _construirPreferencias = construirPreferencias;
+            _grupoPreferencias = grupoPreferencias;
             _servicioPreferenciasGrupos = servicioPreferenciasGrupos;
             _actualizarNombreGrupoUseCase = actualizarNombreGrupoUseCase;
             _registrarTop3GrupoRestaurantesUseCase = registrarTop3GrupoRestaurantesUseCase;
@@ -120,6 +120,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(InvitacionGrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> InvitarUsuario(Guid grupoId, [FromBody] InvitacionGrupoRequest request, CancellationToken ct)
         {
 
@@ -218,6 +219,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(GrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> ActualizarNombreGrupo(Guid grupoId, [FromBody] ActualizarNombreGrupoRequest request, CancellationToken ct)
         {
             var firebaseUid = GetFirebaseUid();
@@ -230,6 +232,7 @@ namespace GustosApp.API.Controllers
         [HttpDelete("{grupoId}")]
         [ProducesResponseType(typeof(EliminarGrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> EliminarGrupo(string grupoId, CancellationToken ct)
         {
 
@@ -255,6 +258,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(RemoverMiembroResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
 
         public async Task<IActionResult> RemoverMiembro(Guid grupoId, string username, CancellationToken ct)
         {
@@ -275,6 +279,7 @@ namespace GustosApp.API.Controllers
         [HttpGet("{grupoId}/chat")]
         [ProducesResponseType(typeof(IEnumerable<ChatMensajeResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> ObtenerChat(string grupoId, CancellationToken ct)
         {
 
@@ -325,6 +330,7 @@ namespace GustosApp.API.Controllers
         [HttpPost("invitaciones/{invitacionId}/aceptar")]
         [ProducesResponseType(typeof(GrupoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> AceptarInvitacion(Guid invitacionId, CancellationToken ct)
         {
 
@@ -374,7 +380,11 @@ namespace GustosApp.API.Controllers
         [Authorize]
         [HttpPut("desactivarMiembro")]
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> DesactivarMiembro(Guid grupoId, Guid UsuarioId)
         {
             var firebaseUid = GetFirebaseUid();
@@ -383,7 +393,7 @@ namespace GustosApp.API.Controllers
             var response = new
             {
                 Success = ok,
-                Mensaje = "Miembro Desactivado Correctamente"
+                Mensaje = "Miembro excluido de la recomendación correctamente"
             };
 
             return Ok(response);
@@ -392,7 +402,11 @@ namespace GustosApp.API.Controllers
         [Authorize]
         [HttpPut("activarMiembro")]
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> ActivarMiembro(Guid grupoId, Guid UsuarioId)
         {
             var firebaseUid = GetFirebaseUid();
@@ -401,7 +415,7 @@ namespace GustosApp.API.Controllers
             var response = new
             {
                 Success = ok,
-                Mensaje = "Miembro activado Correctamente"
+                Mensaje = "Miembro incluido en la recomendación correctamente"
             };
 
             return Ok(response);
@@ -425,11 +439,8 @@ namespace GustosApp.API.Controllers
 
 
             // Obtener preferencias del grupo
-            var preferencias = await _construirPreferencias.HandleAsync(
-            firebaseUid,
-            null,
-             grupoId,
-             null,
+            var preferencias = await _grupoPreferencias.HandleAsync(
+            firebaseUid, grupoId,
              ct);
 
 

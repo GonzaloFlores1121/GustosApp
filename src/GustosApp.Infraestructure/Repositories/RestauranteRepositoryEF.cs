@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Model;
 using GustosApp.Infraestructure;
 using Microsoft.EntityFrameworkCore;
@@ -32,14 +33,60 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<Restaurante?> GetByPlaceIdAsync(string placeId, CancellationToken ct = default)
             => await _db.Restaurantes.AsNoTracking().FirstOrDefaultAsync(r => r.PlaceId == placeId, ct);
 
+        public async Task<List<Restaurante>> ObtenerPorPlaceIdsAsync(
+            IReadOnlyCollection<string> placeIds,
+            CancellationToken ct = default)
+        {
+            if (placeIds.Count == 0)
+            {
+                return new List<Restaurante>();
+            }
+
+            return await _db.Restaurantes
+                .Include(restaurante => restaurante.GustosQueSirve)
+                .Where(restaurante => placeIds.Contains(restaurante.PlaceId))
+                .ToListAsync(ct);
+        }
+
+        public Task<List<Restaurante>> ObtenerPendientesClasificacionAsync(
+            int cantidadMaxima,
+            CancellationToken ct = default)
+        {
+            return _db.Restaurantes
+                .AsNoTracking()
+                .Include(restaurante => restaurante.GustosQueSirve)
+                .Where(restaurante =>
+                    !restaurante.DuenoId.HasValue &&
+                    string.IsNullOrEmpty(restaurante.PropietarioUid) &&
+                    (restaurante.MenuProcesado != true ||
+                     !restaurante.GustosQueSirve.Any() ||
+                     restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces ||
+                     restaurante.MenuError != null))
+                .OrderByDescending(restaurante => restaurante.MenuError != null)
+                .ThenBy(restaurante => restaurante.MenuProcesado == true)
+                .ThenByDescending(restaurante => !restaurante.GustosQueSirve.Any())
+                .ThenBy(restaurante => restaurante.Nombre)
+                .Take(cantidadMaxima)
+                .ToListAsync(ct);
+        }
+
         public async Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct = default)
             => await _db.Restaurantes.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
+
+        public async Task<Restaurante?> GetRestauranteConImagenesAsync(Guid id, CancellationToken ct = default)
+            => await _db.Restaurantes.Include(r => r.Imagenes).FirstOrDefaultAsync(r => r.Id == id, ct);
 
         public async Task AddAsync(Restaurante r, CancellationToken ct = default)
             => await _db.Restaurantes.AddAsync(r, ct);
 
-        public Task SaveChangesAsync(CancellationToken ct = default)
-            => _db.SaveChangesAsync(ct);
+        public async Task SaveChangesAsync(CancellationToken ct = default)
+        {
+            try { await _db.SaveChangesAsync(ct); }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new InvalidOperationException("Los datos cambiaron durante la operación. Volvé a consultar la solicitud.");
+            }
+        }
         public Task UpdateAsync(Restaurante restaurante, CancellationToken ct)
         {
             _db.Restaurantes.Update(restaurante);
@@ -206,7 +253,8 @@ namespace GustosApp.Infraestructure.Repositories
           public async Task<Restaurante?> GetByIdAsync(Guid id, CancellationToken ct = default)
           {
               return await _db.Restaurantes
-                 .Include(r => r.GustosQueSirve)
+                  .Include(r => r.GustosQueSirve)
+                      .ThenInclude(g => g.Tags)
                   .Include(r => r.RestriccionesQueRespeta)
                   .FirstOrDefaultAsync(r => r.Id == id, ct);
           }

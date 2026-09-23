@@ -157,7 +157,9 @@ namespace GustosApp.Application.Tests
             _menuRepo.Setup(m => m.GetByRestauranteIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((RestauranteMenu?)null);
 
+            Dictionary<string, string>? valoresPlantilla = null;
             _templates.Setup(t => t.Render("SolicitudAprobada.html", It.IsAny<Dictionary<string, string>>()))
+                .Callback<string, Dictionary<string, string>>((_, valores) => valoresPlantilla = valores)
                 .Returns("HTML");
 
             _email.Setup(e => e.EnviarEmailAsync(usuario.Email, "Tu solicitud fue aprobada",
@@ -176,6 +178,116 @@ namespace GustosApp.Application.Tests
 
             _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Once);
             _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            valoresPlantilla.Should().NotBeNull();
+            valoresPlantilla!["LINK"].Should().Be($"http://localhost:3000/restaurante/{res.Id}/dashboard");
+        }
+
+        [Theory]
+        [InlineData(EstadoSolicitudRestaurante.Rechazada)]
+        [InlineData(EstadoSolicitudRestaurante.Aprobada)]
+        public async Task SolicitudResueltaSinVinculo_NoCreaOtroRestaurante(EstadoSolicitudRestaurante estado)
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), false);
+            solicitud.Estado = estado;
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(solicitud.Id, default));
+            _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()), Times.Never);
+            _firebase.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task Reclamo_ConservaFichaRatingYMenuExistentes()
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), false);
+            var existente = new Restaurante { Id = Guid.NewGuid(), Nombre = "Ficha original", PlaceId = "google-123", Rating = 4.7, MenuProcesado = true };
+            solicitud.RestauranteExistenteId = existente.Id;
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(existente.Id, default)).ReturnsAsync(existente);
+
+            var resultado = await _useCase.HandleAsync(solicitud.Id, default);
+
+            resultado.Should().BeSameAs(existente);
+            resultado.DuenoId.Should().Be(solicitud.UsuarioId);
+            resultado.PlaceId.Should().Be("google-123");
+            resultado.Nombre.Should().Be("Ficha original");
+            resultado.Rating.Should().Be(4.7);
+            resultado.MenuProcesado.Should().BeTrue();
+            solicitud.RestauranteAprobadoId.Should().Be(existente.Id);
+            _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()), Times.Never);
+            _downloader.VerifyNoOtherCalls();
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task Reclamo_ImpideReasignarPropietarioActual(bool usaDuenoId)
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), false);
+            var existente = new Restaurante { Id = Guid.NewGuid(), DuenoId = usaDuenoId ? Guid.NewGuid() : null, PropietarioUid = usaDuenoId ? "" : "propietario-anterior" };
+            solicitud.RestauranteExistenteId = existente.Id;
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(existente.Id, default)).ReturnsAsync(existente);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(solicitud.Id, default));
+            solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Pendiente);
+            _firebase.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ErrorCorreo_ReintentaSinDuplicarAltaNiRolFirebase()
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), false);
+            SetupGustosYRestricciones(solicitud);
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            Restaurante? creado = null;
+            _restaurantes.Setup(r => r.AddAsync(It.IsAny<Restaurante>(), default))
+                .Callback<Restaurante, CancellationToken>((r, _) => creado = r).Returns(Task.CompletedTask);
+            _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(It.IsAny<Guid>(), default)).ReturnsAsync(() => creado);
+            _email.SetupSequence(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), default))
+                .ThrowsAsync(new InvalidOperationException("Correo no disponible"))
+                .Returns(Task.CompletedTask);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(solicitud.Id, default));
+            solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Aprobada);
+            var resultado = await _useCase.HandleAsync(solicitud.Id, default);
+            await _useCase.HandleAsync(solicitud.Id, default);
+
+            resultado.Rating.Should().BeNull();
+            solicitud.CorreoAprobacionEnviado.Should().BeTrue();
+            _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Once);
+            _firebase.Verify(f => f.SetUserRoleAsync(solicitud.Usuario.FirebaseUid, RolUsuario.DuenoRestaurante.ToString()), Times.Once);
+            _email.Verify(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), default), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task ConflictoAlGuardar_NoEjecutaServiciosExternos()
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), true);
+            SetupGustosYRestricciones(solicitud);
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _restaurantes.Setup(r => r.SaveChangesAsync(default)).ThrowsAsync(new InvalidOperationException("Conflicto concurrente"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(solicitud.Id, default));
+            _firebase.VerifyNoOtherCalls();
+            _email.VerifyNoOtherCalls();
+            _downloader.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReprocesarMenu_NoCreaRestauranteNiReenviaAprobacion()
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), true);
+            solicitud.Estado = EstadoSolicitudRestaurante.Aprobada;
+            var restaurante = new Restaurante { Id = Guid.NewGuid() };
+            solicitud.RestauranteAprobadoId = restaurante.Id;
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(restaurante.Id, default)).ReturnsAsync(restaurante);
+            _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), default)).ReturnsAsync(new byte[] { 1 });
+            _ocr.Setup(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", default)).ReturnsAsync("Pizza");
+            _menuParser.Setup(p => p.ParsearAsync("Pizza", "ARS", default)).ReturnsAsync("{}");
+            await _useCase.ReprocesarMenuAsync(solicitud.Id, default);
+            restaurante.MenuProcesado.Should().BeTrue();
+            _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Never);
+            _firebase.VerifyNoOtherCalls();
+            _email.VerifyNoOtherCalls();
         }
 
         [Fact]

@@ -118,6 +118,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(SolicitudAmistadResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> Aceptar(Guid solicitudId, CancellationToken ct)
         {
             var uid = GetFirebaseUid();
@@ -134,6 +135,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(SolicitudAmistadResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> Rechazar(Guid solicitudId, CancellationToken ct)
         {
             var uid = GetFirebaseUid();

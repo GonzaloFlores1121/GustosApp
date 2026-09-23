@@ -103,7 +103,7 @@ namespace GustosApp.Infraestructure.Repositories
                 throw new UnauthorizedAccessException("El usuario no está activo en el grupo o no existe");
             }
 
-            miembro.afectarRecomendacion = false;
+            miembro.ParticipaEnRecomendacion = false;
 
             await UpdateAsync(miembro);
 
@@ -120,7 +120,7 @@ namespace GustosApp.Infraestructure.Repositories
                 throw new UnauthorizedAccessException("El usuario no está activo en el grupo o no existe");
             }
 
-            miembro.afectarRecomendacion = true;
+            miembro.ParticipaEnRecomendacion = true;
 
             await UpdateAsync(miembro);
 
@@ -135,7 +135,7 @@ namespace GustosApp.Infraestructure.Repositories
                     .ThenInclude(u => u.Restricciones)
                 .Include(m => m.Usuario)
                     .ThenInclude(u => u.CondicionesMedicas)
-                        .Where(m => m.GrupoId == grupoId && m.afectarRecomendacion && m.Activo)
+                        .Where(m => m.GrupoId == grupoId && m.ParticipaEnRecomendacion && m.Activo)
                 .ToListAsync();
 
             var todasLasPreferencias = miembros

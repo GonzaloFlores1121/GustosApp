@@ -35,9 +35,7 @@ namespace GustosApp.Application.Tests
 
             _useCase = new RechazarSolicitudRestauranteUseCase(
                 _solicitudes.Object,
-                _usuarios.Object,
                 _firebase.Object,
-                _auth.Object,
                 _email.Object,
                 _templates.Object
             );
@@ -51,7 +49,7 @@ namespace GustosApp.Application.Tests
                 FirebaseUid = "uid123",
                 Email = "test@test.com",
                 Nombre = "Gonza",
-                Rol = RolUsuario.PendienteRestaurante
+                Rol = RolUsuario.Usuario
             };
 
         private SolicitudRestaurante FakeSolicitud(Guid id, Usuario user)
@@ -152,10 +150,6 @@ namespace GustosApp.Application.Tests
                 , CancellationToken.None))
                 .Returns(Task.CompletedTask);
 
-            _auth.Setup(a =>
-                a.SetUserRoleAsync(user.FirebaseUid, RolUsuario.Usuario.ToString()))
-                .Returns(Task.CompletedTask);
-
             // Act
             await _useCase.HandleAsync(id, "Motivo de rechazo", default);
 
@@ -163,13 +157,10 @@ namespace GustosApp.Application.Tests
             solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Rechazada);
             solicitud.MotivoRechazo.Should().Be("Motivo de rechazo");
 
-            // Rol restaurado
+            // La solicitud nunca reemplazó el rol personal.
             solicitud.Usuario.Rol.Should().Be(RolUsuario.Usuario);
 
-            // Firebase role assignment
-            _auth.Verify(a =>
-                a.SetUserRoleAsync(user.FirebaseUid, RolUsuario.Usuario.ToString()),
-                Times.Once);
+            _auth.VerifyNoOtherCalls();
 
             // Eliminación de imágenes
             _firebase.Verify(f => f.DeleteFileAsync("url1"), Times.Once);
@@ -181,12 +172,24 @@ namespace GustosApp.Application.Tests
                 CancellationToken.None),
                 Times.Once);
 
-            // Update usuario
-            _usuarios.Verify(u => u.UpdateAsync(user, default), Times.Once);
-            _usuarios.Verify(u => u.SaveChangesAsync(default), Times.Once);
+            // La solicitud y el usuario se guardan juntos antes de los efectos externos.
+            _solicitudes.Verify(s => s.UpdateAsync(It.Is<SolicitudRestaurante>(s =>
+                s.Usuario.Rol == RolUsuario.Usuario && s.Estado == EstadoSolicitudRestaurante.Rechazada), default), Times.Once);
 
             // Update solicitud
             _solicitudes.Verify(s => s.UpdateAsync(solicitud, default), Times.Once);
+        }
+
+        [Fact]
+        public async Task RechazoConcurrente_NoCambiaFirebaseNiBorraImagenes()
+        {
+            var solicitud = FakeSolicitud(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()));
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _solicitudes.Setup(r => r.UpdateAsync(solicitud, default)).ThrowsAsync(new InvalidOperationException("Conflicto"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(solicitud.Id, "Rechazo", default));
+            _auth.VerifyNoOtherCalls();
+            _firebase.VerifyNoOtherCalls();
+            _email.VerifyNoOtherCalls();
         }
     }
 

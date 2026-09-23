@@ -4,6 +4,7 @@ bin/
 obj/
 
 appsettings.Development.json
+appsettings.Docker.json
 appsettings.*.local.json
 */appsettings.Development.json
 **/appsettings.Development.json
@@ -16,3 +17,14 @@ appsettings.*.local.json
 **/TestResults/
 **/coveragereport/
 appsettings.Development.json
+
+# Configuración privada de Docker Compose
+.env
+
+# Archivos locales generados para revisar importaciones
+/local-data/
+
+
+.agents/
+.codex/
+AGENTS.md

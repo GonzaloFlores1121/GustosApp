@@ -1,0 +1,32 @@
+namespace GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
+
+public enum AccionImportacionRestaurante
+{
+    Crear,
+    Actualizar,
+    SinCambios,
+    DuplicadoEnLote,
+    IgnorarPorAntiguedad,
+    DescartarSinOfertaGastronomica,
+    RequiereRevision
+}
+
+public sealed record ItemImportacionRestaurante(
+    string PlaceId,
+    string Nombre,
+    AccionImportacionRestaurante Accion,
+    string? Motivo = null)
+{
+    public string AccionNombre => Accion.ToString();
+    public string? CategoriaAsignada { get; init; }
+    public IReadOnlyCollection<string> GustosEstimados { get; init; } = [];
+}
+
+public sealed record ResultadoImportacionRestaurantes(
+    bool Confirmada,
+    int Total,
+    int Creados,
+    int Actualizados,
+    int SinCambios,
+    int Omitidos,
+    IReadOnlyCollection<ItemImportacionRestaurante> Items);

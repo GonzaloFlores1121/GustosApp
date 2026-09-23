@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -44,17 +45,17 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             var miembro = votacion.Grupo.Miembros.FirstOrDefault(m => m.UsuarioId == usuario.Id);
 
             if (miembro == null || !miembro.Activo)
-                throw new UnauthorizedAccessException("No eres un miembro activo del grupo.");
+                throw new AccesoProhibidoException("No eres un miembro activo del grupo.");
 
             // Verificar que el usuario sea miembro del grupo
             var esMiembro = await _grupoRepository.UsuarioEsMiembroAsync(votacion.GrupoId, firebaseUid, ct);
             if (!esMiembro)
-                throw new UnauthorizedAccessException("No eres miembro de este grupo");
+                throw new AccesoProhibidoException("No eres miembro de este grupo");
 
             // Obtener resultados
             var resultados = votacion.ObtenerResultados();
-            var miembrosActivos = votacion.Grupo.Miembros.Count(m => m.afectarRecomendacion && m.Activo);
-            var todosVotaron = votacion.TodosHanVotado(miembrosActivos);
+            var miembrosActivos = votacion.Participantes.Count;
+            var todosVotaron = votacion.TodosLosParticipantesVotaron();
 
             var candidatos = votacion.RestaurantesCandidatos
             .Select(rc => new RestauranteCandidato

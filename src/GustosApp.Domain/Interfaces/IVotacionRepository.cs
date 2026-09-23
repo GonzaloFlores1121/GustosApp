@@ -11,7 +11,11 @@ namespace GustosApp.Domain.Interfaces
         Task<VotacionGrupo> CrearVotacionAsync(VotacionGrupo votacion, CancellationToken ct = default);
         Task<VotacionGrupo?> ObtenerPorIdAsync(Guid votacionId, CancellationToken ct = default);
         Task<VotacionGrupo?> ObtenerVotacionActivaAsync(Guid grupoId, CancellationToken ct = default);
-        Task<List<VotacionGrupo>> ObtenerHistorialVotacionesAsync(Guid grupoId, CancellationToken ct = default);
+        Task<(IReadOnlyList<VotacionGrupo> Votaciones, int Total)> ObtenerHistorialVotacionesAsync(
+            Guid grupoId,
+            int pagina,
+            int tamanoPagina,
+            CancellationToken ct = default);
         Task<VotoRestaurante> RegistrarVotoAsync(VotoRestaurante voto, CancellationToken ct = default);
         Task<VotoRestaurante?> ObtenerVotoUsuarioAsync(Guid votacionId, Guid usuarioId, CancellationToken ct = default);
         Task ActualizarVotacionAsync(VotacionGrupo votacion, CancellationToken ct = default);

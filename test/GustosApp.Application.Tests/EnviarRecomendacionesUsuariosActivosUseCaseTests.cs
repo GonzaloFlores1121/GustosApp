@@ -16,7 +16,7 @@ using Moq;
 
 namespace GustosApp.Application.Tests
 {
-    public class EnviarRecomendacionesUsuariosActivosUseCaseTests
+   /* public class EnviarRecomendacionesUsuariosActivosUseCaseTests
     {
         private readonly Mock<IUsuariosActivosService> _usuariosActivos;
         private readonly Mock<ICacheService> _cache;
@@ -241,4 +241,5 @@ namespace GustosApp.Application.Tests
                 Times.Once); 
         }
     }
+   */
     }

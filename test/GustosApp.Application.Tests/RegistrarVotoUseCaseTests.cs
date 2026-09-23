@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.VotacionUseCases;
 using GustosApp.Domain.Common;
@@ -43,18 +45,72 @@ namespace GustosApp.Application.Tests
         [Fact]
         public async Task HandleAsync_UsuarioNoEncontrado_LanzaUnauthorizedAccessException()
         {
+            //arrange
             var firebaseUid = "firebase123";
 
             _mockUsuarioRepository
                 .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
                 .ReturnsAsync((Usuario?)null);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-                _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
+
+            //act 
+           var act = async () => await _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid());
+
+
+            //asert
+
+            await act.Should().ThrowAsync<UnauthorizedAccessException>()
+                .WithMessage("Usuario no encontrado");
         }
 
 
-      
+        [Fact]
+        public async Task HandleAsync_Usuario_NoLanzaExcepcion()
+        {
+            //arrange
+            var firebaseUid = "firebase123";
+            var usuario = new Usuario{ Id = Guid.NewGuid() , FirebaseUid = firebaseUid
+            };
+            var grupoId= Guid.NewGuid();
+            var restauranteId = Guid.NewGuid();
+
+            _mockUsuarioRepository
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+
+            var grupo = new Grupo("Test", usuario.Id) { Id = grupoId };
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = true });
+
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, Guid.NewGuid());
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteId));
+
+            _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(),default))
+            .ReturnsAsync(votacion);
+
+            var restaurante= new Restaurante { Id = restauranteId, Nombre = "Rest Test" };
+
+            _mockRestauranteRepository.Setup(r => r.GetRestauranteByIdAsync(restauranteId,default))
+            .ReturnsAsync(restaurante);
+
+            _mockVotacionRepository.Setup(r =>
+                r.ObtenerVotoUsuarioAsync(It.IsAny<Guid>(),usuario.Id, default))
+                .ReturnsAsync((VotoRestaurante?)null);
+
+
+            _mockVotacionRepository.Setup(r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), default))
+                .ReturnsAsync(new VotoRestaurante(votacion.Id, usuario.Id, restauranteId));
+           
+            //act 
+            Func <Task> act =  () =>  _useCase.HandleAsync(firebaseUid, votacion.Id, restauranteId);
+
+
+            //asert
+
+          await act.Should().NotThrowAsync();
+        }
+
+
         [Fact]
         public async Task HandleAsync_VotacionNoEncontrada_LanzaArgumentException()
         {
@@ -103,7 +159,7 @@ namespace GustosApp.Application.Tests
 
        
         [Fact]
-        public async Task HandleAsync_UsuarioNoEsMiembro_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_UsuarioNoEsMiembro_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -120,16 +176,58 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
                 .ReturnsAsync(votacion);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
 
-            Assert.Equal("No eres miembro de este grupo", ex.Message);
+            Assert.Equal("No estás incluido entre los participantes de esta votación.", ex.Message);
+            _mockVotacionRepository.Verify(
+                r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+
+        [Fact]
+        public async Task HandleAsync_ParticipanteDesactivadoLuegoDeIniciar_PuedeVotar()
+        {
+            var firebaseUid = "uid";
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var grupoId = Guid.NewGuid();
+            var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
+            var miembro = new MiembroGrupo(grupoId, usuario.Id) { ParticipaEnRecomendacion = true };
+            miembro.AbandonarGrupo();
+            grupo.Miembros.Add(miembro);
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, Guid.NewGuid());
+            var restauranteId = Guid.NewGuid();
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteId));
+
+            _mockUsuarioRepository
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
+                .ReturnsAsync(votacion);
+
+            _mockRestauranteRepository
+                .Setup(r => r.GetRestauranteByIdAsync(restauranteId, default))
+                .ReturnsAsync(new Restaurante { Id = restauranteId, Nombre = "Restaurante" });
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerVotoUsuarioAsync(votacion.Id, usuario.Id, default))
+                .ReturnsAsync((VotoRestaurante?)null);
+            _mockVotacionRepository
+                .Setup(r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), default))
+                .ReturnsAsync((VotoRestaurante voto, CancellationToken _) => voto);
+
+            var accion = () => _useCase.HandleAsync(firebaseUid, votacion.Id, restauranteId);
+
+            await accion.Should().NotThrowAsync();
         }
 
 
       
         [Fact]
-        public async Task HandleAsync_MiembroNoAfectaRecomendacion_LanzaInvalidOperationException()
+        public async Task HandleAsync_MiembroNoIncluidoEnVotacion_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid";
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
@@ -137,7 +235,7 @@ namespace GustosApp.Application.Tests
 
             var grupo = new Grupo("TestGrupo", usuario.Id) { Id = grupoId };
             var miembro = new MiembroGrupo(grupoId, usuario.Id);
-            miembro.afectarRecomendacion = false; // NO participa
+            miembro.ParticipaEnRecomendacion = false; // NO participa
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
@@ -148,10 +246,13 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(It.IsAny<Guid>(), default))
                 .ReturnsAsync(votacion);
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _useCase.HandleAsync(firebaseUid, Guid.NewGuid(), Guid.NewGuid()));
 
-            Assert.Equal("No puedes votar porque no estás marcado para asistir a la reunión", ex.Message);
+            Assert.Equal("No estás incluido entre los participantes de esta votación.", ex.Message);
+            _mockVotacionRepository.Verify(
+                r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
 
@@ -168,6 +269,7 @@ namespace GustosApp.Application.Tests
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, Guid.NewGuid());
             votacion.RestaurantesCandidatos.Clear(); // ningún candidato
 
             _mockUsuarioRepository.Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
@@ -197,6 +299,7 @@ namespace GustosApp.Application.Tests
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, Guid.NewGuid());
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, candidato));
 
             _mockUsuarioRepository.Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
@@ -228,10 +331,11 @@ namespace GustosApp.Application.Tests
 
             var grupo = new Grupo("Test", usuario.Id) { Id = grupoId };
             var miembro = new MiembroGrupo(grupoId, usuario.Id);
-            miembro.afectarRecomendacion = true;
+            miembro.ParticipaEnRecomendacion = true;
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, Guid.NewGuid());
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteId));
 
             var restaurante = new Restaurante { Id = restauranteId, Nombre = "Rest Test" };
@@ -285,6 +389,7 @@ namespace GustosApp.Application.Tests
             grupo.Miembros.Add(miembro);
 
             var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, Guid.NewGuid());
             votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteNuevo));
 
             var votoExistente = new VotoRestaurante(votacion.Id, usuario.Id, Guid.NewGuid(), "viejo");
@@ -322,6 +427,104 @@ namespace GustosApp.Application.Tests
 
             _mockVotacionRepository.Verify(r =>
                 r.ActualizarVotoAsync(votoExistente, default), Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleAsync_UltimoVotoConGanadorUnico_CierraVotacion()
+        {
+            var firebaseUid = "uid-ultimo-voto";
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var otroUsuarioId = Guid.NewGuid();
+            var grupoId = Guid.NewGuid();
+            var ganadorId = Guid.NewGuid();
+            var otroRestauranteId = Guid.NewGuid();
+            var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+
+            AgregarParticipantes(votacion, usuario.Id, otroUsuarioId);
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, ganadorId));
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, otroRestauranteId));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, otroUsuarioId, ganadorId));
+
+            _mockUsuarioRepository
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerPorIdConCandidatosAsync(votacion.Id, default))
+                .ReturnsAsync(votacion);
+            _mockRestauranteRepository
+                .Setup(r => r.GetRestauranteByIdAsync(ganadorId, default))
+                .ReturnsAsync(new Restaurante { Id = ganadorId, Nombre = "Ganador" });
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerVotoUsuarioAsync(votacion.Id, usuario.Id, default))
+                .ReturnsAsync((VotoRestaurante?)null);
+            _mockVotacionRepository
+                .Setup(r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), default))
+                .ReturnsAsync((VotoRestaurante voto, CancellationToken _) => voto);
+
+            await _useCase.HandleAsync(firebaseUid, votacion.Id, ganadorId);
+
+            votacion.Estado.Should().Be(EstadoVotacion.Cerrada);
+            votacion.RestauranteGanadorId.Should().Be(ganadorId);
+            _mockVotacionRepository.Verify(
+                r => r.ActualizarVotacionAsync(votacion, default),
+                Times.Once);
+            _mockNotificaciones.Verify(
+                n => n.NotificarGanador(grupoId, votacion.Id, ganadorId),
+                Times.Once);
+            _mockNotificaciones.Verify(
+                n => n.NotificarVotacionCerrada(grupoId, votacion.Id, ganadorId),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleAsync_UltimoVotoConEmpate_MantieneVotacionActivaYNotificaEmpate()
+        {
+            var firebaseUid = "uid-empate";
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var otroUsuarioId = Guid.NewGuid();
+            var grupoId = Guid.NewGuid();
+            var restauranteUnoId = Guid.NewGuid();
+            var restauranteDosId = Guid.NewGuid();
+            var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+
+            AgregarParticipantes(votacion, usuario.Id, otroUsuarioId);
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteUnoId));
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, restauranteDosId));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, otroUsuarioId, restauranteUnoId));
+
+            _mockUsuarioRepository
+                .Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerPorIdConCandidatosAsync(votacion.Id, default))
+                .ReturnsAsync(votacion);
+            _mockRestauranteRepository
+                .Setup(r => r.GetRestauranteByIdAsync(restauranteDosId, default))
+                .ReturnsAsync(new Restaurante { Id = restauranteDosId, Nombre = "Segundo" });
+            _mockVotacionRepository
+                .Setup(r => r.ObtenerVotoUsuarioAsync(votacion.Id, usuario.Id, default))
+                .ReturnsAsync((VotoRestaurante?)null);
+            _mockVotacionRepository
+                .Setup(r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), default))
+                .ReturnsAsync((VotoRestaurante voto, CancellationToken _) => voto);
+
+            await _useCase.HandleAsync(firebaseUid, votacion.Id, restauranteDosId);
+
+            votacion.Estado.Should().Be(EstadoVotacion.Activa);
+            _mockVotacionRepository.Verify(
+                r => r.ActualizarVotacionAsync(It.IsAny<VotacionGrupo>(), default),
+                Times.Never);
+            _mockNotificaciones.Verify(
+                n => n.NotificarEmpate(grupoId, votacion.Id),
+                Times.Once);
+        }
+
+        private static void AgregarParticipantes(VotacionGrupo votacion, params Guid[] usuariosIds)
+        {
+            foreach (var usuarioId in usuariosIds)
+                votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioId));
         }
     }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Application.record;
 using GustosApp.Domain.Interfaces;
@@ -15,16 +16,20 @@ namespace GustosApp.Application.Tests
     {
         private readonly Mock<IRestauranteEstadisticasRepository> _estadisticasRepoMock;
         private readonly Mock<IUsuarioRestauranteFavoritoRepository> _favoritoRepoMock;
+        private readonly Mock<IRestauranteRepository> _restauranteRepoMock;
         private readonly ObtenerMetricasRestauranteUseCase _sut;
+        private readonly Guid _usuarioId = Guid.NewGuid();
 
         public ObtenerMetricasRestauranteUseCaseTests()
         {
             _estadisticasRepoMock = new Mock<IRestauranteEstadisticasRepository>();
             _favoritoRepoMock = new Mock<IUsuarioRestauranteFavoritoRepository>();
+            _restauranteRepoMock = new Mock<IRestauranteRepository>();
 
             _sut = new ObtenerMetricasRestauranteUseCase(
                 _estadisticasRepoMock.Object,
-                _favoritoRepoMock.Object);
+                _favoritoRepoMock.Object,
+                _restauranteRepoMock.Object);
         }
 
       
@@ -34,7 +39,7 @@ namespace GustosApp.Application.Tests
             var restauranteId = Guid.Empty;
 
             var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-                _sut.HandleAsync(restauranteId, CancellationToken.None));
+                _sut.HandleAsync(restauranteId, _usuarioId, CancellationToken.None));
 
             Assert.StartsWith("El restauranteId no puede ser vacío.", ex.Message);
             Assert.Equal("restauranteId", ex.ParamName);
@@ -46,12 +51,16 @@ namespace GustosApp.Application.Tests
         {
             var restauranteId = Guid.NewGuid();
 
+            _restauranteRepoMock
+                .Setup(r => r.GetRestauranteByIdAsync(restauranteId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Restaurante { Id = restauranteId, DuenoId = _usuarioId });
+
             _estadisticasRepoMock
                 .Setup(r => r.ObtenerPorRestauranteAsync(restauranteId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync((RestauranteEstadisticas?)null);
 
             var ex = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-                _sut.HandleAsync(restauranteId, CancellationToken.None));
+                _sut.HandleAsync(restauranteId, _usuarioId, CancellationToken.None));
 
             Assert.Equal("No se encontraron estadisticas con esa clave", ex.Message);
 
@@ -62,6 +71,52 @@ namespace GustosApp.Application.Tests
             _favoritoRepoMock.Verify(
                 f => f.CountByRestauranteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
                 Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_RestauranteDeOtroUsuario_LanzaAccesoProhibidoYNoConsultaMetricas()
+        {
+            var restauranteId = Guid.NewGuid();
+
+            _restauranteRepoMock
+                .Setup(r => r.GetRestauranteByIdAsync(restauranteId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Restaurante { Id = restauranteId, DuenoId = Guid.NewGuid() });
+
+            var accion = () => _sut.HandleAsync(restauranteId, _usuarioId, CancellationToken.None);
+
+            var excepcion = await Assert.ThrowsAsync<AccesoProhibidoException>(accion);
+
+            Assert.Equal("No tenés permisos para consultar las métricas de este restaurante.", excepcion.Message);
+            _estadisticasRepoMock.Verify(
+                r => r.ObtenerPorRestauranteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _favoritoRepoMock.Verify(
+                r => r.CountByRestauranteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_RestaurantePropio_DevuelveMetricasYFavoritos()
+        {
+            var restauranteId = Guid.NewGuid();
+            var estadisticas = new RestauranteEstadisticas { RestauranteId = restauranteId };
+            var favoritos = new List<UsuarioRestauranteFavorito>();
+
+            _restauranteRepoMock
+                .Setup(r => r.GetRestauranteByIdAsync(restauranteId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Restaurante { Id = restauranteId, DuenoId = _usuarioId });
+            _estadisticasRepoMock
+                .Setup(r => r.ObtenerPorRestauranteAsync(restauranteId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(estadisticas);
+            _favoritoRepoMock
+                .Setup(r => r.CountByRestauranteAsync(restauranteId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(favoritos);
+
+            var resultado = await _sut.HandleAsync(restauranteId, _usuarioId, CancellationToken.None);
+
+            Assert.Equal(restauranteId, resultado.RestauranteId);
+            Assert.Same(estadisticas, resultado.Estadisticas);
+            Assert.Same(favoritos, resultado.TotalFavoritos);
         }
 
    

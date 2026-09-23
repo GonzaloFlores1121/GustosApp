@@ -7,6 +7,7 @@ using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUse
 using GustosApp.Application.UseCases.AmistadUseCases;
 using AutoMapper;
 using GustosApp.API.DTO;
+using GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
 
 namespace GustosApp.API.Controllers
 {
@@ -21,17 +22,23 @@ namespace GustosApp.API.Controllers
         private readonly RechazarSolicitudRestauranteUseCase _rechazarSolicitud;
         private readonly ObtenerSolicitudesPorTipoUseCase _getPorTipo;
         private readonly IMapper _mapper;
+        private readonly ImportarRestaurantesUseCase _importarRestaurantes;
+        private readonly DescubrirRestaurantesCercanosUseCase _descubrirRestaurantes;
        
         public AdminController(AprobarSolicitudRestauranteUseCase aprobarSolicitud,
            ObtenerSolicitudRestaurantesPorIdUseCase getDetalle,
            RechazarSolicitudRestauranteUseCase rechazarSolicitud,
            ObtenerSolicitudesPorTipoUseCase getPorTipo,
+           ImportarRestaurantesUseCase importarRestaurantes,
+           DescubrirRestaurantesCercanosUseCase descubrirRestaurantes,
             IMapper mapper)
         {
             _aprobarSolicitud = aprobarSolicitud;
             _getDetalle = getDetalle;
             _rechazarSolicitud = rechazarSolicitud;
             _getPorTipo = getPorTipo;
+            _importarRestaurantes = importarRestaurantes;
+            _descubrirRestaurantes = descubrirRestaurantes;
             _mapper = mapper;
         }
 
@@ -58,6 +65,78 @@ namespace GustosApp.API.Controllers
             var restaurante = await _aprobarSolicitud.HandleAsync(id, ct);
 
             return Ok(restaurante);
+        }
+
+        [HttpPost("solicitudes/{id:guid}/reprocesar-menu")]
+        public async Task<IActionResult> ReprocesarMenu(Guid id, CancellationToken ct)
+        {
+            await _aprobarSolicitud.ReprocesarMenuAsync(id, ct);
+            return NoContent();
+        }
+
+        [HttpPost("restaurantes/importar")]
+        [ProducesResponseType(typeof(ResultadoImportacionRestaurantes), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> ImportarRestaurantes(
+            [FromBody] ImportacionRestaurantesDto solicitud,
+            CancellationToken ct)
+        {
+            try
+            {
+                var resultado = await _importarRestaurantes.HandleAsync(
+                    solicitud.Restaurantes,
+                    solicitud.Confirmar,
+                    ct);
+
+                return Ok(resultado);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("restaurantes/descubrir-cercanos")]
+        [ProducesResponseType(
+      typeof(ResultadoDescubrimientoRestaurantes),
+      StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status502BadGateway)]
+        public async Task<IActionResult> DescubrirRestaurantesCercanos(
+      [FromBody] DescubrimientoRestaurantesDto solicitud,
+      CancellationToken ct)
+        {
+            try
+            {
+                var resultado = await _descubrirRestaurantes.HandleAsync(
+                    new SolicitudDescubrimientoRestaurantes(
+                        solicitud.Latitud,
+                        solicitud.Longitud,
+                        solicitud.RadioMetros,
+                        solicitud.CantidadMaxima),
+                    ct);
+
+                return Ok(resultado);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (HttpRequestException ex)
+            {
+                return StatusCode(
+                    StatusCodes.Status502BadGateway,
+                    new
+                    {
+                        error = "Google Places no pudo completar la búsqueda.",
+                        googleStatusCode = (int?)ex.StatusCode,
+                        detalle = ex.Message
+                    });
+            }
         }
 
         [HttpDelete("{id:guid}")]

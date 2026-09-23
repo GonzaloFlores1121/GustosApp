@@ -58,6 +58,18 @@ namespace GustosApp.Infraestructure.Configurations
             b.Property(r => r.Valoracion)
                 .HasPrecision(3, 2);
 
+            b.Property(r => r.OrigenDatosCompatibilidad)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .HasDefaultValue(GustosApp.Domain.Common.OrigenDatosCompatibilidadRestaurante.Estimacion)
+                .HasSentinel((GustosApp.Domain.Common.OrigenDatosCompatibilidadRestaurante)(-1));
+
+            b.Property(r => r.EstadoDatosCompatibilidad)
+                .HasConversion<string>()
+                .HasMaxLength(24)
+                .HasDefaultValue(GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante.Estimado)
+                .HasSentinel((GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante)(-1));
+
             b.HasIndex(r => r.NombreNormalizado)
                 .HasDatabaseName("IX_Restaurantes_NombreNormalizado")
                 .IsUnique(false);

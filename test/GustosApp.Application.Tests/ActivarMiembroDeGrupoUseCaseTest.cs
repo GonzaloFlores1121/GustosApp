@@ -1,5 +1,6 @@
 ﻿using GustosApp.Application.UseCases.GrupoUseCases;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Model;
 using Moq;
 using System;
@@ -36,7 +37,7 @@ namespace GustosApp.Application.Tests
             );
         }
         [Fact]
-        public async Task Handle_UsuarioObtenidoNoExiste_ThrowsUnauthorized()
+        public async Task Handle_UsuarioAActivarNoExiste_LanzaArgumentException()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -59,9 +60,11 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((Usuario)null);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var excepcion = await Assert.ThrowsAsync<ArgumentException>(() =>
                 useCase.Handle(Guid.NewGuid(), Guid.NewGuid(), "uid")
             );
+
+            Assert.Equal("usuarioId", excepcion.ParamName);
         }
         [Fact]
         public async Task Handle_GrupoNoExiste_ThrowsKeyNotFound()
@@ -97,7 +100,7 @@ namespace GustosApp.Application.Tests
             );
         }
         [Fact]
-        public async Task Handle_NoEsAdminNiEsMismoUsuario_ThrowsUnauthorized()
+        public async Task Handle_NoEsAdministradorAunqueSeaElMismoUsuario_LanzaAccesoProhibido()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -111,7 +114,7 @@ namespace GustosApp.Application.Tests
             );
 
             var solicitante = new Usuario { Id = Guid.NewGuid() };
-            var objetivo = new Usuario { Id = Guid.NewGuid() };
+            var objetivo = solicitante;
 
             var grupo = new Grupo("Test Grupo", Guid.NewGuid()); // ✔️ instancia válida
 
@@ -131,9 +134,13 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsAdministradorAsync(It.IsAny<Guid>(), solicitante.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 useCase.Handle(Guid.NewGuid(), objetivo.Id, "uid")
             );
+
+            mockMiembroRepo.Verify(
+                r => r.ActivarMiembro(It.IsAny<Guid>(), It.IsAny<Guid>()),
+                Times.Never);
         }
 
         [Fact]
@@ -182,7 +189,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_MiembroYaActivo_ReturnsTrue()
+        public async Task Handle_MiembroYaIncluidoEnRecomendacion_DevuelveTrue()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -211,7 +218,7 @@ namespace GustosApp.Application.Tests
                          .ReturnsAsync(true);
 
             var miembro = new MiembroGrupo(Guid.NewGuid(), objetivo.Id);
-            miembro.afectarRecomendacion = true; // ya está activo
+            miembro.ParticipaEnRecomendacion = true; // ya participa de la recomendación
 
             mockMiembroRepo.Setup(r =>
                 r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
@@ -223,7 +230,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_MiembroInactivo_ActivaYReturnTrue()
+        public async Task Handle_MiembroExcluido_LoIncluyeEnRecomendacionYDevuelveTrue()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -251,12 +258,12 @@ namespace GustosApp.Application.Tests
             mockGrupoRepo.Setup(r => r.UsuarioEsAdministradorAsync(It.IsAny<Guid>(), solicitante.Id, It.IsAny<CancellationToken>()))
                          .ReturnsAsync(true);
 
-            // Miembro inactivo -> afectarRecomendacion = false
+            // El miembro todavía no participa de la recomendación.
             mockMiembroRepo.Setup(r =>
                 r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new MiembroGrupo(Guid.NewGuid(), objetivo.Id)
                 {
-                    afectarRecomendacion = false
+                    ParticipaEnRecomendacion = false
                 });
 
             mockMiembroRepo.Setup(r =>

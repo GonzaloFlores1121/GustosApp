@@ -1,4 +1,4 @@
-﻿using GustosApp.API.DTO;
+using GustosApp.API.DTO;
 using GustosApp.API.DTO;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
@@ -45,6 +45,12 @@ namespace GustosApp.API.DTO
         public ICollection<GustoDto> GustosQueSirve { get; set; }
         public ICollection<RestriccionResponse> RestriccionesQueRespeta { get; set; }
         public double Score { get; set; }
+        public string NivelCompatibilidad { get; set; } = "Desconocida";
+        public string AdvertenciaCompatibilidad { get; set; } = string.Empty;
+        public string OrigenDatosCompatibilidad { get; set; } = "Estimacion";
+        public string EstadoDatosCompatibilidad { get; set; } = "Estimado";
+        public DateTime? FechaObtencionDatosCompatibilidadUtc { get; set; }
+        public DateTime? FechaUltimaVerificacionDatosCompatibilidadUtc { get; set; }
         public string? Tipo { get; set; }
 
 
@@ -301,7 +307,7 @@ namespace GustosApp.API.DTO
 
         public List<FavoritosPorDiaDto> FavoritosPorDia { get;set;}
 
-        public static List<FavoritosPorDiaDto> CountFavoritosPorDiaAsync(List<UsuarioRestauranteFavoritoDTO> lista)
+        public static List<FavoritosPorDiaDto> CountFavoritosPorDia(List<UsuarioRestauranteFavoritoDTO> lista)
         {
             var query = lista
                 .GroupBy(x => x.FechaAgregado.Date)
@@ -317,7 +323,7 @@ namespace GustosApp.API.DTO
         }
 
 
-        public static List<UsuarioRestauranteFavoritoDTO> convertidorDeFavoritos(List<UsuarioRestauranteFavorito> entity)
+        public static List<UsuarioRestauranteFavoritoDTO> ConvertidorDeFavoritos(List<UsuarioRestauranteFavorito> entity)
         {
             List<UsuarioRestauranteFavoritoDTO> lista = new List<UsuarioRestauranteFavoritoDTO>();
 

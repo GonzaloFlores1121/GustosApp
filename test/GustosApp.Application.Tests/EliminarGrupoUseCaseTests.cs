@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Application.UseCases;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
@@ -58,7 +59,7 @@ namespace GustosApp.Application.Tests
 
         // Usuario no es admin 
         [Fact]
-        public async Task HandleAsync_UsuarioNoEsAdmin_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_UsuarioNoEsAdministrador_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid-valido";
             var grupoId = Guid.NewGuid();
@@ -74,7 +75,7 @@ namespace GustosApp.Application.Tests
                 .Setup(g => g.UsuarioEsAdministradorAsync(grupoId, It.IsAny<Guid>(), ct))
                 .ReturnsAsync(false);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _sut.HandleAsync(firebaseUid, grupoId, ct));
 
             Assert.Equal("No tienes permisos para eliminar este grupo", ex.Message);

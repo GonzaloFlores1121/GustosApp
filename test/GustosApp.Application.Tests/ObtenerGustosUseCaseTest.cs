@@ -48,7 +48,7 @@ namespace GustosApp.Application.Tests
             // Arrange
             _mockUsuarioRepo
                 .Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
-                .ReturnsAsync((Usuario)null);
+                .ReturnsAsync((Usuario?)null);
 
             // Act & Assert
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>

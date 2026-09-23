@@ -1,5 +1,8 @@
 # GustosApp
 
+Para aprender a levantar Redis y SQL Server con Docker Compose en desarrollo
+local, seguí la [guía del laboratorio](docs/docker-local.md).
+
 GustosApp – Configuración del proyecto
 Este proyecto usa Clean Architecture con:
 ASP.NET Core 8 (Web API).

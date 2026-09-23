@@ -17,7 +17,7 @@ namespace GustosApp.Infraestructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.9")
+                .HasAnnotation("ProductVersion", "8.0.31")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -1576,11 +1576,12 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<Guid>("GrupoId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("ParticipaEnRecomendacion")
+                        .HasColumnType("bit")
+                        .HasColumnName("afectarRecomendacion");
+
                     b.Property<Guid>("UsuarioId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("afectarRecomendacion")
-                        .HasColumnType("bit");
 
                     b.HasKey("Id");
 
@@ -1736,10 +1737,24 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasColumnType("nvarchar(300)");
 
                     b.Property<Guid?>("DuenoId")
+                        .IsConcurrencyToken()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("EmbeddingVector")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EstadoDatosCompatibilidad")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)")
+                        .HasDefaultValue("Estimado");
+
+                    b.Property<DateTime?>("FechaObtencionDatosCompatibilidadUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaUltimaVerificacionDatosCompatibilidadUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("HorariosJson")
                         .IsRequired()
@@ -1774,6 +1789,13 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
 
+                    b.Property<string>("OrigenDatosCompatibilidad")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasDefaultValue("Estimacion");
+
                     b.Property<string>("PlaceId")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
@@ -1786,6 +1808,7 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasDefaultValue("restaurant");
 
                     b.Property<string>("PropietarioUid")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
@@ -2069,17 +2092,27 @@ namespace GustosApp.Infraestructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("ComprobanteReclamo")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<bool>("CorreoAprobacionEnviado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("DeclaraAutorizacion")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Direccion")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Estado")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("datetime2");
 
-                    b.PrimitiveCollection<string>("GustosIds")
+                    b.Property<string>("GustosIds")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -2100,8 +2133,29 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
-                    b.PrimitiveCollection<string>("RestriccionesIds")
+                    b.Property<string>("NombreSolicitante")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RelacionRestaurante")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("RestauranteAprobadoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RestauranteExistenteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RestriccionesIds")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RolFirebaseSincronizado")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TelefonoContacto")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TipoComprobante")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid>("UsuarioId")
@@ -2115,7 +2169,13 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.HasIndex("Estado");
 
-                    b.HasIndex("UsuarioId");
+                    b.HasIndex("RestauranteAprobadoId");
+
+                    b.HasIndex("RestauranteExistenteId");
+
+                    b.HasIndex("UsuarioId")
+                        .IsUnique()
+                        .HasFilter("[Estado] = 0");
 
                     b.ToTable("SolicitudesRestaurantes");
                 });
@@ -2329,6 +2389,7 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasColumnType("bit");
 
                     b.Property<int>("Rol")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -2446,6 +2507,21 @@ namespace GustosApp.Infraestructure.Migrations
                     b.HasIndex("GrupoId", "Estado");
 
                     b.ToTable("Votaciones", (string)null);
+                });
+
+            modelBuilder.Entity("GustosApp.Domain.Model.VotacionParticipante", b =>
+                {
+                    b.Property<Guid>("VotacionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("VotacionId", "UsuarioId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("VotacionParticipantes", (string)null);
                 });
 
             modelBuilder.Entity("GustosApp.Domain.Model.VotacionRestaurante", b =>
@@ -2952,6 +3028,16 @@ namespace GustosApp.Infraestructure.Migrations
 
             modelBuilder.Entity("GustosApp.Domain.Model.SolicitudRestaurante", b =>
                 {
+                    b.HasOne("GustosApp.Domain.Model.Restaurante", null)
+                        .WithMany()
+                        .HasForeignKey("RestauranteAprobadoId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GustosApp.Domain.Model.Restaurante", null)
+                        .WithMany()
+                        .HasForeignKey("RestauranteExistenteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GustosApp.Domain.Model.Usuario", "Usuario")
                         .WithMany("SolicitudesRestaurantes")
                         .HasForeignKey("UsuarioId")
@@ -3025,6 +3111,25 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Navigation("Grupo");
 
                     b.Navigation("RestauranteGanador");
+                });
+
+            modelBuilder.Entity("GustosApp.Domain.Model.VotacionParticipante", b =>
+                {
+                    b.HasOne("GustosApp.Domain.Model.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GustosApp.Domain.Model.VotacionGrupo", "Votacion")
+                        .WithMany("Participantes")
+                        .HasForeignKey("VotacionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Usuario");
+
+                    b.Navigation("Votacion");
                 });
 
             modelBuilder.Entity("GustosApp.Domain.Model.VotacionRestaurante", b =>
@@ -3203,6 +3308,8 @@ namespace GustosApp.Infraestructure.Migrations
 
             modelBuilder.Entity("GustosApp.Domain.Model.VotacionGrupo", b =>
                 {
+                    b.Navigation("Participantes");
+
                     b.Navigation("RestaurantesCandidatos");
 
                     b.Navigation("Votos");

@@ -3,6 +3,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Services;
 using Microsoft.Extensions.Logging;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases
@@ -11,6 +12,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
     {
         private readonly IEmbeddingService _embeddingService;
         private readonly IRestauranteRepository _restauranteRepository;
+        private readonly EvaluadorCompatibilidadRestaurante _evaluadorCompatibilidad;
 
         private const double UMBRAL_MINIMO = 0.05;
         private const double UMBRAL_RELEVANCIA_RESENA = 0.60;
@@ -21,10 +23,12 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
         public SugerirGustosSobreUnRadioUseCase(
             IEmbeddingService embeddingService,
-            IRestauranteRepository restauranteRepository)
+            IRestauranteRepository restauranteRepository,
+            EvaluadorCompatibilidadRestaurante evaluadorCompatibilidad)
         {
             _embeddingService = embeddingService;
             _restauranteRepository = restauranteRepository;
+            _evaluadorCompatibilidad = evaluadorCompatibilidad;
         }
 
 
@@ -45,11 +49,11 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 throw new KeyNotFoundException("usuario invalido");
             }
 
-            List<(Restaurante rest, double puntuacion)> resultados =
+            List<ResultadoRecomendacion> resultados =
                 CalcularSimilitudUsuarioRestaurante(usuario, restaurantesCercanos, embeddingUsuario);
 
             if (!resultados.Any())
-                throw new KeyNotFoundException("No se obtuvo ningun restaurante en la zona para el usuario");
+                return new List<Restaurante>();
 
             List<Restaurante> restaurantesConResenas =
                 await ConsultarRestaurantesConResenas(resultados);
@@ -61,29 +65,29 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
         private void AjustarPuntuacionPorResenas(
             float[] embeddingUsuario,
-            List<(Restaurante rest, double puntuacion)> resultados,
+            List<ResultadoRecomendacion> resultados,
             List<Restaurante> restaurantesConResenas)
         {
             foreach (var restConResenas in restaurantesConResenas)
             {
-                var item = resultados.FirstOrDefault(x => x.rest.Id == restConResenas.Id);
-                if (item.rest == null) continue;
+                var item = resultados.FirstOrDefault(x => x.Restaurante.Id == restConResenas.Id);
+                if (item == null) continue;
 
                 double ajuste = CalcularAjustePorResenas(restConResenas, embeddingUsuario);
 
-                double nuevaPuntuacion = item.puntuacion * ajuste;
+                double nuevaPuntuacion = item.Puntuacion * ajuste;
 
-                item.rest.Score = nuevaPuntuacion;
+                item.Restaurante.Score = nuevaPuntuacion;
 
-                resultados.RemoveAll(x => x.rest.Id == restConResenas.Id);
-                resultados.Add((item.rest, nuevaPuntuacion));
+                resultados.RemoveAll(x => x.Restaurante.Id == restConResenas.Id);
+                resultados.Add(item with { Puntuacion = nuevaPuntuacion });
             }
         }
 
         private async Task<List<Restaurante>> ConsultarRestaurantesConResenas(
-            List<(Restaurante rest, double puntuacion)> resultados)
+            List<ResultadoRecomendacion> resultados)
         {
-            var ids = resultados.Select(r => r.rest.Id).ToList();
+            var ids = resultados.Select(r => r.Restaurante.Id).ToList();
             return await _restauranteRepository.obtenerRestauranteConResenias(ids);
         }
 
@@ -117,15 +121,19 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             return ajustes.Any() ? ajustes.Average() : 1.0;
         }
 
-        private List<(Restaurante rest, double puntuacion)> CalcularSimilitudUsuarioRestaurante(
+        private List<ResultadoRecomendacion> CalcularSimilitudUsuarioRestaurante(
             UsuarioPreferencias usuario,
             List<Restaurante> restaurantesCercanos,
             float[] embeddingUsuario)
         {
-            var resultados = new List<(Restaurante rest, double puntuacion)>();
+            var resultados = new List<ResultadoRecomendacion>();
 
             foreach (var rest in restaurantesCercanos)
             {
+                var compatibilidad = _evaluadorCompatibilidad.Evaluar(usuario, rest);
+                if (compatibilidad == NivelCompatibilidadRestaurante.Incompatible)
+                    continue;
+
                 var embeddingRest = ObtenerEmbeddingRestaurante(rest);
                 if (embeddingRest == null) continue;
 
@@ -138,7 +146,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 if (puntuacionFinal >= UMBRAL_MINIMO)
                 {
                     rest.Score = puntuacionFinal;
-                    resultados.Add((rest, puntuacionFinal));
+                    rest.NivelCompatibilidad = compatibilidad;
+                    resultados.Add(new ResultadoRecomendacion(rest, puntuacionFinal, compatibilidad));
                 }
             }
 
@@ -147,14 +156,15 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
         private static List<Restaurante> OrdenarResultados(
             int maxResultados,
-            List<(Restaurante rest, double puntuacion)> resultados)
+            List<ResultadoRecomendacion> resultados)
         {
             return resultados
-                .GroupBy(x => x.rest.Id)
+                .GroupBy(x => x.Restaurante.Id)
                 .Select(g => g.First())
-                .OrderByDescending(x => x.puntuacion)
+                .OrderByDescending(x => x.Compatibilidad)
+                .ThenByDescending(x => x.Puntuacion)
                 .Take(maxResultados)
-                .Select(x => x.rest)
+                .Select(x => x.Restaurante)
                 .ToList();
         }
 
@@ -210,5 +220,10 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
             return usuarioNoValido || restaurantesInvalidos;
         }
+
+        private sealed record ResultadoRecomendacion(
+            Restaurante Restaurante,
+            double Puntuacion,
+            NivelCompatibilidadRestaurante Compatibilidad);
     }
 }

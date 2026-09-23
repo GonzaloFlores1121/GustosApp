@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.GrupoUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -91,7 +92,7 @@ namespace GustosApp.Application.Tests
 
       
         [Fact]
-        public async Task HandleAsync_usuarioNoEsAdmin_lanzaUnauthorized()
+        public async Task HandleAsync_UsuarioNoEsAdministrador_LanzaAccesoProhibido()
         {
             var user = CrearUsuario();
             var grupo = CrearGrupo(Guid.NewGuid()); // admin es otro
@@ -104,8 +105,12 @@ namespace GustosApp.Application.Tests
 
             Func<Task> act = () => _sut.HandleAsync("uid", grupo.Id, "Nuevo Nombre");
 
-            await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            await act.Should().ThrowAsync<AccesoProhibidoException>()
                 .WithMessage("Solo el administrador puede cambiar el nombre del grupo");
+
+            _grupoRepo.Verify(
+                r => r.UpdateAsync(It.IsAny<Grupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
       

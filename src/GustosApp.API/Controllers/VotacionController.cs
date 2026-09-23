@@ -22,6 +22,7 @@ namespace GustosApp.API.Controllers
         private readonly ObtenerResultadosVotacionUseCase _obtenerResultadosUseCase;
         private readonly CerrarVotacionUseCase _cerrarVotacionUseCase;
         private readonly SeleccionarGanadorRuletaUseCase _seleccionarGanadorRuletaUseCase;
+        private readonly ObtenerHistorialVotacionesUseCase _obtenerHistorialVotacionesUseCase;
         private readonly IVotacionRepository _votacionRepository;
         private readonly IGrupoRepository _grupoRepository;
         private readonly IUsuarioRepository _usuarioRepository;
@@ -32,6 +33,7 @@ namespace GustosApp.API.Controllers
             ObtenerResultadosVotacionUseCase obtenerResultadosUseCase,
             CerrarVotacionUseCase cerrarVotacionUseCase,
             SeleccionarGanadorRuletaUseCase seleccionarGanadorRuletaUseCase,
+            ObtenerHistorialVotacionesUseCase obtenerHistorialVotacionesUseCase,
             IVotacionRepository votacionRepository,
            IGrupoRepository grupoRepository,
              IUsuarioRepository usuarioRepository )
@@ -41,6 +43,7 @@ namespace GustosApp.API.Controllers
             _obtenerResultadosUseCase = obtenerResultadosUseCase;
             _cerrarVotacionUseCase = cerrarVotacionUseCase;
             _seleccionarGanadorRuletaUseCase = seleccionarGanadorRuletaUseCase;
+            _obtenerHistorialVotacionesUseCase = obtenerHistorialVotacionesUseCase;
             _votacionRepository = votacionRepository;
             _grupoRepository = grupoRepository;
            _usuarioRepository = usuarioRepository;
@@ -50,6 +53,9 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(VotacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> IniciarVotacion(
             [FromBody] IniciarVotacionRequest request,
             CancellationToken ct)
@@ -81,6 +87,8 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(VotoResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> RegistrarVoto(
             Guid votacionId,
             [FromBody] RegistrarVotoRequest request,
@@ -110,6 +118,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(ResultadoVotacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> ObtenerVotacionActiva(Guid grupoId, CancellationToken ct)
         {
             var firebaseUid = GetFirebaseUid();
@@ -151,6 +160,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(ResultadoVotacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> ObtenerResultados(
             Guid votacionId,
             CancellationToken ct)
@@ -162,10 +172,58 @@ namespace GustosApp.API.Controllers
             return Ok(response);
         }
 
+        [HttpGet("grupo/{grupoId}/historial")]
+        [ProducesResponseType(typeof(HistorialVotacionesResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ObtenerHistorial(
+            Guid grupoId,
+            [FromQuery] int pagina = 1,
+            [FromQuery] int tamanoPagina = 10,
+            CancellationToken ct = default)
+        {
+            var resultado = await _obtenerHistorialVotacionesUseCase.HandleAsync(
+                GetFirebaseUid(),
+                grupoId,
+                pagina,
+                tamanoPagina,
+                ct);
+
+            return Ok(new HistorialVotacionesResponse
+            {
+                Pagina = resultado.Pagina,
+                TamanoPagina = resultado.TamanoPagina,
+                Total = resultado.Total,
+                TotalPaginas = resultado.TotalPaginas,
+                Votaciones = resultado.Votaciones.Select(v => new VotacionHistorialResponse
+                {
+                    VotacionId = v.VotacionId,
+                    Descripcion = v.Descripcion,
+                    FechaInicio = v.FechaInicio,
+                    FechaCierre = v.FechaCierre,
+                    CantidadParticipantes = v.CantidadParticipantes,
+                    CantidadVotos = v.CantidadVotos,
+                    Ganador = v.Ganador == null
+                        ? null
+                        : new RestauranteGanadorHistorialResponse
+                        {
+                            RestauranteId = v.Ganador.RestauranteId,
+                            Nombre = v.Ganador.Nombre,
+                            Direccion = v.Ganador.Direccion,
+                            ImagenUrl = v.Ganador.ImagenUrl
+                        }
+                }).ToList()
+            });
+        }
+
         [HttpPost("{votacionId}/cerrar")]
         [ProducesResponseType(typeof(VotacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CerrarVotacion(
          Guid votacionId,
          [FromBody] CerrarVotacionRequest? request = null,
@@ -196,6 +254,8 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(VotacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> SeleccionarGanadorRuleta(
             Guid votacionId,
             [FromBody] SeleccionarGanadorRequest request,

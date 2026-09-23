@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
 {
@@ -56,7 +57,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
 
             // Verificar destinatario correcto
             if (invitacion.UsuarioInvitadoId != usuario.Id)
-                throw new UnauthorizedAccessException("Esta invitación no es para ti");
+                throw new AccesoProhibidoException("Esta invitación no es para ti");
 
             // Estado debe ser pendiente
             if (invitacion.Estado != EstadoInvitacion.Pendiente)

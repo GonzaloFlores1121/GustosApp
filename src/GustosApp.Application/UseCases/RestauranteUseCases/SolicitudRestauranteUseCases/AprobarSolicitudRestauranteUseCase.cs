@@ -53,19 +53,66 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         public async Task<Restaurante> HandleAsync(Guid solicitudId, CancellationToken ct)
         {
             var solicitud = await _solicitudes.GetByIdAsync(solicitudId, ct)
-                ?? throw new Exception("Solicitud no encontrada");
+                ?? throw new KeyNotFoundException("Solicitud no encontrada");
 
-            var restaurante = await CrearRestauranteDesdeSolicitud(solicitud, ct);
+            if (solicitud.Estado == EstadoSolicitudRestaurante.Aprobada)
+            {
+                var aprobado = solicitud.RestauranteAprobadoId.HasValue
+                    ? await _restaurantes.GetRestauranteConImagenesAsync(solicitud.RestauranteAprobadoId.Value, ct)
+                    : null;
+                if (aprobado == null)
+                    throw new InvalidOperationException("La solicitud ya fue aprobada y no tiene un restaurante vinculado disponible.");
+                await SincronizarAprobacionAsync(solicitud, aprobado, ct);
+                return aprobado;
+            }
 
-            await ProcesarMenuOCR(solicitud, restaurante, ct);
+            if (solicitud.Estado != EstadoSolicitudRestaurante.Pendiente)
+                throw new InvalidOperationException("Solo se pueden aprobar solicitudes pendientes.");
+            if (solicitud.Usuario.Rol == RolUsuario.DuenoRestaurante)
+                throw new InvalidOperationException("El solicitante ya tiene un restaurante afiliado.");
+
+            var restaurante = solicitud.RestauranteExistenteId.HasValue
+                ? await VincularRestauranteAsync(solicitud, ct)
+                : await CrearRestauranteDesdeSolicitud(solicitud, ct);
 
             solicitud.Usuario.Rol = RolUsuario.DuenoRestaurante;
             solicitud.Estado = EstadoSolicitudRestaurante.Aprobada;
+            solicitud.RestauranteAprobadoId = restaurante.Id;
 
-            await _firebase.SetUserRoleAsync(solicitud.Usuario.FirebaseUid, RolUsuario.DuenoRestaurante.ToString());
-
+            // Una sola escritura confirma la ficha, el propietario y la solicitud.
             await _restaurantes.SaveChangesAsync(ct);
 
+            if (!solicitud.RestauranteExistenteId.HasValue)
+            {
+                await ProcesarMenuOCR(solicitud, restaurante, ct);
+                await _restaurantes.SaveChangesAsync(ct);
+            }
+            await SincronizarAprobacionAsync(solicitud, restaurante, ct);
+            return restaurante;
+        }
+
+        private async Task<Restaurante> VincularRestauranteAsync(SolicitudRestaurante solicitud, CancellationToken ct)
+        {
+            var restaurante = await _restaurantes.GetRestauranteConImagenesAsync(solicitud.RestauranteExistenteId!.Value, ct)
+                ?? throw new KeyNotFoundException("Restaurante no encontrado");
+            if (restaurante.DuenoId.HasValue || !string.IsNullOrWhiteSpace(restaurante.PropietarioUid))
+                throw new InvalidOperationException("El restaurante ya tiene propietario.");
+            restaurante.DuenoId = solicitud.UsuarioId;
+            restaurante.PropietarioUid = solicitud.UsuarioId.ToString();
+            restaurante.ActualizadoUtc = DateTime.UtcNow;
+            return restaurante;
+        }
+
+        private async Task SincronizarAprobacionAsync(SolicitudRestaurante solicitud, Restaurante restaurante, CancellationToken ct)
+        {
+            // Si falla un servicio externo, repetir la aprobación retoma estos pasos sin crear otra ficha.
+            if (!solicitud.RolFirebaseSincronizado)
+            {
+                await _firebase.SetUserRoleAsync(solicitud.Usuario.FirebaseUid, RolUsuario.DuenoRestaurante.ToString());
+                solicitud.RolFirebaseSincronizado = true;
+                await _restaurantes.SaveChangesAsync(ct);
+            }
+            if (solicitud.CorreoAprobacionEnviado) return;
 
             //modifcar para deploy
             await _email.EnviarEmailAsync(
@@ -75,12 +122,27 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
               {
              { "USUARIO", solicitud.Usuario.Nombre },
             { "NOMBRE", restaurante.Nombre },
-            { "LINK", $"http://localhost:3000/restaurante/panel/{restaurante.Id}" }
-             })
+             { "LINK", $"http://localhost:3000/restaurante/{restaurante.Id}/dashboard" }
+             }), ct
             );
 
 
-            return restaurante;
+            solicitud.CorreoAprobacionEnviado = true;
+            await _restaurantes.SaveChangesAsync(ct);
+        }
+
+        public async Task ReprocesarMenuAsync(Guid solicitudId, CancellationToken ct)
+        {
+            var solicitud = await _solicitudes.GetByIdAsync(solicitudId, ct)
+                ?? throw new KeyNotFoundException("Solicitud no encontrada");
+            if (solicitud.Estado != EstadoSolicitudRestaurante.Aprobada || !solicitud.RestauranteAprobadoId.HasValue)
+                throw new InvalidOperationException("La solicitud debe estar aprobada y vinculada a un restaurante.");
+            if (!solicitud.Imagenes.Any(i => i.Tipo == TipoImagenSolicitud.Menu))
+                throw new InvalidOperationException("La solicitud no tiene imagen de menú.");
+            var restaurante = await _restaurantes.GetRestauranteConImagenesAsync(solicitud.RestauranteAprobadoId.Value, ct)
+                ?? throw new KeyNotFoundException("Restaurante no encontrado");
+            await ProcesarMenuOCR(solicitud, restaurante, ct);
+            await _restaurantes.SaveChangesAsync(ct);
         }
 
 
@@ -91,6 +153,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         {
             var restaurante = new Restaurante
             {
+                Id = Guid.NewGuid(),
                 PropietarioUid= solicitud.UsuarioId.ToString(),
                 DuenoId = solicitud.UsuarioId,
                 Nombre = solicitud.Nombre,
@@ -104,7 +167,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                 CreadoUtc = DateTime.UtcNow,
                 ActualizadoUtc = DateTime.UtcNow,
                 WebUrl = solicitud.WebsiteUrl,
-                Rating= 4.0,
+                Rating = null,
             };
 
             // Relaciones
@@ -144,11 +207,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         {
             var imgMenu = solicitud.Imagenes
                 .FirstOrDefault(i => i.Tipo == TipoImagenSolicitud.Menu);
-
-            foreach (var img in solicitud.Imagenes)
-            {
-                Console.WriteLine($"IMG | Tipo={img.Tipo} | Url={img.Url}");
-            }
 
             if (imgMenu == null) { 
                 restaurante.MenuProcesado = false;
@@ -197,6 +255,10 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 
                 restaurante.MenuProcesado = true;
                 restaurante.MenuError = null;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {

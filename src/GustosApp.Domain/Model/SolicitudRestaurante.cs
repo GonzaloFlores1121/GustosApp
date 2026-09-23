@@ -11,6 +11,18 @@ namespace GustosApp.Domain.Model
     {
         public Guid Id { get; set; }
 
+        // Nulo para altas nuevas; informado para reclamar una ficha existente.
+        public Guid? RestauranteExistenteId { get; set; }
+        public Guid? RestauranteAprobadoId { get; set; }
+        public bool RolFirebaseSincronizado { get; set; }
+        public bool CorreoAprobacionEnviado { get; set; }
+        public string? NombreSolicitante { get; set; }
+        public string? RelacionRestaurante { get; set; }
+        public string? TelefonoContacto { get; set; }
+        public bool DeclaraAutorizacion { get; set; }
+        public string? TipoComprobante { get; set; }
+        public byte[]? ComprobanteReclamo { get; set; }
+
         // Usuario que hace la solicitud
         public Guid UsuarioId { get; set; }
         public Usuario Usuario { get; set; }

@@ -17,6 +17,20 @@ namespace GustosApp.Infraestructure.Repositories
 
         public SolicitudRestauranteRepositoryEF(GustosDbContext db) => _db = db;
 
+        public Task<SolicitudRestaurante?> BuscarReclamoPendienteAsync(Guid usuarioId, Guid restauranteId, CancellationToken ct)
+            => _db.SolicitudesRestaurantes.FirstOrDefaultAsync(s => s.UsuarioId == usuarioId
+                && s.RestauranteExistenteId == restauranteId && s.Estado == EstadoSolicitudRestaurante.Pendiente, ct);
+
+        public Task<SolicitudRestaurante?> BuscarPendientePorUsuarioAsync(Guid usuarioId, CancellationToken ct)
+            => _db.SolicitudesRestaurantes.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UsuarioId == usuarioId && s.Estado == EstadoSolicitudRestaurante.Pendiente, ct);
+
+        public Task<SolicitudRestaurante?> BuscarUltimaPorUsuarioAsync(Guid usuarioId, CancellationToken ct)
+            => _db.SolicitudesRestaurantes.AsNoTracking()
+                .Where(s => s.UsuarioId == usuarioId)
+                .OrderByDescending(s => s.FechaCreacion)
+                .FirstOrDefaultAsync(ct);
+
         public Task<SolicitudRestaurante?> GetByIdAsync(Guid id, CancellationToken ct)
         {
             return _db.SolicitudesRestaurantes
@@ -39,13 +53,25 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task AddAsync(SolicitudRestaurante solicitud, CancellationToken ct)
         {
             _db.SolicitudesRestaurantes.Add(solicitud);
-            await _db.SaveChangesAsync(ct);
+            try { await _db.SaveChangesAsync(ct); }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new InvalidOperationException("El usuario o la solicitud cambiaron durante la operación. Volvé a consultar su estado.");
+            }
+            catch (DbUpdateException)
+            {
+                throw new InvalidOperationException("Ya existe una solicitud de restaurante pendiente para este usuario.");
+            }
         }
 
         public async Task UpdateAsync(SolicitudRestaurante solicitud, CancellationToken ct)
         {
             _db.SolicitudesRestaurantes.Update(solicitud);
-            await _db.SaveChangesAsync(ct);
+            try { await _db.SaveChangesAsync(ct); }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new InvalidOperationException("La solicitud cambió durante la operación. Volvé a consultar su estado.");
+            }
         }
 
         public async Task<IEnumerable<SolicitudRestaurante>> GetAllAsync(CancellationToken ct)

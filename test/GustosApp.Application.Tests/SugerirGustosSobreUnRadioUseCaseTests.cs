@@ -13,6 +13,7 @@ namespace GustosApp.Application.Tests
     using GustosApp.Application.UseCases.RestauranteUseCases;
     using GustosApp.Domain.Common;
     using GustosApp.Domain.Model;
+    using GustosApp.Application.Services;
 
     public class SugerirGustosSobreUnRadioUseCaseTests
     {
@@ -28,7 +29,8 @@ namespace GustosApp.Application.Tests
 
             _sut = new SugerirGustosSobreUnRadioUseCase(
                 _embeddingMock.Object,
-                _repoMock.Object
+                _repoMock.Object,
+                new EvaluadorCompatibilidadRestaurante()
             );
         }
 
@@ -254,8 +256,94 @@ namespace GustosApp.Application.Tests
             _repoMock.Setup(x => x.obtenerRestauranteConResenias(It.IsAny<List<Guid>>()))
                 .ReturnsAsync(new List<Restaurante>());
 
-            await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-                _sut.Handle(usuario, restaurantes));
+            var resultado = await _sut.Handle(usuario, restaurantes);
+
+            Assert.Empty(resultado);
+            _repoMock.Verify(
+                x => x.obtenerRestauranteConResenias(It.IsAny<List<Guid>>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_ExcluyeRestauranteConIncompatibilidadConocida()
+        {
+            var usuario = new UsuarioPreferencias
+            {
+                Gustos = new List<string> { "pizza" },
+                Restricciones = new List<string> { "Sin gluten" }
+            };
+
+            var incompatible = new Restaurante
+            {
+                Id = Guid.NewGuid(),
+                GustosQueSirve = new List<Gusto>
+                {
+                    new()
+                    {
+                        Nombre = "Pizza",
+                        Tags = new List<Tag> { new() { Nombre = "Gluten" } }
+                    }
+                },
+                RestriccionesQueRespeta = new List<Restriccion>()
+            };
+
+            var desconocido = new Restaurante
+            {
+                Id = Guid.NewGuid(),
+                GustosQueSirve = new List<Gusto> { new() { Nombre = "Pizza" } },
+                RestriccionesQueRespeta = new List<Restriccion>()
+            };
+
+            _embeddingMock.Setup(x => x.GetEmbedding(It.IsAny<string>()))
+                .Returns(FakeEmbedding("x"));
+            _repoMock.Setup(x => x.obtenerRestauranteConResenias(It.IsAny<List<Guid>>()))
+                .ReturnsAsync(new List<Restaurante>());
+
+            var resultado = await _sut.Handle(usuario, new List<Restaurante> { incompatible, desconocido });
+
+            Assert.Single(resultado);
+            Assert.Equal(desconocido.Id, resultado[0].Id);
+            Assert.Equal(NivelCompatibilidadRestaurante.Desconocida, resultado[0].NivelCompatibilidad);
+        }
+
+        [Fact]
+        public async Task Handle_PriorizaCompatibilidadEstimadaAntesQueDesconocida()
+        {
+            var usuario = new UsuarioPreferencias
+            {
+                Gustos = new List<string> { "pizza" },
+                Restricciones = new List<string> { "Sin gluten" }
+            };
+
+            var desconocido = new Restaurante
+            {
+                Id = Guid.NewGuid(),
+                GustosQueSirve = new List<Gusto> { new() { Nombre = "Pizza" } },
+                RestriccionesQueRespeta = new List<Restriccion>()
+            };
+
+            var estimado = new Restaurante
+            {
+                Id = Guid.NewGuid(),
+                GustosQueSirve = new List<Gusto> { new() { Nombre = "Pizza" } },
+                RestriccionesQueRespeta = new List<Restriccion>
+                {
+                    new() { Nombre = "Sin gluten" }
+                }
+            };
+
+            _embeddingMock.Setup(x => x.GetEmbedding(It.IsAny<string>()))
+                .Returns(FakeEmbedding("x"));
+            _repoMock.Setup(x => x.obtenerRestauranteConResenias(It.IsAny<List<Guid>>()))
+                .ReturnsAsync(new List<Restaurante>());
+
+            var resultado = await _sut.Handle(usuario, new List<Restaurante> { desconocido, estimado });
+
+            Assert.Equal(2, resultado.Count);
+            Assert.Equal(estimado.Id, resultado[0].Id);
+            Assert.Equal(desconocido.Id, resultado[1].Id);
+            Assert.Equal(NivelCompatibilidadRestaurante.Estimada, resultado[0].NivelCompatibilidad);
+            Assert.Equal(NivelCompatibilidadRestaurante.Desconocida, resultado[1].NivelCompatibilidad);
         }
 
     }

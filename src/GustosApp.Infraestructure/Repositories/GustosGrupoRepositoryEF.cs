@@ -70,12 +70,14 @@ namespace GustosApp.Infraestructure.Repositories
             var gustos = await _context.GrupoGustos
                 .Where(gg => gg.GrupoId == grupoId)
                 .Join(
-                    _context.MiembrosGrupos,
-                    gg => gg.GrupoId,
-                    mg => mg.GrupoId,
+                    _context.MiembrosGrupos.Where(mg =>
+                        mg.GrupoId == grupoId &&
+                        mg.ParticipaEnRecomendacion &&
+                        mg.Activo),
+                    gg => gg.MiembroId,
+                    mg => mg.Id,
                     (gg, mg) => new { gg, mg }
                 )
-                .Where(x => x.mg.afectarRecomendacion) 
                 .Join(
                     _context.Gustos,
                     x => x.gg.GustoId,

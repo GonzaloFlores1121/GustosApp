@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.AmistadUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model.@enum;
@@ -93,7 +94,7 @@ namespace GustosApp.Application.Tests
             Func<Task> act = () =>
                 _useCase.HandleAsync("uid", Guid.NewGuid());
 
-            await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            await act.Should().ThrowAsync<AccesoProhibidoException>()
                 .WithMessage("Solo el destinatario puede rechazar la solicitud");
 
             _solicitudRepo.Verify(r =>

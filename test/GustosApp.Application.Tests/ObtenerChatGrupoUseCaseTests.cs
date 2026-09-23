@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -72,7 +73,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task HandleAsync_usuarioNoEsMiembro_lanzaUnauthorized()
+        public async Task HandleAsync_UsuarioNoEsMiembro_LanzaAccesoProhibido()
         {
             // Grupo con un miembro distinto
             var grupo = CrearGrupoConMiembro("otroUid");
@@ -82,8 +83,30 @@ namespace GustosApp.Application.Tests
 
             Func<Task> act = () => _sut.HandleAsync("uidNoMiembro", grupo.Id);
 
-            await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            await act.Should().ThrowAsync<AccesoProhibidoException>()
                 .WithMessage("No pertenece a este grupo");
+
+            _chatRepo.Verify(
+                r => r.GetMessagesByGrupoIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_MiembroInactivo_LanzaAccesoProhibidoYNoDevuelveMensajes()
+        {
+            var grupo = CrearGrupoConMiembro("uidInactivo");
+            grupo.Miembros.Single().AbandonarGrupo();
+
+            _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+
+            Func<Task> accion = () => _sut.HandleAsync("uidInactivo", grupo.Id);
+
+            await accion.Should().ThrowAsync<AccesoProhibidoException>()
+                .WithMessage("No pertenece a este grupo");
+            _chatRepo.Verify(
+                r => r.GetMessagesByGrupoIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
        

@@ -57,6 +57,7 @@ public class GustosDbContext : DbContext
     
     public DbSet<VotacionGrupo> Votaciones { get; set; }
     public DbSet<VotoRestaurante> Votos { get; set; }
+    public DbSet<VotacionParticipante> VotacionParticipantes { get; set; }
 
     public DbSet<VotacionRestaurante> VotacionRestaurantes { get; set; }
     public DbSet<OpinionRestaurante> OpinionesRestaurante { get; set; }
@@ -79,8 +80,20 @@ public class GustosDbContext : DbContext
 
         modelBuilder.ApplyConfiguration(new GustosApp.Infraestructure.Configurations.VotacionGrupoConfiguration());
         modelBuilder.ApplyConfiguration(new GustosApp.Infraestructure.Configurations.VotoRestauranteConfiguration());
+        modelBuilder.ApplyConfiguration(new GustosApp.Infraestructure.Configurations.VotacionParticipanteConfiguration());
 
 
+
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.Estado).IsConcurrencyToken();
+        modelBuilder.Entity<Restaurante>().Property(r => r.DuenoId).IsConcurrencyToken();
+        modelBuilder.Entity<Restaurante>().Property(r => r.PropietarioUid).IsConcurrencyToken();
+        modelBuilder.Entity<Usuario>().Property(u => u.Rol).IsConcurrencyToken();
+        modelBuilder.Entity<SolicitudRestaurante>()
+            .HasOne<Restaurante>().WithMany().HasForeignKey(s => s.RestauranteExistenteId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<SolicitudRestaurante>()
+            .HasOne<Restaurante>().WithMany().HasForeignKey(s => s.RestauranteAprobadoId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<SolicitudRestaurante>()
     .Property(s => s.Latitud)
@@ -92,6 +105,10 @@ public class GustosDbContext : DbContext
 
         modelBuilder.Entity<SolicitudRestaurante>()
     .HasIndex(s => s.Estado);
+        modelBuilder.Entity<SolicitudRestaurante>()
+            .HasIndex(s => s.UsuarioId)
+            .IsUnique()
+            .HasFilter("[Estado] = 0");
 
         modelBuilder.Entity<SolicitudRestaurante>()
             .Property(s => s.Nombre)
@@ -124,7 +141,9 @@ public class GustosDbContext : DbContext
 
 
         modelBuilder.Entity<Restaurante>()
-        .Ignore(r => r.Score);
+            .Ignore(r => r.Score);
+        modelBuilder.Entity<Restaurante>()
+            .Ignore(r => r.NivelCompatibilidad);
 
         modelBuilder.Entity<Restaurante>()
          .HasOne(r => r.Menu)
@@ -262,6 +281,10 @@ public class GustosDbContext : DbContext
             .WithMany(u => u.MiembrosGrupos)
             .HasForeignKey(m => m.UsuarioId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MiembroGrupo>()
+            .Property(m => m.ParticipaEnRecomendacion)
+            .HasColumnName("afectarRecomendacion");
 
         modelBuilder.Entity<InvitacionGrupo>()
             .HasOne(i => i.Grupo)

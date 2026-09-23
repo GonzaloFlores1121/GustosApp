@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 
@@ -25,6 +27,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
         public async Task<Restaurante> HandleAsync(
             Guid restauranteId,
+            Guid usuarioId,
             string? direccion,
             double? latitud,
             double? longitud,
@@ -37,6 +40,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             var restaurante = await _restauranteRepository.GetByIdAsync(restauranteId, ct);
             if (restaurante == null)
                 throw new InvalidOperationException("El restaurante no existe.");
+
+            if (restaurante.DuenoId != usuarioId)
+                throw new AccesoProhibidoException("No tenés permisos para actualizar este restaurante.");
 
             // Dirección
             if (!string.IsNullOrWhiteSpace(direccion))
@@ -75,6 +81,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                     : new List<Restriccion>();
 
                 restaurante.SetRestricciones(restricciones);
+                restaurante.RegistrarVerificacionDatosCompatibilidad(
+                    OrigenDatosCompatibilidadRestaurante.Restaurante,
+                    DateTime.UtcNow);
             }
 
             restaurante.ActualizadoUtc = DateTime.UtcNow;

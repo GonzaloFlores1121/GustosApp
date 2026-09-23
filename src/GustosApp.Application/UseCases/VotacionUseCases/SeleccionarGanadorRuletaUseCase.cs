@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
@@ -42,7 +43,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             // 3. Validar que sea ADMIN DEL GRUPO
             var grupo = votacion.Grupo;
             if (grupo.AdministradorId != usuario.Id)
-                throw new UnauthorizedAccessException("Solo el administrador puede seleccionar el ganador");
+                throw new AccesoProhibidoException("Solo el administrador puede seleccionar el ganador");
 
 
             // 4. Validar estado de la votación
@@ -53,6 +54,9 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             // 5. Validar que la ruleta solo se pueda usar si NO hay ya un ganador
             if (votacion.RestauranteGanadorId.HasValue)
                 throw new InvalidOperationException("Ya se seleccionó un ganador para esta votación");
+
+            if (!votacion.TodosLosParticipantesVotaron())
+                throw new InvalidOperationException("La ruleta solo puede utilizarse cuando todos los participantes hayan votado");
 
 
             // 6. Validar empate real
@@ -74,14 +78,19 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 throw new InvalidOperationException("El restaurante seleccionado no es un candidato válido");
 
 
-            // 9. Asignar ganador por ruleta (dominio)
-            votacion.EstablecerGanadorRuleta(restauranteGanadorId);
+            // 9. Asignar ganador y cerrar la votación
+            votacion.CerrarVotacion(restauranteGanadorId);
 
             await _notificaciones.NotificarGanador(votacion.GrupoId, votacion.Id, restauranteGanadorId);
 
 
             // 10. Guardar
             await _votacionRepository.ActualizarVotacionAsync(votacion, ct);
+
+            await _notificaciones.NotificarVotacionCerrada(
+                votacion.GrupoId,
+                votacion.Id,
+                restauranteGanadorId);
 
             return votacion;
         }

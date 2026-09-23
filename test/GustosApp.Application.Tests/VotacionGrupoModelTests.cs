@@ -327,5 +327,59 @@ namespace GustosApp.Application.Tests
             Assert.Null(votacion.Descripcion);
             Assert.Equal(EstadoVotacion.Activa, votacion.Estado);
         }
+
+        [Fact]
+        public void TodosLosParticipantesVotaron_CuandoFaltaUnVoto_RetornaFalso()
+        {
+            var votacion = new VotacionGrupo(Guid.NewGuid());
+            var usuarioUnoId = Guid.NewGuid();
+            var usuarioDosId = Guid.NewGuid();
+            var restauranteId = Guid.NewGuid();
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioUnoId));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioDosId));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuarioUnoId, restauranteId));
+
+            var todosVotaron = votacion.TodosLosParticipantesVotaron();
+
+            Assert.False(todosVotaron);
+        }
+
+        [Fact]
+        public void IntentarCerrarConGanadorUnico_CuandoTodosVotan_CierraYGuardaGanador()
+        {
+            var votacion = new VotacionGrupo(Guid.NewGuid());
+            var usuarioUnoId = Guid.NewGuid();
+            var usuarioDosId = Guid.NewGuid();
+            var restauranteId = Guid.NewGuid();
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioUnoId));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioDosId));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuarioUnoId, restauranteId));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuarioDosId, restauranteId));
+
+            var seCerro = votacion.IntentarCerrarConGanadorUnico();
+
+            Assert.True(seCerro);
+            Assert.Equal(EstadoVotacion.Cerrada, votacion.Estado);
+            Assert.Equal(restauranteId, votacion.RestauranteGanadorId);
+            Assert.NotNull(votacion.FechaCierre);
+        }
+
+        [Fact]
+        public void IntentarCerrarConGanadorUnico_CuandoHayEmpate_MantieneVotacionActiva()
+        {
+            var votacion = new VotacionGrupo(Guid.NewGuid());
+            var usuarioUnoId = Guid.NewGuid();
+            var usuarioDosId = Guid.NewGuid();
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioUnoId));
+            votacion.Participantes.Add(new VotacionParticipante(votacion.Id, usuarioDosId));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuarioUnoId, Guid.NewGuid()));
+            votacion.Votos.Add(new VotoRestaurante(votacion.Id, usuarioDosId, Guid.NewGuid()));
+
+            var seCerro = votacion.IntentarCerrarConGanadorUnico();
+
+            Assert.False(seCerro);
+            Assert.Equal(EstadoVotacion.Activa, votacion.Estado);
+            Assert.Null(votacion.RestauranteGanadorId);
+        }
     }
 }

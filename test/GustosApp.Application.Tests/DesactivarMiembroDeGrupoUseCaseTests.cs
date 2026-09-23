@@ -1,5 +1,6 @@
 ﻿using GustosApp.Application.UseCases.GrupoUseCases;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Model;
 using Moq;
 
@@ -89,7 +90,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_NoEsAdminNiElMismo_ThrowsUnauthorized()
+        public async Task Handle_NoEsAdministradorAunqueSeaElMismoUsuario_LanzaAccesoProhibido()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -103,7 +104,7 @@ namespace GustosApp.Application.Tests
             );
 
             var solicitante = new Usuario { Id = Guid.NewGuid() };
-            var objetivo = new Usuario { Id = Guid.NewGuid() };
+            var objetivo = solicitante;
 
             mockUsuarioRepo
                 .Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
@@ -121,8 +122,12 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsAdministradorAsync(It.IsAny<Guid>(), solicitante.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
 
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 useCase.Handle(Guid.NewGuid(), objetivo.Id, "uid"));
+
+            mockMiembroRepo.Verify(
+                r => r.DesactivarMiembroDeGrupo(It.IsAny<Guid>(), It.IsAny<Guid>()),
+                Times.Never);
         }
 
 
@@ -164,7 +169,7 @@ namespace GustosApp.Application.Tests
 
 
         [Fact]
-        public async Task Handle_MiembroYaDesactivado_ReturnsTrue()
+        public async Task Handle_MiembroYaExcluidoDeRecomendacion_DevuelveTrue()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -193,7 +198,7 @@ namespace GustosApp.Application.Tests
                          .ReturnsAsync(true);
 
             mockMiembroRepo.Setup(r => r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
-                           .ReturnsAsync(new MiembroGrupo (It.IsAny<Guid>(),objetivo.Id){ afectarRecomendacion = false });
+                           .ReturnsAsync(new MiembroGrupo (It.IsAny<Guid>(),objetivo.Id){ ParticipaEnRecomendacion = false });
 
             var result = await useCase.Handle(Guid.NewGuid(), objetivo.Id, "uid");
 
@@ -202,7 +207,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_MiembroActivo_DesactivaYRetornaTrue()
+        public async Task Handle_MiembroIncluido_LoExcluyeDeRecomendacionYDevuelveTrue()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockUsuarioRepo = new Mock<IUsuarioRepository>();
@@ -232,7 +237,7 @@ namespace GustosApp.Application.Tests
                          .ReturnsAsync(true);
 
             mockMiembroRepo.Setup(r => r.GetByGrupoYUsuarioAsync(It.IsAny<Guid>(), objetivo.IdUsuario, It.IsAny<CancellationToken>()))
-                           .ReturnsAsync(new MiembroGrupo(grupo.Id,objetivo.Id) { afectarRecomendacion = true });
+                           .ReturnsAsync(new MiembroGrupo(grupo.Id,objetivo.Id) { ParticipaEnRecomendacion = true });
 
             mockMiembroRepo.Setup(r => r.DesactivarMiembroDeGrupo(It.IsAny<Guid>(), objetivo.Id))
                            .ReturnsAsync(true);

@@ -11,6 +11,7 @@ using Xunit;
 using GustosApp.Application.Interfaces;
 using System.Reflection;
 using FluentAssertions;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.Tests
 {
@@ -125,9 +126,9 @@ namespace GustosApp.Application.Tests
                 Times.Never);
         }
 
-        // Verifica que cuando la invitación no pertenece al usuario se lanza UnauthorizedAccessException.
+        // Verifica que una invitación ajena no puede ser aceptada.
         [Fact]
-        public async Task HandleAsync_InvitacionNoEsParaUsuario_LanzaUnauthorizedAccessException()
+        public async Task HandleAsync_InvitacionNoEsParaUsuario_LanzaAccesoProhibido()
         {
             var firebaseUid = "uid-valido";
             var invitacionId = Guid.NewGuid();
@@ -147,10 +148,14 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.GetByIdAsync(invitacionId, ct))
                 .ReturnsAsync(invitacion);
 
-            var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            var ex = await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
                 _sut.HandleAsync(firebaseUid, invitacionId, ct));
 
             Assert.Equal("Esta invitación no es para ti", ex.Message);
+
+            _invitacionRepositoryMock.Verify(
+                r => r.UpdateAsync(It.IsAny<InvitacionGrupo>(), It.IsAny<CancellationToken>()),
+                Times.Never);
 
             _miembroGrupoRepositoryMock.Verify(r =>
                 r.UsuarioEsMiembroActivoAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),

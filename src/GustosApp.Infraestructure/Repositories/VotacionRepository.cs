@@ -29,6 +29,7 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<VotacionGrupo?> ObtenerPorIdAsync(Guid votacionId, CancellationToken ct = default)
         {
             return await _context.Votaciones
+                .Include(v => v.Participantes)
                 .Include(v => v.Votos)
                     .ThenInclude(vo => vo.Usuario)
                 .Include(v => v.Votos)
@@ -42,6 +43,7 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<VotacionGrupo?> ObtenerVotacionActivaAsync(Guid grupoId, CancellationToken ct = default)
         {
             return await _context.Votaciones
+                .Include(v => v.Participantes)
                 .Include(v => v.RestaurantesCandidatos)
                     .ThenInclude(rc => rc.Restaurante)
                 .Include(v => v.Votos)
@@ -57,15 +59,28 @@ namespace GustosApp.Infraestructure.Repositories
         }
 
 
-        public async Task<List<VotacionGrupo>> ObtenerHistorialVotacionesAsync(Guid grupoId, CancellationToken ct = default)
+        public async Task<(IReadOnlyList<VotacionGrupo> Votaciones, int Total)> ObtenerHistorialVotacionesAsync(
+            Guid grupoId,
+            int pagina,
+            int tamanoPagina,
+            CancellationToken ct = default)
         {
-            return await _context.Votaciones
+            var consulta = _context.Votaciones
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(v => v.Participantes)
                 .Include(v => v.Votos)
-                    .ThenInclude(vo => vo.Usuario)
                 .Include(v => v.RestauranteGanador)
-                .Where(v => v.GrupoId == grupoId && v.Estado == EstadoVotacion.Cerrada)
+                .Where(v => v.GrupoId == grupoId && v.Estado == EstadoVotacion.Cerrada);
+
+            var total = await consulta.CountAsync(ct);
+            var votaciones = await consulta
                 .OrderByDescending(v => v.FechaInicio)
+                .Skip((pagina - 1) * tamanoPagina)
+                .Take(tamanoPagina)
                 .ToListAsync(ct);
+
+            return (votaciones, total);
         }
 
         public async Task<VotoRestaurante> RegistrarVotoAsync(VotoRestaurante voto, CancellationToken ct = default)
@@ -108,6 +123,7 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<VotacionGrupo?> ObtenerPorIdConCandidatosAsync(Guid votacionId, CancellationToken ct = default)
         {
             return await _context.Votaciones
+                .Include(v => v.Participantes)
                 .Include(v => v.RestaurantesCandidatos)
                     .ThenInclude(rc => rc.Restaurante)
                 .Include(v => v.Votos)
