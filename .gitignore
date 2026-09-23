@@ -23,3 +23,8 @@ appsettings.Development.json
 
 # Archivos locales generados para revisar importaciones
 /local-data/
+
+
+.agents/
+.codex/
+AGENTS.md
