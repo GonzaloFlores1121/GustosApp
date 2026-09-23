@@ -85,6 +85,10 @@ namespace GustosApp.Application.Tests
         {
             var restauranteId = Guid.NewGuid();
             var restaurante = CreateRestaurante(restauranteId);
+            var gustoOriginal = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+            var restriccionOriginal = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin gluten" };
+            restaurante.GustosQueSirve.Add(gustoOriginal);
+            restaurante.RestriccionesQueRespeta.Add(restriccionOriginal);
 
             var oldActualizado = restaurante.ActualizadoUtc;
             var oldUltimaActualizacion = restaurante.UltimaActualizacion;
@@ -113,6 +117,8 @@ namespace GustosApp.Application.Tests
             Assert.Equal(-60.456, restaurante.Longitud);
             Assert.Equal("{\"nuevo\":\"schedule\"}", restaurante.HorariosJson);
             Assert.Equal("https://nuevo.example.com", restaurante.WebUrl);
+            Assert.Same(gustoOriginal, Assert.Single(restaurante.GustosQueSirve));
+            Assert.Same(restriccionOriginal, Assert.Single(restaurante.RestriccionesQueRespeta));
 
             Assert.True(restaurante.ActualizadoUtc > oldActualizado);
             Assert.True(restaurante.UltimaActualizacion > oldUltimaActualizacion);
