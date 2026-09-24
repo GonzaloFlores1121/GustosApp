@@ -1,9 +1,10 @@
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Interfaces;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases
 {
-    public class ConstruirPreferenciasGrupoUseCase
+    public class ConstruirPreferenciasGrupoUseCase : IConstruirPreferenciasGrupoUseCase
     {
         private readonly IGustosGrupoRepository _gustosGrupoRepository;
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;

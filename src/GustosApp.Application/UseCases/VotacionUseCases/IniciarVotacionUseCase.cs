@@ -3,8 +3,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Services;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Domain.Common;
 
 namespace GustosApp.Application.UseCases.VotacionUseCases
 {
@@ -14,17 +16,26 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
         private readonly IGrupoRepository _grupoRepository;
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly INotificacionesVotacionService _notificadorVotaciones;
+        private readonly IRestauranteRepository _restauranteRepository;
+        private readonly IConstruirPreferenciasGrupoUseCase _construirPreferenciasGrupo;
+        private readonly EvaluadorCompatibilidadRestaurante _evaluadorCompatibilidad;
 
         public IniciarVotacionUseCase(
             IVotacionRepository votacionRepository,
             IGrupoRepository grupoRepository,
             IUsuarioRepository usuarioRepository,
-           INotificacionesVotacionService notificadorVotaciones)
+            INotificacionesVotacionService notificadorVotaciones,
+            IRestauranteRepository restauranteRepository,
+            IConstruirPreferenciasGrupoUseCase construirPreferenciasGrupo,
+            EvaluadorCompatibilidadRestaurante evaluadorCompatibilidad)
         {
             _votacionRepository = votacionRepository;
             _grupoRepository = grupoRepository;
             _usuarioRepository = usuarioRepository;
             _notificadorVotaciones = notificadorVotaciones;
+            _restauranteRepository = restauranteRepository;
+            _construirPreferenciasGrupo = construirPreferenciasGrupo;
+            _evaluadorCompatibilidad = evaluadorCompatibilidad;
         }
 
         public async Task<VotacionGrupo> HandleAsync(
@@ -66,6 +77,19 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
             if (participantes.Count < 2)
                 throw new InvalidOperationException("Debe seleccionar al menos dos miembros activos para participar de la votación.");
+
+            var restaurantes = await _restauranteRepository.ObtenerPorIdsAsync(candidatosUnicos, ct);
+            if (restaurantes.Count != candidatosUnicos.Count)
+                throw new InvalidOperationException("Uno o más restaurantes candidatos ya no están disponibles.");
+
+            var preferencias = await _construirPreferenciasGrupo.HandleAsync(firebaseUid, grupoId, ct);
+            var hayCandidatoIncompatible = restaurantes.Any(restaurante =>
+                _evaluadorCompatibilidad.Evaluar(preferencias, restaurante) ==
+                NivelCompatibilidadRestaurante.Incompatible);
+
+            if (hayCandidatoIncompatible)
+                throw new InvalidOperationException(
+                    "Uno o más restaurantes candidatos son incompatibles con las preferencias de los participantes seleccionados.");
 
 
             // 4. Crear votación

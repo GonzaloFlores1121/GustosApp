@@ -1,4 +1,5 @@
 using GustosApp.Application.Model;
+using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using System;
@@ -11,21 +12,19 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 {
     public class ObtenerRestaurantesAleatoriosGrupoUseCase
     {
-        private readonly IGustosGrupoRepository _gustosGrupoRepository;
-        private readonly IRestauranteRepository _restauranteRepository;
         private readonly IGrupoRepository _grupoRepository;
+        private readonly IBuscadorRestaurantesGrupo _buscadorRestaurantesGrupo;
 
         public ObtenerRestaurantesAleatoriosGrupoUseCase(
-            IGustosGrupoRepository gustosGrupoRepository,
-            IRestauranteRepository restauranteRepository,
-            IGrupoRepository grupoRepository)
+            IGrupoRepository grupoRepository,
+            IBuscadorRestaurantesGrupo buscadorRestaurantesGrupo)
         {
-            _gustosGrupoRepository = gustosGrupoRepository;
-            _restauranteRepository = restauranteRepository;
             _grupoRepository = grupoRepository;
+            _buscadorRestaurantesGrupo = buscadorRestaurantesGrupo;
         }
 
         public async Task<List<RestauranteAleatorioModel>> HandleAsync(
+            string firebaseUid,
             Guid grupoId,
             ObtenerRestaurantesAleatoriosRequestModel request,
             CancellationToken ct)
@@ -37,39 +36,21 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 throw new ArgumentException("El grupo no existe", nameof(grupoId));
             }
 
-            // Obtener los IDs de los gustos del grupo
-            var gustosIds = await _gustosGrupoRepository.ObtenerGustosIdsDelGrupo(grupoId);
+            var resultadoBusqueda = await _buscadorRestaurantesGrupo.BuscarAsync(
+                firebaseUid,
+                grupoId,
+                request.Latitud,
+                request.Longitud,
+                request.RadioMetros,
+                200,
+                ct);
 
-            if (!gustosIds.Any())
-            {
-                return new List<RestauranteAleatorioModel>();
-            }
-
-            // Obtener los restaurantes que sirven alguno de esos gustos
-            var restaurantes = await _restauranteRepository.ObtenerRestaurantesPorGustosGrupo(gustosIds, ct);
-
-            if (!restaurantes.Any())
-            {
-                return new List<RestauranteAleatorioModel>();
-            }
-
-            // Filtrar por ubicación si se proporciona
-            if (request.Latitud.HasValue && request.Longitud.HasValue && request.RadioMetros.HasValue)
-            {
-                restaurantes = restaurantes.Where(r =>
-                {
-                    var distancia = CalcularDistancia(
-                        request.Latitud.Value, request.Longitud.Value,
-                        r.Latitud, r.Longitud);
-                    return distancia <= request.RadioMetros.Value;
-                }).ToList();
-            }
+            var restaurantes = resultadoBusqueda.Restaurantes.ToList();
 
             // Seleccionar restaurantes aleatorios
-            var random = new Random();
             var cantidad = Math.Min(request.Cantidad, restaurantes.Count);
             var restaurantesAleatorios = restaurantes
-                .OrderBy(x => random.Next())
+                .OrderBy(_ => Random.Shared.Next())
                 .Take(cantidad)
                 .ToList();
 
@@ -95,25 +76,5 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             return response;
         }
 
-        // Cálculo de distancia usando la fórmula de Haversine
-        private double CalcularDistancia(double lat1, double lon1, double lat2, double lon2)
-        {
-            const double radioTierra = 6371000; // Radio de la Tierra en metros
-            var dLat = ToRadians(lat2 - lat1);
-            var dLon = ToRadians(lon2 - lon1);
-
-            var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                    Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
-                    Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-
-            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-
-            return radioTierra * c;
-        }
-
-        private double ToRadians(double degrees)
-        {
-            return degrees * Math.PI / 180;
-        }
     }
 }

@@ -3,7 +3,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Services;
 using GustosApp.Application.UseCases.VotacionUseCases;
+using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
@@ -17,6 +19,8 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IGrupoRepository> _mockGrupoRepository;
         private readonly Mock<IUsuarioRepository> _mockUsuarioRepository;
         private readonly Mock<INotificacionesVotacionService> _mockNotificaciones;
+        private readonly Mock<IRestauranteRepository> _mockRestauranteRepository;
+        private readonly Mock<IConstruirPreferenciasGrupoUseCase> _mockPreferenciasGrupo;
         private readonly IniciarVotacionUseCase _useCase;
 
         public IniciarVotacionUseCaseTests()
@@ -25,11 +29,33 @@ namespace GustosApp.Application.Tests
             _mockGrupoRepository = new Mock<IGrupoRepository>();
             _mockUsuarioRepository = new Mock<IUsuarioRepository>();
             _mockNotificaciones = new Mock<INotificacionesVotacionService>();
+            _mockRestauranteRepository = new Mock<IRestauranteRepository>();
+            _mockPreferenciasGrupo = new Mock<IConstruirPreferenciasGrupoUseCase>();
+            _mockRestauranteRepository
+                .Setup(repository => repository.ObtenerPorIdsAsync(
+                    It.IsAny<IReadOnlyCollection<Guid>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                    ids.Select(id => new Restaurante
+                    {
+                        Id = id,
+                        GustosQueSirve = new List<Gusto> { new() { Nombre = "Pizza" } },
+                        RestriccionesQueRespeta = new List<Restriccion>()
+                    }).ToList());
+            _mockPreferenciasGrupo
+                .Setup(preferencias => preferencias.HandleAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Guid>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UsuarioPreferencias { Gustos = new List<string> { "Pizza" } });
             _useCase = new IniciarVotacionUseCase(
                 _mockVotacionRepository.Object,
                 _mockGrupoRepository.Object,
                 _mockUsuarioRepository.Object,
-                _mockNotificaciones.Object
+                _mockNotificaciones.Object,
+                _mockRestauranteRepository.Object,
+                _mockPreferenciasGrupo.Object,
+                new EvaluadorCompatibilidadRestaurante()
                 );
         }
 
@@ -255,6 +281,146 @@ namespace GustosApp.Application.Tests
             _mockVotacionRepository.Verify(
                 x => x.CrearVotacionAsync(It.IsAny<VotacionGrupo>(), It.IsAny<CancellationToken>()),
                 Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_CandidatoInexistente_NoCreaLaVotacion()
+        {
+            var firebaseUid = "firebase123";
+            var grupoId = Guid.NewGuid();
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var candidatos = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
+            var grupo = CrearGrupoConParticipante(grupoId, usuario);
+            ConfigurarInicioValido(firebaseUid, grupoId, usuario, grupo);
+            _mockRestauranteRepository
+                .Setup(repository => repository.ObtenerPorIdsAsync(
+                    It.IsAny<IReadOnlyCollection<Guid>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<Restaurante> { new() { Id = candidatos[0] } });
+
+            var excepcion = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _useCase.HandleAsync(firebaseUid, grupoId, null, candidatos));
+
+            Assert.Equal("Uno o más restaurantes candidatos ya no están disponibles.", excepcion.Message);
+            _mockVotacionRepository.Verify(
+                repository => repository.CrearVotacionAsync(
+                    It.IsAny<VotacionGrupo>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_CandidatoConIncompatibilidadConocida_NoCreaLaVotacion()
+        {
+            var firebaseUid = "firebase123";
+            var grupoId = Guid.NewGuid();
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var candidatos = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
+            var grupo = CrearGrupoConParticipante(grupoId, usuario);
+            ConfigurarInicioValido(firebaseUid, grupoId, usuario, grupo);
+            _mockPreferenciasGrupo
+                .Setup(preferencias => preferencias.HandleAsync(
+                    firebaseUid,
+                    grupoId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UsuarioPreferencias
+                {
+                    Restricciones = new List<string> { "Sin gluten" }
+                });
+            _mockRestauranteRepository
+                .Setup(repository => repository.ObtenerPorIdsAsync(
+                    It.IsAny<IReadOnlyCollection<Guid>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(candidatos.Select(id => new Restaurante
+                {
+                    Id = id,
+                    GustosQueSirve = new List<Gusto>
+                    {
+                        new()
+                        {
+                            Nombre = "Pizza",
+                            Tags = new List<Tag> { new() { Nombre = "Gluten" } }
+                        }
+                    },
+                    RestriccionesQueRespeta = new List<Restriccion>()
+                }).ToList());
+
+            var excepcion = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _useCase.HandleAsync(firebaseUid, grupoId, null, candidatos));
+
+            Assert.Contains("incompatibles", excepcion.Message);
+            _mockVotacionRepository.Verify(
+                repository => repository.CrearVotacionAsync(
+                    It.IsAny<VotacionGrupo>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_CandidatoConDatosInsuficientes_PermiteUsarloComoOpcion()
+        {
+            var firebaseUid = "firebase123";
+            var grupoId = Guid.NewGuid();
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var candidatos = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
+            var grupo = CrearGrupoConParticipante(grupoId, usuario);
+            ConfigurarInicioValido(firebaseUid, grupoId, usuario, grupo);
+            _mockPreferenciasGrupo
+                .Setup(preferencias => preferencias.HandleAsync(
+                    firebaseUid,
+                    grupoId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UsuarioPreferencias
+                {
+                    Gustos = new List<string> { "Pizza" },
+                    Restricciones = new List<string> { "Sin gluten" }
+                });
+            _mockRestauranteRepository
+                .Setup(repository => repository.ObtenerPorIdsAsync(
+                    It.IsAny<IReadOnlyCollection<Guid>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(candidatos.Select(id => new Restaurante
+                {
+                    Id = id,
+                    GustosQueSirve = new List<Gusto>(),
+                    RestriccionesQueRespeta = new List<Restriccion>()
+                }).ToList());
+            _mockVotacionRepository
+                .Setup(repository => repository.CrearVotacionAsync(
+                    It.IsAny<VotacionGrupo>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((VotacionGrupo votacion, CancellationToken _) => votacion);
+
+            var resultado = await _useCase.HandleAsync(
+                firebaseUid,
+                grupoId,
+                null,
+                candidatos);
+
+            Assert.Equal(2, resultado.RestaurantesCandidatos.Count);
+        }
+
+        private void ConfigurarInicioValido(
+            string firebaseUid,
+            Guid grupoId,
+            Usuario usuario,
+            Grupo grupo)
+        {
+            _mockUsuarioRepository
+                .Setup(repository => repository.GetByFirebaseUidAsync(
+                    firebaseUid,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(usuario);
+            _mockGrupoRepository
+                .Setup(repository => repository.GetByIdAsync(
+                    grupoId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+            _mockVotacionRepository
+                .Setup(repository => repository.ObtenerVotacionActivaAsync(
+                    grupoId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((VotacionGrupo?)null);
         }
 
         private static Grupo CrearGrupoConParticipante(Guid grupoId, Usuario administrador)

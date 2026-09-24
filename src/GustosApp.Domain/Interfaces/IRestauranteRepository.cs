@@ -20,6 +20,9 @@ namespace GustosApp.Domain.Interfaces
                 CancellationToken ct = default);
 
             Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct);
+            Task<List<Restaurante>> ObtenerPorIdsAsync(
+                IReadOnlyCollection<Guid> ids,
+                CancellationToken ct = default);
             Task<Restaurante?> GetRestauranteConImagenesAsync(Guid id, CancellationToken ct);
             Task AddAsync(Restaurante restaurante, CancellationToken ct);
 

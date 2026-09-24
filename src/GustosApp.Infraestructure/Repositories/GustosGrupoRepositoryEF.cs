@@ -94,7 +94,15 @@ namespace GustosApp.Infraestructure.Repositories
         {
             var gustosIds = await _context.GrupoGustos
                 .Where(gg => gg.GrupoId == grupoId)
-                .Select(gg => gg.GustoId)
+                .Join(
+                    _context.MiembrosGrupos.Where(mg =>
+                        mg.GrupoId == grupoId &&
+                        mg.ParticipaEnRecomendacion &&
+                        mg.Activo),
+                    gg => gg.MiembroId,
+                    mg => mg.Id,
+                    (gg, _) => gg.GustoId)
+                .Distinct()
                 .ToListAsync();
 
             return gustosIds;

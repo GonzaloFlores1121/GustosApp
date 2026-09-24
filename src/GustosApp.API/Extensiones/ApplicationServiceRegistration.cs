@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Application.Handlers;
+using GustosApp.Application.Interfaces;
 using GustosApp.Application.Services;
 using GustosApp.Application.UseCases.AmistadUseCases;
 using GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases;
@@ -39,6 +40,9 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ObtenerRestriccionesUseCase>();
             services.AddScoped<CrearGrupoUseCase>();
             services.AddScoped<ConstruirPreferenciasGrupoUseCase>();
+            services.AddScoped<IConstruirPreferenciasGrupoUseCase>(provider =>
+                provider.GetRequiredService<ConstruirPreferenciasGrupoUseCase>());
+            services.AddScoped<IBuscadorRestaurantesGrupo, BuscarRestaurantesRecomendadosGrupoUseCase>();
             services.AddScoped<ActualizarNombreGrupoUseCase>();
             services.AddScoped<InvitarUsuarioGrupoUseCase>();
             services.AddScoped<UnirseGrupoUseCase>();

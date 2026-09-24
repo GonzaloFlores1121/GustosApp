@@ -47,6 +47,55 @@ namespace GustosApp.API.Tests.Repositorios
             resultado.Should().ContainSingle().Which.Should().Be("Pizza");
         }
 
+        [Fact]
+        public async Task ObtenerGustosIdsDelGrupo_ExcluyeMiembrosNoSeleccionadosEInactivos()
+        {
+            await using var contexto = DbContextEnMemoria.Crear(
+                nameof(ObtenerGustosIdsDelGrupo_ExcluyeMiembrosNoSeleccionadosEInactivos));
+
+            var participante = CrearUsuario("participante-ids");
+            var noSeleccionado = CrearUsuario("no-seleccionado-ids");
+            var inactivo = CrearUsuario("inactivo-ids");
+            var grupo = new Grupo("Grupo de prueba", participante.Id) { Administrador = participante };
+            var miembroParticipante = new MiembroGrupo(grupo.Id, participante.Id, true)
+            {
+                Grupo = grupo,
+                Usuario = participante
+            };
+            var miembroNoSeleccionado = new MiembroGrupo(grupo.Id, noSeleccionado.Id)
+            {
+                Grupo = grupo,
+                Usuario = noSeleccionado,
+                ParticipaEnRecomendacion = false
+            };
+            var miembroInactivo = new MiembroGrupo(grupo.Id, inactivo.Id)
+            {
+                Grupo = grupo,
+                Usuario = inactivo
+            };
+            miembroInactivo.AbandonarGrupo();
+            var pizza = contexto.Gustos.Single(gusto => gusto.Nombre == "Pizza");
+            var sushi = contexto.Gustos.Single(gusto => gusto.Nombre == "Sushi");
+            var hamburguesa = contexto.Gustos.Single(gusto => gusto.Nombre == "Hamburguesa");
+
+            contexto.Grupos.Add(grupo);
+            contexto.MiembrosGrupos.AddRange(
+                miembroParticipante,
+                miembroNoSeleccionado,
+                miembroInactivo);
+            contexto.GrupoGustos.AddRange(
+                CrearGrupoGusto(grupo, miembroParticipante, pizza),
+                CrearGrupoGusto(grupo, miembroNoSeleccionado, sushi),
+                CrearGrupoGusto(grupo, miembroInactivo, hamburguesa));
+            await contexto.SaveChangesAsync();
+
+            var repositorio = new GustosGrupoRepositoryEF(contexto);
+
+            var resultado = await repositorio.ObtenerGustosIdsDelGrupo(grupo.Id);
+
+            resultado.Should().ContainSingle().Which.Should().Be(pizza.Id);
+        }
+
         private static Usuario CrearUsuario(string identificador)
         {
             return new Usuario(
