@@ -11,19 +11,10 @@ namespace GustosApp.API.Controllers
     [Route("api/[controller]")]
     public class NotificacionController : BaseApiController
     {
-        private readonly CrearNotificacionUseCase _crearNotificacion;
-        private readonly ObtenerNotificacionUsuarioUseCase _ObtenerNotificaciones;
-        private readonly MarcarNotificacionLeidaUseCase _marcarNotificion;
         private readonly EnviarRecomendacionesUsuariosActivosUseCase _enviarRecomendacion;
 
-        public NotificacionController(CrearNotificacionUseCase crearNotificacion, 
-            ObtenerNotificacionUsuarioUseCase obtenerNotificaciones, 
-            MarcarNotificacionLeidaUseCase marcarNotificion,
-            EnviarRecomendacionesUsuariosActivosUseCase enviarRecomendacion)
+        public NotificacionController(EnviarRecomendacionesUsuariosActivosUseCase enviarRecomendacion)
         {
-            _crearNotificacion = crearNotificacion;
-            _ObtenerNotificaciones = obtenerNotificaciones;
-            _marcarNotificion = marcarNotificion;
             _enviarRecomendacion = enviarRecomendacion;
         }
 
@@ -40,21 +31,6 @@ namespace GustosApp.API.Controllers
             return Ok(funciono);
         }
 
-        [HttpPost("solicitud")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> CrearNotificacion([FromBody] CrearNotificacionRequest request)
-        {
-            await _crearNotificacion.HandleAsync(
-         request.UsuarioDestinoId,
-         request.TipoNotificacion,
-         request.nombreUsuario ?? string.Empty,
-         request.nombreGrupo ?? string.Empty,
-         CancellationToken.None
-         );
-            return Ok("Notificacion creada");
-        }
         /*
         [HttpGet("{usuarioId:guid}")]
         public async Task<IActionResult> ObtenerNotificaciones(Guid usuarioId, CancellationToken ct)

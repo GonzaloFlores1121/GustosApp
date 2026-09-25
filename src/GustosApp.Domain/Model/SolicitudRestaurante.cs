@@ -16,6 +16,7 @@ namespace GustosApp.Domain.Model
         public Guid? RestauranteAprobadoId { get; set; }
         public bool RolFirebaseSincronizado { get; set; }
         public bool CorreoAprobacionEnviado { get; set; }
+        public bool CorreoRechazoEnviado { get; set; }
         public string? NombreSolicitante { get; set; }
         public string? RelacionRestaurante { get; set; }
         public string? TelefonoContacto { get; set; }

@@ -1,6 +1,5 @@
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.Common.Exceptions;
-using GustosApp.Application.UseCases.NotificacionUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 
@@ -11,11 +10,12 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
         private readonly IInvitacionGrupoRepository _invitacionRepository;
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;
-        private IGustosGrupoRepository _gustosGrupoRepository;
-        private readonly EliminarNotificacionUseCase _eliminarNotificacion;
-        private readonly INotificacionRealtimeService _notificacionRealtimeService;
+        private readonly IGustosGrupoRepository _gustosGrupoRepository;
+        private readonly ISolicitudAmistadRealtimeService _solicitudesRealtime;
         private readonly IChatRealTimeService _chatRealtime;
         private readonly IGrupoRepository _grupoRepository;
+        private readonly IApplicationTransaction _transaction;
+        private readonly TimeProvider _timeProvider;
      
 
 
@@ -23,20 +23,22 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
             IUsuarioRepository usuarioRepository,
             IMiembroGrupoRepository miembroGrupoRepository,
             IGustosGrupoRepository gustosGrupoRepository,
-            EliminarNotificacionUseCase eliminarNotificacion,
-            INotificacionRealtimeService notificacionRealtimeService,
+            ISolicitudAmistadRealtimeService solicitudesRealtime,
             IChatRealTimeService chatRealTimeService,
-            IGrupoRepository grupoRepository
+            IGrupoRepository grupoRepository,
+            IApplicationTransaction? transaction = null,
+            TimeProvider? timeProvider = null
             )
         {
             _invitacionRepository = invitacionRepository;
             _usuarioRepository = usuarioRepository;
             _miembroGrupoRepository = miembroGrupoRepository;
             _gustosGrupoRepository = gustosGrupoRepository;
-            _eliminarNotificacion = eliminarNotificacion;
-            _notificacionRealtimeService = notificacionRealtimeService;
+            _solicitudesRealtime = solicitudesRealtime;
             _chatRealtime = chatRealTimeService;
             _grupoRepository = grupoRepository;
+            _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
+            _timeProvider = timeProvider ?? TimeProvider.System;
           
         }
 
@@ -61,49 +63,45 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
                 throw new ArgumentException("Esta invitación ya fue procesada");
 
             // Verificar que no ha expirado
-            if (invitacion.EstaExpirada())
+            var ahora = _timeProvider.GetUtcNow().UtcDateTime;
+            if (invitacion.EstaExpirada(ahora))
+            {
+                invitacion.MarcarComoExpirada(ahora);
+                await _invitacionRepository.UpdateAsync(invitacion, cancellationToken);
                 throw new ArgumentException("La invitación ha expirado");
+            }
 
             // Verificar que el usuario no es ya miembro activo del grupo
             if (await _miembroGrupoRepository.UsuarioEsMiembroActivoAsync(invitacion.GrupoId, usuario.Id, cancellationToken))
                 throw new ArgumentException("Ya eres miembro de este grupo");
 
-            // Aceptar la invitación
-            invitacion.Aceptar();
-            await _invitacionRepository.UpdateAsync(invitacion, cancellationToken);
-
-            // Verificar si ya existe un registro de miembro (podría estar inactivo)
-            var miembroExistente = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(invitacion.GrupoId, usuario.IdUsuario, cancellationToken);
-
-            if (miembroExistente != null)
+            await _transaction.ExecuteAsync(async transactionCt =>
             {
-                // Reactivar el miembro existente
-                miembroExistente.Reincorporar();
-                await _miembroGrupoRepository.UpdateAsync(miembroExistente, cancellationToken);
-            }
-            else
-            {
-                // Agregar al usuario como miembro del grupo
-                var miembro = new MiembroGrupo(invitacion.GrupoId, usuario.Id, false);
-                await _miembroGrupoRepository.CreateAsync(miembro, cancellationToken);
-                await _gustosGrupoRepository.AgregarGustosAlGrupo(invitacion.GrupoId, usuario.Gustos.ToList(),miembro.Id);
-            }
+                invitacion.Aceptar(ahora);
+                await _invitacionRepository.UpdateAsync(invitacion, transactionCt);
 
+                var miembroExistente = await _miembroGrupoRepository.GetByGrupoYUsuarioAsync(
+                    invitacion.GrupoId,
+                    usuario.IdUsuario,
+                    transactionCt);
 
-            if (invitacion.NotificacionId != null && invitacion.NotificacionId.HasValue)
-            {
-                await _eliminarNotificacion.HandleAsync(invitacion.NotificacionId.Value, cancellationToken);
+                if (miembroExistente != null)
+                {
+                    miembroExistente.Reincorporar();
+                    await _miembroGrupoRepository.UpdateAsync(miembroExistente, transactionCt);
+                }
+                else
+                {
+                    var miembro = new MiembroGrupo(invitacion.GrupoId, usuario.Id, false);
+                    await _miembroGrupoRepository.CreateAsync(miembro, transactionCt);
+                    await _gustosGrupoRepository.AgregarGustosAlGrupo(
+                        invitacion.GrupoId,
+                        usuario.Gustos.ToList(),
+                        miembro.Id);
+                }
 
-                await _notificacionRealtimeService.EnviarNotificacionAsync(
-
-                    usuario.FirebaseUid,
-                    "NotificacionEliminada",
-                    invitacion.NotificacionId.Value.ToString(),
-                    "InvitacionGrupoEliminada",
-                    cancellationToken,
-                    invitacion.NotificacionId.Value
-                );
-            }
+                return true;
+            }, cancellationToken);
             // Recupera el grupo actualizado con relaciones
             var grupo = invitacion.Grupo ?? await _grupoRepository.GetByIdAsync
                 (invitacion.GrupoId, cancellationToken)
@@ -111,12 +109,24 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
                 ?? throw new InvalidOperationException("Error al aceptar la invitación");
 
 
-            await _chatRealtime.UsuarioSeUnio(
-               invitacion.GrupoId,
-                 usuario.Id,
-             usuario.IdUsuario,
-             usuario.FotoPerfilUrl
-                );
+            try
+            {
+                await _solicitudesRealtime.EnviarSolicitudResueltaAsync(
+                    usuario.FirebaseUid,
+                    invitacion.Id,
+                    "invitacion_grupo",
+                    "aceptada",
+                    cancellationToken);
+                await _chatRealtime.UsuarioSeUnio(
+                    invitacion.GrupoId,
+                    usuario.Id,
+                    usuario.IdUsuario,
+                    usuario.FotoPerfilUrl);
+            }
+            catch
+            {
+                // El estado persistido se recupera al reconectar aunque falle SignalR.
+            }
 
             return grupo;
         }

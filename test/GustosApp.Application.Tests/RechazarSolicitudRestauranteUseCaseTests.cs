@@ -174,10 +174,10 @@ namespace GustosApp.Application.Tests
 
             // La solicitud y el usuario se guardan juntos antes de los efectos externos.
             _solicitudes.Verify(s => s.UpdateAsync(It.Is<SolicitudRestaurante>(s =>
-                s.Usuario.Rol == RolUsuario.Usuario && s.Estado == EstadoSolicitudRestaurante.Rechazada), default), Times.Once);
+                s.Usuario.Rol == RolUsuario.Usuario && s.Estado == EstadoSolicitudRestaurante.Rechazada), default), Times.Exactly(2));
 
             // Update solicitud
-            _solicitudes.Verify(s => s.UpdateAsync(solicitud, default), Times.Once);
+            _solicitudes.Verify(s => s.UpdateAsync(solicitud, default), Times.Exactly(2));
         }
 
         [Fact]

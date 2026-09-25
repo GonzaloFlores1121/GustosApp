@@ -304,6 +304,15 @@ public class GustosDbContext : DbContext
             .HasForeignKey(i => i.UsuarioInvitadorId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<InvitacionGrupo>()
+            .HasIndex(i => new { i.GrupoId, i.UsuarioInvitadoId })
+            .IsUnique()
+            .HasFilter("[Estado] = 0");
+
+        modelBuilder.Entity<InvitacionGrupo>()
+            .Property(i => i.Version)
+            .IsRowVersion();
+
         // Índices únicos para grupos
         modelBuilder.Entity<Grupo>()
             .HasIndex(g => g.CodigoInvitacion)
@@ -400,6 +409,16 @@ public class GustosDbContext : DbContext
 
             entity.Property(n => n.UsuarioDestinoId)
                 .IsRequired();
+
+            entity.Property(n => n.UrlDestino)
+                .HasMaxLength(500);
+
+            entity.Property(n => n.ClaveUnica)
+                .HasMaxLength(200);
+
+            entity.HasIndex(n => n.ClaveUnica)
+                .IsUnique()
+                .HasFilter("[ClaveUnica] IS NOT NULL");
 
 
             entity.HasOne(n => n.UsuarioDestino)

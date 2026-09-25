@@ -1,6 +1,9 @@
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Application.Common.Exceptions;
+using GustosApp.Application.UseCases.NotificacionUseCases;
+using GustosApp.Application.Interfaces;
+using GustosApp.Domain.Model.@enum;
 
 namespace GustosApp.Application.UseCases.AmistadUseCases
 {
@@ -9,12 +12,21 @@ namespace GustosApp.Application.UseCases.AmistadUseCases
         private readonly ISolicitudAmistadRepository _solicitudRepository;
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;
+        private readonly PublicarNotificacionInformativaUseCase? _publicarNotificacion;
+        private readonly IApplicationTransaction _transaction;
 
-        public AceptarSolicitudUseCase(ISolicitudAmistadRepository solicitudRepository, IUsuarioRepository usuarioRepository, IMiembroGrupoRepository miembroGrupoRepository)
+        public AceptarSolicitudUseCase(
+            ISolicitudAmistadRepository solicitudRepository,
+            IUsuarioRepository usuarioRepository,
+            IMiembroGrupoRepository miembroGrupoRepository,
+            PublicarNotificacionInformativaUseCase? publicarNotificacion = null,
+            IApplicationTransaction? transaction = null)
         {
             _solicitudRepository = solicitudRepository;
             _usuarioRepository = usuarioRepository;
             _miembroGrupoRepository = miembroGrupoRepository;
+            _publicarNotificacion = publicarNotificacion;
+            _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
         }
 
         public async Task<SolicitudAmistad> HandleAsync(
@@ -31,9 +43,25 @@ namespace GustosApp.Application.UseCases.AmistadUseCases
             if (solicitud.DestinatarioId != usuario.Id)
                 throw new AccesoProhibidoException("Solo el destinatario puede aceptar la solicitud");
 
-            solicitud.Aceptar();
+            await _transaction.ExecuteAsync(async transactionCt =>
+            {
+                solicitud.Aceptar();
+                await _solicitudRepository.UpdateAsync(solicitud, transactionCt);
 
-            await _solicitudRepository.UpdateAsync(solicitud, ct);
+                if (_publicarNotificacion != null)
+                {
+                    await _publicarNotificacion.HandleAsync(
+                        solicitud.Remitente,
+                        "Solicitud de amistad aceptada",
+                        $"{usuario.Nombre} aceptó tu solicitud de amistad.",
+                        TipoNotificacion.AmistadAceptada,
+                        $"amistad:{solicitud.Id}:aceptada",
+                        $"/perfil/{usuario.IdUsuario}",
+                        transactionCt);
+                }
+
+                return true;
+            }, ct);
 
 
             return solicitud;

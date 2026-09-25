@@ -21,7 +21,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
             if (usuario == null)
                 throw new UnauthorizedAccessException("Usuario no encontrado");
 
-            // Obtener las invitaciones del usuario
+            await _invitacionRepository.MarcarInvitacionesExpiradasAsync(cancellationToken);
             var invitaciones = await _invitacionRepository.GetInvitacionesPendientesByUsuarioIdAsync(usuario.Id, cancellationToken);
 
             return invitaciones;

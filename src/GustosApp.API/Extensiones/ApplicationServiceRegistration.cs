@@ -63,6 +63,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ObtenerNotificacionesUsuarioUseCase>();
             services.AddScoped<ObtenerNotificacionUsuarioUseCase>();
             services.AddScoped<MarcarNotificacionLeidaUseCase>();
+            services.AddScoped<PublicarNotificacionInformativaUseCase>();
             services.AddScoped<ConstruirPreferenciasUsuarioIndividualUseCase>();
             services.AddScoped<ConstruirPreferenciasUsuarioConAmigoCase>();
             services.AddScoped<ActualizarValoracionRestauranteUseCase>();

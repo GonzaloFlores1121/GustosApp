@@ -1547,13 +1547,21 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<Guid>("UsuarioInvitadorId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.HasKey("Id");
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
-                    b.HasIndex("GrupoId");
+                    b.HasKey("Id");
 
                     b.HasIndex("UsuarioInvitadoId");
 
                     b.HasIndex("UsuarioInvitadorId");
+
+                    b.HasIndex("GrupoId", "UsuarioInvitadoId")
+                        .IsUnique()
+                        .HasFilter("[Estado] = 0");
 
                     b.ToTable("InvitacionesGrupos");
                 });
@@ -1599,6 +1607,10 @@ namespace GustosApp.Infraestructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ClaveUnica")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("datetime2");
 
@@ -1621,10 +1633,18 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("UrlDestino")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<Guid>("UsuarioDestinoId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClaveUnica")
+                        .IsUnique()
+                        .HasFilter("[ClaveUnica] IS NOT NULL");
 
                     b.HasIndex("InvitacionId")
                         .IsUnique()
@@ -2115,6 +2135,9 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasColumnType("varbinary(max)");
 
                     b.Property<bool>("CorreoAprobacionEnviado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("CorreoRechazoEnviado")
                         .HasColumnType("bit");
 
                     b.Property<bool>("DeclaraAutorizacion")

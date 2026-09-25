@@ -2,6 +2,7 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Infraestructure;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 
 namespace GustosApp.Infraestructure.Repositories
 {
@@ -29,7 +30,10 @@ namespace GustosApp.Infraestructure.Repositories
                 .Include(i => i.Grupo)
                 .Include(i => i.UsuarioInvitado)
                 .Include(i => i.UsuarioInvitador)
-                .FirstOrDefaultAsync(i => i.GrupoId == grupoId && i.UsuarioInvitadoId == usuarioId && i.Estado == EstadoInvitacion.Pendiente, cancellationToken);
+                .FirstOrDefaultAsync(i => i.GrupoId == grupoId
+                    && i.UsuarioInvitadoId == usuarioId
+                    && i.Estado == EstadoInvitacion.Pendiente
+                    && i.FechaExpiracion > DateTime.UtcNow, cancellationToken);
         }
 
         public async Task<IEnumerable<InvitacionGrupo>> GetInvitacionesByUsuarioIdAsync(Guid usuarioId, CancellationToken cancellationToken = default)
@@ -58,21 +62,42 @@ namespace GustosApp.Infraestructure.Repositories
                 .Include(i => i.Grupo)
                 .Include(i => i.UsuarioInvitado)
                 .Include(i => i.UsuarioInvitador)
-                .Where(i => i.UsuarioInvitadoId == usuarioId && i.Estado == EstadoInvitacion.Pendiente)
+                .Where(i => i.UsuarioInvitadoId == usuarioId
+                    && i.Estado == EstadoInvitacion.Pendiente
+                    && i.FechaExpiracion > DateTime.UtcNow)
                 .ToListAsync(cancellationToken);
         }
 
         public async Task<InvitacionGrupo> CreateAsync(InvitacionGrupo invitacion, CancellationToken cancellationToken = default)
         {
             _context.InvitacionesGrupos.Add(invitacion);
-            await _context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException exception) when (
+                exception.InnerException is SqlException { Number: 2601 or 2627 })
+            {
+                throw new InvalidOperationException(
+                    "Ya existe una invitación pendiente para este usuario.",
+                    exception);
+            }
             return invitacion;
         }
 
         public async Task<InvitacionGrupo> UpdateAsync(InvitacionGrupo invitacion, CancellationToken cancellationToken = default)
         {
             _context.InvitacionesGrupos.Update(invitacion);
-            await _context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException exception)
+            {
+                throw new InvalidOperationException(
+                    "La invitación ya fue respondida desde otra sesión.",
+                    exception);
+            }
             return invitacion;
         }
 
@@ -94,7 +119,10 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<bool> ExisteInvitacionPendienteAsync(Guid grupoId, Guid usuarioId, CancellationToken cancellationToken = default)
         {
             return await _context.InvitacionesGrupos
-                .AnyAsync(i => i.GrupoId == grupoId && i.UsuarioInvitadoId == usuarioId && i.Estado == EstadoInvitacion.Pendiente, cancellationToken);
+                .AnyAsync(i => i.GrupoId == grupoId
+                    && i.UsuarioInvitadoId == usuarioId
+                    && i.Estado == EstadoInvitacion.Pendiente
+                    && i.FechaExpiracion > DateTime.UtcNow, cancellationToken);
         }
         public async Task<InvitacionGrupo?> ObtenerUltimaInvitacionAsync(Guid grupoId, Guid usuarioInvitadoId, CancellationToken ct)
         {

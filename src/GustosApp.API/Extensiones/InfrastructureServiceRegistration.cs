@@ -51,6 +51,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<INotificacionRealtimeService, SignalRNotificacionRealtimeService>();
             services.AddScoped<IChatRealTimeService, SignalRChatRealtimeService>();
             services.AddScoped<ISolicitudAmistadRealtimeService, SignalRSolicitudAmistadRealtimeService>();
+            services.AddScoped<IApplicationTransaction, EfApplicationTransaction>();
 
             //reVISAR PROXIMAMENTE ESTE USECASE 
             services.AddScoped<IEnviarMensajeGrupoUseCase, EnviarMensajeGrupoUseCase>();

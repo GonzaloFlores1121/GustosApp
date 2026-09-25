@@ -6,15 +6,20 @@ using System.Threading.Tasks;
 
 namespace GustosApp.Application.Interfaces
 {
+    public sealed record NotificacionRealtimeMensaje(
+        Guid Id,
+        string Titulo,
+        string Mensaje,
+        string Tipo,
+        bool Leida,
+        DateTime FechaCreacion,
+        string? UrlDestino);
+
     public interface INotificacionRealtimeService
     {
         Task EnviarNotificacionAsync(
           string usuarioDestinoId,
-          string titulo,
-          string mensaje,
-          string tipo,
-          CancellationToken ct,
-            Guid? notificacionId = null,
-          Guid? invitacionId = null );
+          NotificacionRealtimeMensaje notificacion,
+          CancellationToken ct);
     }
 }

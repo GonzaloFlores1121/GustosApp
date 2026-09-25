@@ -12,6 +12,9 @@ namespace GustosApp.Domain.Model.@enum
         InvitacionGrupo = 1,
         RecordatorioEvento = 2,
         MensajeNuevo = 3,
-        Recomendacion = 4
+        Recomendacion = 4,
+        AmistadAceptada = 5,
+        SolicitudRestauranteAprobada = 6,
+        SolicitudRestauranteRechazada = 7
     }
 }

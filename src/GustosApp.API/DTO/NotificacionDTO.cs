@@ -15,6 +15,7 @@ namespace GustosApp.API.DTO
         public bool Leida { get; set; } = false;
 
         public DateTime FechaCreacion { get; set; }
+        public string? UrlDestino { get; set; }
     }
 
     public class CrearNotificacionRequest

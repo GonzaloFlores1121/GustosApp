@@ -7,6 +7,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Model;
+using GustosApp.Application.UseCases.NotificacionUseCases;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases
 {
@@ -24,6 +25,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         private readonly IFirebaseAuthService _firebase;
         private readonly IEmailService _email;
         private readonly IEmailTemplateService _templates;
+        private readonly PublicarNotificacionInformativaUseCase? _publicarNotificacion;
 
 
         public AprobarSolicitudRestauranteUseCase(ISolicitudRestauranteRepository solicitudes,
@@ -31,7 +33,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
              IOcrService ocr, IMenuParser menuParser, IRestriccionRepository restricciones,
             IGustoRepository gustos, IRestauranteMenuRepository menuRepo, 
             IFirebaseAuthService firebase, IEmailService email, 
-            IEmailTemplateService templates, IHttpDownloader downloader
+            IEmailTemplateService templates, IHttpDownloader downloader,
+            PublicarNotificacionInformativaUseCase? publicarNotificacion = null
 
             )
         {
@@ -47,6 +50,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             _email = email;
             _templates = templates;
             _downloader = downloader;
+            _publicarNotificacion = publicarNotificacion;
         }
 
 
@@ -62,6 +66,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                     : null;
                 if (aprobado == null)
                     throw new InvalidOperationException("La solicitud ya fue aprobada y no tiene un restaurante vinculado disponible.");
+                await PublicarResultadoAsync(solicitud, aprobado, ct);
                 await SincronizarAprobacionAsync(solicitud, aprobado, ct);
                 return aprobado;
             }
@@ -81,6 +86,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 
             // Una sola escritura confirma la ficha, el propietario y la solicitud.
             await _restaurantes.SaveChangesAsync(ct);
+            await PublicarResultadoAsync(solicitud, restaurante, ct);
 
             if (!solicitud.RestauranteExistenteId.HasValue)
             {
@@ -100,6 +106,19 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             AsignarPropietario(restaurante, solicitud);
             return restaurante;
         }
+
+        private Task PublicarResultadoAsync(
+            SolicitudRestaurante solicitud,
+            Restaurante restaurante,
+            CancellationToken ct) =>
+            _publicarNotificacion?.HandleAsync(
+                solicitud.Usuario,
+                "Solicitud de restaurante aprobada",
+                $"Tu solicitud para administrar {restaurante.Nombre} fue aprobada.",
+                TipoNotificacion.SolicitudRestauranteAprobada,
+                $"solicitud-restaurante:{solicitud.Id}:aprobada",
+                $"/restaurante/{restaurante.Id}/dashboard",
+                ct) ?? Task.CompletedTask;
 
         private static void AsignarPropietario(Restaurante restaurante, SolicitudRestaurante solicitud)
         {

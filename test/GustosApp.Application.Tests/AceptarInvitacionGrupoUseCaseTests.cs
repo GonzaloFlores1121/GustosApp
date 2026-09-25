@@ -21,7 +21,7 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IUsuarioRepository> _usuarioRepositoryMock;
         private readonly Mock<IMiembroGrupoRepository> _miembroGrupoRepositoryMock;
         private readonly Mock<IGustosGrupoRepository> _gustosGrupoRepositoryMock;
-        private readonly Mock<INotificacionRealtimeService> _notificacionRealtimeServiceMock;
+        private readonly Mock<ISolicitudAmistadRealtimeService> _solicitudesRealtimeServiceMock;
         private readonly Mock<IGrupoRepository> _grupoRepositoryMock;
         private readonly Mock<INotificacionRepository> _notificacionRepositoryMock;
 
@@ -35,7 +35,7 @@ namespace GustosApp.Application.Tests
             _usuarioRepositoryMock = new Mock<IUsuarioRepository>();
             _miembroGrupoRepositoryMock = new Mock<IMiembroGrupoRepository>();
             _gustosGrupoRepositoryMock = new Mock<IGustosGrupoRepository>();
-            _notificacionRealtimeServiceMock = new Mock<INotificacionRealtimeService>();
+            _solicitudesRealtimeServiceMock = new Mock<ISolicitudAmistadRealtimeService>();
             _grupoRepositoryMock = new Mock<IGrupoRepository>();
             _notificacionRepositoryMock = new Mock<INotificacionRepository>();
             _eliminarNotificacionUseCase = new EliminarNotificacionUseCase(_notificacionRepositoryMock.Object);
@@ -46,8 +46,7 @@ namespace GustosApp.Application.Tests
                 _usuarioRepositoryMock.Object,
                 _miembroGrupoRepositoryMock.Object,
                 _gustosGrupoRepositoryMock.Object,
-                _eliminarNotificacionUseCase,
-                _notificacionRealtimeServiceMock.Object,
+                _solicitudesRealtimeServiceMock.Object,
                 _chatRealtimeServiceMock.Object,
                 _grupoRepositoryMock.Object 
             ); 
@@ -330,7 +329,7 @@ namespace GustosApp.Application.Tests
                 Times.Once);
         }
         [Fact]
-        public async Task HandleAsync_ConNotificacion_EliminaYEnviaRealtime()
+        public async Task HandleAsync_Aceptada_NotificaSolicitudResuelta()
         {
             var ct = CancellationToken.None;
             var usuario = CreateUsuario();
@@ -352,15 +351,13 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(new Grupo("G", usuario.Id));
 
             await _sut.HandleAsync(usuario.FirebaseUid, Guid.NewGuid(), ct);
-            _notificacionRealtimeServiceMock.Verify(r =>
-                r.EnviarNotificacionAsync(
+            _solicitudesRealtimeServiceMock.Verify(r =>
+                r.EnviarSolicitudResueltaAsync(
                     usuario.FirebaseUid,
-                    "NotificacionEliminada",
-                    invitacion.NotificacionId.Value.ToString(),
-                    "InvitacionGrupoEliminada",
-                    ct,
-                    invitacion.NotificacionId.Value,
-                    null),
+                    invitacion.Id,
+                    "invitacion_grupo",
+                    "aceptada",
+                    ct),
                 Times.Once);
         }
         [Fact]

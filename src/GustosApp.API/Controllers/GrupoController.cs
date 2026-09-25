@@ -30,6 +30,7 @@ namespace GustosApp.API.Controllers
         private readonly ObtenerGruposUsuarioUseCase _obtenerGruposUseCase;
         private readonly ObtenerInvitacionesUsuarioUseCase _obtenerInvitacionesUseCase;
         private readonly AceptarInvitacionGrupoUseCase _aceptarInvitacionUseCase;
+        private readonly RechazarInvitacionAGrupoUseCase _rechazarInvitacionUseCase;
         private readonly EliminarGrupoUseCase _eliminarGrupoUseCase;
         private readonly ObtenerChatGrupoUseCase _obtenerChatGrupoUseCase;
         private readonly ObtenerGrupoDetalleUseCase _obtenerGrupoDetalleUseCase;
@@ -53,6 +54,7 @@ namespace GustosApp.API.Controllers
             ObtenerGruposUsuarioUseCase obtenerGruposUseCase,
             ObtenerInvitacionesUsuarioUseCase obtenerInvitacionesUseCase,
             AceptarInvitacionGrupoUseCase aceptarInvitacionUseCase,
+            RechazarInvitacionAGrupoUseCase rechazarInvitacionUseCase,
             EliminarGrupoUseCase eliminarGrupoUseCase,
             ObtenerGrupoDetalleUseCase obtenerGrupoDetalleUseCase,
             RemoverMiembroGrupoUseCase removerMiembroUseCase,
@@ -78,6 +80,7 @@ namespace GustosApp.API.Controllers
             _obtenerGruposUseCase = obtenerGruposUseCase;
             _obtenerInvitacionesUseCase = obtenerInvitacionesUseCase;
             _aceptarInvitacionUseCase = aceptarInvitacionUseCase;
+            _rechazarInvitacionUseCase = rechazarInvitacionUseCase;
             _eliminarGrupoUseCase = eliminarGrupoUseCase;
             _obtenerGrupoDetalleUseCase = obtenerGrupoDetalleUseCase;
             _removerMiembroUseCase = removerMiembroUseCase;
@@ -335,6 +338,16 @@ namespace GustosApp.API.Controllers
             return Ok(response);
 
 
+        }
+
+        [HttpPost("invitaciones/{invitacionId}/rechazar")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> RechazarInvitacion(Guid invitacionId, CancellationToken ct)
+        {
+            await _rechazarInvitacionUseCase.HandleAsync(GetFirebaseUid(), invitacionId, ct);
+            return NoContent();
         }
         [Authorize]
         [HttpPut("actualizarGustos")]
