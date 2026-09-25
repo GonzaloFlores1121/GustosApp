@@ -426,6 +426,11 @@ public class GustosDbContext : DbContext
             .WithMany()
             .HasForeignKey(o => o.UsuarioId)
             .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<OpinionRestaurante>()
+            .HasIndex(o => new { o.UsuarioId, o.RestauranteId })
+            .IsUnique()
+            .HasFilter("[UsuarioId] IS NOT NULL");
         // (NoAction evita eliminar opiniones si se borra un usuario; se podrían conservar como "opiniones antiguas")
 
       

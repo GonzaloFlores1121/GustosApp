@@ -1707,7 +1707,9 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.HasIndex("RestauranteId");
 
-                    b.HasIndex("UsuarioId");
+                    b.HasIndex("UsuarioId", "RestauranteId")
+                        .IsUnique()
+                        .HasFilter("[UsuarioId] IS NOT NULL");
 
                     b.ToTable("OpinionRestaurante");
                 });

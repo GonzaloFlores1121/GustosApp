@@ -105,6 +105,9 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ActivarMiembroDeGrupoUseCase>();
             services.AddScoped<EnviarRecomendacionesUsuariosActivosUseCase>();
             services.AddScoped<CrearOpinionRestauranteUseCase>();
+            services.AddScoped<ObtenerMiOpinionRestauranteUseCase>();
+            services.AddScoped<ActualizarOpinionRestauranteUseCase>();
+            services.AddScoped<EliminarOpinionRestauranteUseCase>();
             services.AddScoped<ObtenerValoracionUseCase>();
             services.AddScoped<BuscarRestaurantesUseCase>();
             services.AddScoped<AgregarUsuarioRestauranteFavoritoUseCase>();

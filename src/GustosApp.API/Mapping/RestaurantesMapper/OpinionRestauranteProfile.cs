@@ -19,8 +19,8 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                 .ForMember(dest => dest.Fotos,
                     opt => opt.MapFrom(src =>
                         src.Fotos != null
-                            ? src.Fotos.Select(f => f.Url).ToList()
-                            : new List<string>()));
+                            ? src.Fotos.Select(f => new OpinionFotoDto { Id = f.Id, Url = f.Url }).ToList()
+                            : new List<OpinionFotoDto>()));
 
             CreateMap<OpinionRestaurante, CrearOpinionRestauranteResponse>()
                 .ForMember(dest => dest.Valoracion, opt => opt.MapFrom(src => (int)src.Valoracion))

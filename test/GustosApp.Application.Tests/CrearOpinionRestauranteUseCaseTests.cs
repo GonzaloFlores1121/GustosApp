@@ -193,7 +193,7 @@ namespace GustosApp.Application.Tests
             guardada.Titulo.Should().Be("Gran experiencia");
             guardada.MotivoVisita.Should().Be("Cena Familiar");
             guardada.FechaVisita.Should().Be(fecha);
-            guardada.FechaCreacion.Should().Be(fecha);
+            guardada.FechaCreacion.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
             guardada.EsImportada.Should().BeFalse();
 
             guardada.Fotos.Should().HaveCount(1);

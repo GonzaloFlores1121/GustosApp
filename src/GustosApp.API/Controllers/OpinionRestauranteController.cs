@@ -22,8 +22,11 @@ namespace GustosApp.API.Controllers
         private readonly IMapper _mapper;
         private readonly IServicioRestaurantes _servicioRestaurantes;
         private readonly ObtenerValoracionUseCase _obtenerValoracionUseCase;
+        private readonly ObtenerMiOpinionRestauranteUseCase _obtenerMiOpinionUseCase;
+        private readonly ActualizarOpinionRestauranteUseCase _actualizarOpinionUseCase;
+        private readonly EliminarOpinionRestauranteUseCase _eliminarOpinionUseCase;
 
-        public OpinionRestauranteController(CrearOpinionRestauranteUseCase crearValoracionUsuarioUseCase, IOpinionRestauranteRepository valoracionUsuarioRepository,IMapper  mapper, ActualizarValoracionRestauranteUseCase actualizarValoracionRestauranteUseCase, IServicioRestaurantes servicioRestaurantes,ObtenerValoracionUseCase obtenerValoracionUseCase)
+        public OpinionRestauranteController(CrearOpinionRestauranteUseCase crearValoracionUsuarioUseCase, IOpinionRestauranteRepository valoracionUsuarioRepository,IMapper mapper, ActualizarValoracionRestauranteUseCase actualizarValoracionRestauranteUseCase, IServicioRestaurantes servicioRestaurantes,ObtenerValoracionUseCase obtenerValoracionUseCase, ObtenerMiOpinionRestauranteUseCase obtenerMiOpinionUseCase, ActualizarOpinionRestauranteUseCase actualizarOpinionUseCase, EliminarOpinionRestauranteUseCase eliminarOpinionUseCase)
         {
             _crearValoracionUsuarioUseCase = crearValoracionUsuarioUseCase;
             _opinionRestauranteRepository = valoracionUsuarioRepository;
@@ -31,6 +34,9 @@ namespace GustosApp.API.Controllers
             _actualizarValoracionRestauranteUseCase = actualizarValoracionRestauranteUseCase;
             _servicioRestaurantes = servicioRestaurantes;
             _obtenerValoracionUseCase = obtenerValoracionUseCase;  
+            _obtenerMiOpinionUseCase = obtenerMiOpinionUseCase;
+            _actualizarOpinionUseCase = actualizarOpinionUseCase;
+            _eliminarOpinionUseCase = eliminarOpinionUseCase;
         }
 
         [HttpPost]
@@ -62,9 +68,42 @@ namespace GustosApp.API.Controllers
                 ct
                 );
 
-            await _actualizarValoracionRestauranteUseCase.HandleAsync(request.RestauranteId, ct);
-
             return Ok("Opinion registrada");
+        }
+
+        [HttpGet("mi-opinion/{restauranteId:guid}")]
+        [ProducesResponseType(typeof(OpinionRestauranteDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> ObtenerMiOpinion(Guid restauranteId, CancellationToken ct)
+        {
+            var opinion = await _obtenerMiOpinionUseCase.HandleAsync(GetFirebaseUid(), restauranteId, ct);
+            return opinion == null ? NoContent() : Ok(_mapper.Map<OpinionRestauranteDto>(opinion));
+        }
+
+        [HttpPut("{opinionId:guid}")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ActualizarOpinion(Guid opinionId, [FromForm] ActualizarOpinionRestauranteRequest request, CancellationToken ct)
+        {
+            var files = request.Imagenes?.Select(img => new FileUpload
+            {
+                FileName = img.FileName,
+                Content = img.OpenReadStream(),
+                ContentType = img.ContentType
+            }).ToList();
+
+            await _actualizarOpinionUseCase.HandleAsync(
+                GetFirebaseUid(), opinionId, request.Valoracion, request.Opinion, request.Titulo,
+                request.FotosConservadasIds, files, request.MotivoVisita,
+                request.FechaVisita ?? DateTime.UtcNow, ct);
+
+            return NoContent();
+        }
+
+        [HttpDelete("{opinionId:guid}")]
+        public async Task<IActionResult> EliminarOpinion(Guid opinionId, CancellationToken ct)
+        {
+            await _eliminarOpinionUseCase.HandleAsync(GetFirebaseUid(), opinionId, ct);
+            return NoContent();
         }
 
         [HttpGet("{usuarioId}")]

@@ -24,15 +24,37 @@
         public double? RestauranteLatitud { get; set; }
         public double? RestauranteLongitud { get; set; }
     }
+    public class ActualizarOpinionRestauranteRequest
+    {
+        public double Valoracion { get; set; }
+        public string? Opinion { get; set; }
+        public string? Titulo { get; set; }
+        public DateTime? FechaVisita { get; set; }
+        public string? MotivoVisita { get; set; }
+        public List<Guid> FotosConservadasIds { get; set; } = new();
+        public List<IFormFile>? Imagenes { get; set; }
+    }
     public class OpinionRestauranteDto
     {
         public Guid Id { get; set; }
+        public Guid RestauranteId { get; set; }
+        public Guid? UsuarioId { get; set; }
         public string Autor { get; set; } = "";
         public string Opinion { get; set; } = "";
+        public string? Titulo { get; set; }
         public int Valoracion { get; set; }
         public DateTime Fecha { get; set; }
+        public DateTime? FechaVisita { get; set; }
+        public string? MotivoVisita { get; set; }
+        public bool EsImportada { get; set; }
         public string? ImagenAutor { get; set; }
-        public List<string?>Fotos  { get; set; }
+        public List<OpinionFotoDto> Fotos { get; set; } = new();
+    }
+
+    public class OpinionFotoDto
+    {
+        public Guid Id { get; set; }
+        public string Url { get; set; } = string.Empty;
     }
 
 }

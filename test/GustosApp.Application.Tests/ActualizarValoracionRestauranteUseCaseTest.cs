@@ -27,7 +27,23 @@ namespace GustosApp.Application.Tests
         }
 
         private OpinionRestaurante FakeOpinion(double valor)
-            => new OpinionRestaurante { Valoracion = valor };
+            => new OpinionRestaurante { Valoracion = valor, UsuarioId = Guid.NewGuid(), EsImportada = false };
+
+        [Fact]
+        public async Task HandleAsync_NoIncluyeResenasImportadasEnPromedioLocal()
+        {
+            var id = Guid.NewGuid();
+            _opinionesRepo.Setup(r => r.ObtenerPorRestauranteAsync(id, default))
+                .ReturnsAsync(new List<OpinionRestaurante>
+                {
+                    FakeOpinion(5),
+                    new() { Valoracion = 1, EsImportada = true }
+                });
+
+            await _useCase.HandleAsync(id, default);
+
+            _restauranteRepo.Verify(r => r.ActualizarValoracionAsync(id, 5, default), Times.Once);
+        }
 
         [Fact]
         public async Task HandleAsync_SinOpiniones_DeberiaActualizarConCero()

@@ -54,24 +54,36 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
                 Titulo = titulo,
                 FechaVisita = fechaVisita,
                 MotivoVisita = motivoVisita,
-                FechaCreacion = fechaVisita,
+                FechaCreacion = DateTime.UtcNow,
                 EsImportada = false
             };
 
        
-            foreach (var file in Imagenes)
+            var urlsSubidas = new List<string>();
+            try
             {
-                var url = await _fileStorage.UploadFileAsync(
-                    file.Content,
-                    file.FileName,
-                    "opiniones"
-                );
+                foreach (var file in Imagenes)
+                {
+                    var url = await _fileStorage.UploadFileAsync(
+                        file.Content,
+                        file.FileName,
+                        "opiniones"
+                    );
 
-                opinionRestaurante.Fotos.Add(new OpinionFoto { Url = url });
+                    urlsSubidas.Add(url);
+                    opinionRestaurante.Fotos.Add(new OpinionFoto { Id = Guid.NewGuid(), Url = url });
+                }
+
+                await _repoOpinionRest.CrearAsync(opinionRestaurante, cancellationToken);
             }
-
-
-            await _repoOpinionRest.CrearAsync(opinionRestaurante, cancellationToken);
+            catch
+            {
+                foreach (var url in urlsSubidas)
+                {
+                    try { await _fileStorage.DeleteFileAsync(url); } catch { }
+                }
+                throw;
+            }
 
 
             //lugar visitado por usuario
