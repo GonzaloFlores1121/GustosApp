@@ -2511,7 +2511,13 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.HasIndex("RestauranteId");
 
-                    b.HasIndex("UsuarioId");
+                    b.HasIndex("UsuarioId", "PlaceId")
+                        .IsUnique()
+                        .HasFilter("[PlaceId] IS NOT NULL");
+
+                    b.HasIndex("UsuarioId", "RestauranteId")
+                        .IsUnique()
+                        .HasFilter("[RestauranteId] IS NOT NULL");
 
                     b.ToTable("UsuarioRestauranteVisitados", (string)null);
                 });

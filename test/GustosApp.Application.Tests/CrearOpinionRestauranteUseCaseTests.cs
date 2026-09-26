@@ -18,6 +18,7 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IFileStorageService> _fileStorage;
         private readonly Mock<IOpinionRestauranteRepository> _repoOpinionRest;
         private readonly Mock<IUsuarioRepository> _repoUsuario;
+        private readonly Mock<IRestauranteRepository> _repoRestaurante;
 
         private readonly CrearOpinionRestauranteUseCase _useCase;
 
@@ -26,11 +27,15 @@ namespace GustosApp.Application.Tests
             _fileStorage = new Mock<IFileStorageService>();
             _repoOpinionRest = new Mock<IOpinionRestauranteRepository>();
             _repoUsuario = new Mock<IUsuarioRepository>();
+            _repoRestaurante = new Mock<IRestauranteRepository>();
+            _repoRestaurante.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Restaurante { Id = Guid.NewGuid(), Nombre = "Restaurante" });
 
             _useCase = new CrearOpinionRestauranteUseCase(
                 _fileStorage.Object,
                 _repoOpinionRest.Object,
-                _repoUsuario.Object
+                _repoUsuario.Object,
+                _repoRestaurante.Object
             );
         }
 
@@ -206,6 +211,43 @@ namespace GustosApp.Application.Tests
             _repoOpinionRest.Verify(r =>
                 r.CrearAsync(It.IsAny<OpinionRestaurante>(), default),
                 Times.Once);
+            _repoUsuario.Verify(r =>
+                r.MarcarRestauranteComoVisitadoAsync(user.Id, restId, default),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleAsync_SiFallaRegistrarVisita_PropagaFalloYEliminaArchivoSubido()
+        {
+            var user = FakeUsuario(Guid.NewGuid());
+            var restId = Guid.NewGuid();
+            _repoUsuario.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(user);
+            _repoOpinionRest.Setup(r => r.ExisteValoracionAsync(user.Id, restId, default)).ReturnsAsync(false);
+            _fileStorage.Setup(f => f.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), "opiniones"))
+                .ReturnsAsync("url_subida");
+            _repoUsuario.Setup(r => r.MarcarRestauranteComoVisitadoAsync(user.Id, restId, default))
+                .ThrowsAsync(new InvalidOperationException("fallo persistiendo visita"));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(
+                "uid", restId, 5, "Muy bueno", "Cena", new List<FileUpload> { FakeFile("foto") },
+                null, DateTime.UtcNow, default));
+
+            _fileStorage.Verify(f => f.DeleteFileAsync("url_subida"), Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleAsync_RestauranteInexistente_NoSubeArchivosNiCreaOpinion()
+        {
+            var user = FakeUsuario(Guid.NewGuid());
+            _repoUsuario.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(user);
+            _repoRestaurante.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), default)).ReturnsAsync((Restaurante?)null);
+
+            await Assert.ThrowsAsync<KeyNotFoundException>(() => _useCase.HandleAsync(
+                "uid", Guid.NewGuid(), 5, "Muy bueno", "Cena", new List<FileUpload> { FakeFile("foto") },
+                null, DateTime.UtcNow, default));
+
+            _fileStorage.Verify(f => f.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repoOpinionRest.Verify(f => f.CrearAsync(It.IsAny<OpinionRestaurante>(), default), Times.Never);
         }
     }
     }

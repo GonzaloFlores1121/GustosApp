@@ -15,50 +15,52 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
     {
         private readonly IUsuarioRepository _repositorioUsuario;
         private readonly IUsuarioRestauranteFavoritoRepository _repositorioFavorito;
+        private readonly IRestauranteRepository _repositorioRestaurante;
 
-        public AgregarUsuarioRestauranteFavoritoUseCase(IUsuarioRestauranteFavoritoRepository repositorioFavorito, IUsuarioRepository repositorioUsuario)
+        public AgregarUsuarioRestauranteFavoritoUseCase(
+            IUsuarioRestauranteFavoritoRepository repositorioFavorito,
+            IUsuarioRepository repositorioUsuario,
+            IRestauranteRepository repositorioRestaurante)
         {
             _repositorioUsuario = repositorioUsuario;
             _repositorioFavorito = repositorioFavorito;
+            _repositorioRestaurante = repositorioRestaurante;
         }
 
         public async Task HandleAsync(string firebaseUid, Guid restauranteId, CancellationToken ct = default)
         {
             var usuario = await _repositorioUsuario.GetByFirebaseUidAsync(firebaseUid, ct);
             if (usuario == null)
-                throw new Exception("Usuario no encontrado");
+                throw new UnauthorizedAccessException("Usuario no encontrado");
 
-            var cantidadRestauranteFavorito = await _repositorioFavorito.CountByUsuarioAsync(usuario.Id, ct);
+            if (await _repositorioRestaurante.GetByIdAsync(restauranteId, ct) is null)
+                throw new KeyNotFoundException("Restaurante no encontrado.");
 
-            if (usuario.Plan == PlanUsuario.Free && cantidadRestauranteFavorito >= 3)
+            var limite = usuario.Plan == PlanUsuario.Free ? 3 : (int?)null;
+            var resultado = await _repositorioFavorito.AgregarSiCorrespondeAsync(
+                usuario.Id,
+                restauranteId,
+                limite,
+                DateTime.UtcNow,
+                ct);
+
+            if (resultado == ResultadoAgregarFavorito.LimiteAlcanzado)
             {
                 throw new LimiteFavoritosAlcanzadoException(
-                      tipoPlan: "Free",
-                     limiteActual: 3,
-                    favoritosActuales: cantidadRestauranteFavorito
-                  );
+                    tipoPlan: "Free",
+                    limiteActual: 3,
+                    favoritosActuales: await _repositorioFavorito.CountByUsuarioAsync(usuario.Id, ct));
             }
-
-            var existe = await _repositorioFavorito.ExistsAsync(usuario.Id, restauranteId, ct);
-            if (existe)
-            {
-                throw new Exception("Este restaurante ya está en tus favoritos.");
-            }
-
-            var favorito = new UsuarioRestauranteFavorito
-            {
-                UsuarioId = usuario.Id,
-                RestauranteId = restauranteId,
-                FechaAgregado = DateTime.UtcNow
-            };
-            await _repositorioFavorito.CrearAsync(favorito, ct);
         }
 
         public async Task HandleAsyncDelete(string firebaseUid, Guid restauranteId, CancellationToken ct = default)
         {
             var usuario = await _repositorioUsuario.GetByFirebaseUidAsync(firebaseUid, ct);
             if (usuario == null)
-                throw new Exception("Usuario no encontrado");
+                throw new UnauthorizedAccessException("Usuario no encontrado");
+
+            if (await _repositorioRestaurante.GetByIdAsync(restauranteId, ct) is null)
+                throw new KeyNotFoundException("Restaurante no encontrado.");
 
             var existe = await _repositorioFavorito.ExistsAsync(usuario.Id, restauranteId, ct);
 

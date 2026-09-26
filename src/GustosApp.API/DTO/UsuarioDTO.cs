@@ -94,6 +94,7 @@ namespace GustosApp.API.DTO
         public string Nombre { get; set; } = string.Empty;
         public string Direccion { get; set; }
         public DateTime FechaVisita { get; set; }
+        public bool EsDeLaApp { get; set; }
 
     }
 

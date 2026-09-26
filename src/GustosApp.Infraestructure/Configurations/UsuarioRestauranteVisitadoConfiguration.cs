@@ -21,6 +21,14 @@ namespace GustosApp.Infraestructure.Configurations
 
             builder.HasIndex(v => v.PlaceId);
 
+            builder.HasIndex(v => new { v.UsuarioId, v.RestauranteId })
+                .IsUnique()
+                .HasFilter("[RestauranteId] IS NOT NULL");
+
+            builder.HasIndex(v => new { v.UsuarioId, v.PlaceId })
+                .IsUnique()
+                .HasFilter("[PlaceId] IS NOT NULL");
+
             builder.HasOne(v => v.Usuario)
                 .WithMany(u => u.Visitados)
                 .HasForeignKey(v => v.UsuarioId)

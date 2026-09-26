@@ -15,14 +15,20 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
         private readonly IFileStorageService _fileStorage;
         private readonly IOpinionRestauranteRepository _repoOpinionRest;
         private readonly IUsuarioRepository _repoUsuario;
+        private readonly IRestauranteRepository _repoRestaurante;
+        private readonly IApplicationTransaction _transaction;
 
         public CrearOpinionRestauranteUseCase(IFileStorageService fileStorage,
-            IOpinionRestauranteRepository repoOpinionRest, IUsuarioRepository repoUsuario
-           )
+            IOpinionRestauranteRepository repoOpinionRest,
+            IUsuarioRepository repoUsuario,
+            IRestauranteRepository repoRestaurante,
+            IApplicationTransaction? transaction = null)
         {
             _fileStorage = fileStorage;
             _repoOpinionRest = repoOpinionRest;
             _repoUsuario = repoUsuario;
+            _repoRestaurante = repoRestaurante;
+            _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
         }
 
         public async Task HandleAsync(string firebaseUid, Guid restauranteId,
@@ -32,6 +38,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
         {
             var usuario = await _repoUsuario.GetByFirebaseUidAsync(firebaseUid, cancellationToken)
                 ?? throw new UnauthorizedAccessException("Usuario no encontrado");
+
+            if (await _repoRestaurante.GetByIdAsync(restauranteId, cancellationToken) is null)
+                throw new KeyNotFoundException("Restaurante no encontrado.");
 
             if (valoracionUsuario < 1 || valoracionUsuario > 5)
                 throw new ArgumentException("La valoracion debe estar entre 1 y 5");
@@ -74,7 +83,15 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
                     opinionRestaurante.Fotos.Add(new OpinionFoto { Id = Guid.NewGuid(), Url = url });
                 }
 
-                await _repoOpinionRest.CrearAsync(opinionRestaurante, cancellationToken);
+                await _transaction.ExecuteAsync(async transactionCt =>
+                {
+                    await _repoOpinionRest.CrearAsync(opinionRestaurante, transactionCt);
+                    await _repoUsuario.MarcarRestauranteComoVisitadoAsync(
+                        usuario.Id,
+                        restauranteId,
+                        transactionCt);
+                    return true;
+                }, cancellationToken);
             }
             catch
             {
@@ -84,11 +101,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
                 }
                 throw;
             }
-
-
-            //lugar visitado por usuario
-
-            await _repoUsuario.MarcarRestauranteComoVisitadoAsync(usuario.Id, restauranteId, cancellationToken);
         }
 
     }

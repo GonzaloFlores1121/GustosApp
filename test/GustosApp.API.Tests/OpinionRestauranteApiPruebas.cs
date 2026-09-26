@@ -56,6 +56,7 @@ public class OpinionRestauranteApiPruebas
             fotoId = opinion.Fotos.Single().Id;
             Assert.NotEqual(fechaVisita, opinion.FechaCreacion);
             Assert.Equal(4.5m, (await db.Restaurantes.FindAsync(restauranteId))!.Valoracion);
+            Assert.Single(await db.UsuarioRestauranteVisitados.ToListAsync());
         }
 
         var propia = await cliente.GetAsync($"/api/OpinionRestaurante/mi-opinion/{restauranteId}");
@@ -80,6 +81,7 @@ public class OpinionRestauranteApiPruebas
             Assert.Equal("La experiencia cambió", opinion.Opinion);
             Assert.Single(opinion.Fotos);
             Assert.Equal(2.5m, (await db.Restaurantes.FindAsync(restauranteId))!.Valoracion);
+            Assert.Single(await db.UsuarioRestauranteVisitados.ToListAsync());
         }
 
         Assert.Equal(HttpStatusCode.NoContent, (await cliente.DeleteAsync($"/api/OpinionRestaurante/{opinionId}")).StatusCode);
@@ -90,10 +92,17 @@ public class OpinionRestauranteApiPruebas
             var db = alcance.ServiceProvider.GetRequiredService<GustosDbContext>();
             Assert.Empty(await db.OpinionesRestaurantes.ToListAsync());
             Assert.Equal(0m, (await db.Restaurantes.FindAsync(restauranteId))!.Valoracion);
+            Assert.Single(await db.UsuarioRestauranteVisitados.ToListAsync());
         }
 
         var nueva = CrearFormulario(restauranteId, 5, "Una nueva visita excelente", "Volví y mejoró", DateTime.UtcNow.AddDays(-2), "solo", "segunda.png");
         Assert.Equal(HttpStatusCode.OK, (await cliente.PostAsync("/api/OpinionRestaurante", nueva)).StatusCode);
+
+        using (var alcance = fabrica.Services.CreateScope())
+        {
+            var db = alcance.ServiceProvider.GetRequiredService<GustosDbContext>();
+            Assert.Single(await db.UsuarioRestauranteVisitados.ToListAsync());
+        }
     }
 
     private static MultipartFormDataContent CrearFormulario(

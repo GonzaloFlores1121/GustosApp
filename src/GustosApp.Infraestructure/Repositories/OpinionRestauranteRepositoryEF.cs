@@ -76,7 +76,7 @@ namespace GustosApp.Infraestructure.Repositories
         private async Task GuardarYRecalcularAsync(Guid restauranteId, CancellationToken cancellationToken)
         {
             IDbContextTransaction? transaction = null;
-            if (_context.Database.IsRelational())
+            if (_context.Database.IsRelational() && _context.Database.CurrentTransaction is null)
                 transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
             try

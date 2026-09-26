@@ -83,8 +83,8 @@ namespace GustosApp.API.Controllers
             var uid = GetFirebaseUid();
             var favoritos = await _obtenerFavoritos.HandleAsync(uid, ct);
 
-             var response= _mapper.Map<List<RestauranteFavoritoDto>>(favoritos);
-            return Ok(favoritos);
+            var response = _mapper.Map<List<RestauranteFavoritoDto>>(favoritos);
+            return Ok(response);
         }
 
     }
