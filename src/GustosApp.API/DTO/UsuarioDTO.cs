@@ -120,7 +120,7 @@ namespace GustosApp.API.DTO
 
         public IFormFile? FotoPerfil { get; set; }
 
-        public bool EsPrivado { get; set; }
+        public bool? EsPrivado { get; set; }
     }
 
 

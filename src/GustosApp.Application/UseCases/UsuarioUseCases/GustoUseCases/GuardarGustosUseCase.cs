@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
 
 namespace GustosApp.Application.UseCases.UsuarioUseCases.GustoUseCases
@@ -34,98 +35,41 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases.GustoUseCases
             var usuario = await _userRepository.GetByFirebaseUidAsync(uid, ct)
                 ?? throw new InvalidOperationException("Usuario no encontrado.");
 
-            //
-            // Caso: usuario borra todo → borrar gustos
-            //
-            if (ids == null || ids.Count == 0)
-            {
-                usuario.Gustos.Clear();
-                await _userRepository.SaveChangesAsync(ct);
-
-                // Guardar en redis SOLO si es registro
-                if (modo == ModoPreferencias.Registro)
-                {
-                    await _cache.SetAsync(
-                        $"registro:{uid}:gustos",
-                        new List<Guid>(),
-                        TimeSpan.FromHours(12)
-                    );
-                }
-
-                return new List<string>();
-            }
-
-            //
-            //  Validar mínimo 3 gustos
-            //
-            if (ids.Count < 3)
+            var idsUnicos = (ids ?? new List<Guid>()).Distinct().ToList();
+            if (modo == ModoPreferencias.Registro && idsUnicos.Count < 3)
                 throw new ArgumentException("Debe seleccionar al menos 3 gustos.");
 
-            //
-            //  Validación estricta: todos deben existir
-            //
-            var gustosValidos = await _gustoRepository.GetByIdsAsync(ids, ct);
-            if (gustosValidos.Count != ids.Count)
+            var gustosValidos = idsUnicos.Count == 0
+                ? new List<Gusto>()
+                : await _gustoRepository.GetByIdsAsync(idsUnicos, ct);
+            if (gustosValidos.Count != idsUnicos.Count)
                 throw new ArgumentException("Uno o más gustos no existen.");
 
-            //
-            // Comparar actuales vs nuevas
-            //
             var actuales = usuario.Gustos.Select(g => g.Id).ToHashSet();
-            var nuevas = ids.ToHashSet();
+            var nuevas = idsUnicos.ToHashSet();
 
             var paraAgregar = nuevas.Except(actuales).ToList();
             var paraQuitar = actuales.Except(nuevas).ToList();
+            var huboCambios = paraAgregar.Count > 0 || paraQuitar.Count > 0;
 
-            bool huboCambios = paraAgregar.Any() || paraQuitar.Any();
-
-            //
-            //  Si no hubo cambios → cachear en registro y terminar
-            //
-            if (!huboCambios)
-            {
-                if (modo == ModoPreferencias.Registro)
-                {
-                    await _cache.SetAsync(
-                        $"registro:{uid}:gustos",
-                        ids,
-                        TimeSpan.FromHours(12)
-                    );
-                }
-
-                return new List<string>();
-            }
-
-            //
-            //  Aplicar cambios en DB (tu lógica original)
-            //
-
-            // Quitar
             foreach (var g in usuario.Gustos.Where(x => paraQuitar.Contains(x.Id)).ToList())
                 usuario.Gustos.Remove(g);
 
-            // Agregar
             foreach (var g in gustosValidos.Where(x => paraAgregar.Contains(x.Id)))
                 usuario.Gustos.Add(g);
 
-            await _userRepository.SaveChangesAsync(ct);
+            var conflictos = usuario.ValidarCompatibilidad();
+            if (huboCambios || conflictos.Count > 0)
+                await _userRepository.SaveChangesAsync(ct);
 
-            //
-            // 7Cache SOLO en registro
-            //
             if (modo == ModoPreferencias.Registro)
             {
                 await _cache.SetAsync(
                     $"registro:{uid}:gustos",
-                    ids,
+                    usuario.Gustos.Select(g => g.Id).ToList(),
                     TimeSpan.FromHours(12)
                 );
             }
-
-            //
-            // Validar compatibilidad (tu lógica original)
-            //
-            var conflictos = usuario.ValidarCompatibilidad();
 
             return conflictos;
         }

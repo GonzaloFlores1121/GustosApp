@@ -232,6 +232,9 @@ public class GuardarCondicionesUseCaseTests
         _condicionesMock
             .Setup(r => r.GetByIdsAsync(ids, _ct))
             .ReturnsAsync(new List<CondicionMedica> { condicionDiabetes });
+        var guardoSinIncompatible = false;
+        _userMock.Setup(r => r.SaveChangesAsync(_ct))
+            .Callback(() => guardoSinIncompatible = usuario.Gustos.All(g => g.Nombre != "Pizza"));
 
         // Act
         var result = await _useCase.HandleAsync(
@@ -245,5 +248,6 @@ public class GuardarCondicionesUseCaseTests
         // Assert
         Assert.Contains("Pizza", result);
         Assert.DoesNotContain(usuario.Gustos, g => g.Nombre == "Pizza");
+        Assert.True(guardoSinIncompatible);
     }
 }

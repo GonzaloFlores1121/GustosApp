@@ -28,51 +28,63 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
 
         public async Task<Usuario> HandleAsync(
             string firebaseUid, string? email, string? nombre, string? apellido,
-            FileUpload? fotoPerfil, bool esPrivado
- ,
+            FileUpload? fotoPerfil, bool? esPrivado,
             CancellationToken ct = default)
         {
-           
             var usuario = await _usuarios.GetByFirebaseUidAsync(firebaseUid, ct);
             if (usuario == null)
                 throw new Exception("Usuario no encontrado");
 
-       
             if (!string.IsNullOrWhiteSpace(email) && email != usuario.Email)
             {
                 await _firebase.UpdateUserEmailAsync(firebaseUid, email);
                 usuario.Email = email;
             }
 
-        
             if (!string.IsNullOrWhiteSpace(nombre))
                 usuario.Nombre = nombre;
 
             if (!string.IsNullOrWhiteSpace(apellido))
                 usuario.Apellido = apellido;
 
-            usuario.EsPrivado = esPrivado;
+            if (esPrivado.HasValue)
+                usuario.EsPrivado = esPrivado.Value;
 
-          
-            if (fotoPerfil != null)
+            var fotoAnterior = usuario.FotoPerfilUrl;
+            string? fotoNueva = null;
+            try
             {
-              
-                if (!string.IsNullOrWhiteSpace(usuario.FotoPerfilUrl))
-                    await _files.DeleteFileAsync(usuario.FotoPerfilUrl);
+                if (fotoPerfil != null)
+                {
+                    fotoNueva = await _files.UploadFileAsync(
+                        fotoPerfil.Content,
+                        fotoPerfil.FileName,
+                        "perfil"
+                    );
 
-                var newUrl = await _files.UploadFileAsync(
-                    fotoPerfil.Content,
-                   fotoPerfil.FileName,
-                    "perfil"
-                );
+                    usuario.FotoPerfilUrl = fotoNueva;
+                }
 
-                usuario.FotoPerfilUrl = newUrl;
+                await _usuarios.SaveChangesAsync(ct);
+            }
+            catch
+            {
+                usuario.FotoPerfilUrl = fotoAnterior;
+                if (!string.IsNullOrWhiteSpace(fotoNueva))
+                {
+                    try { await _files.DeleteFileAsync(fotoNueva); } catch { }
+                }
+                throw;
             }
 
-
-            await _usuarios.SaveChangesAsync(ct);
+            if (!string.IsNullOrWhiteSpace(fotoNueva) &&
+                !string.IsNullOrWhiteSpace(fotoAnterior) &&
+                !string.Equals(fotoNueva, fotoAnterior, StringComparison.Ordinal))
+            {
+                try { await _files.DeleteFileAsync(fotoAnterior); } catch { }
+            }
 
             return usuario;
         }
     }
-    }
+}

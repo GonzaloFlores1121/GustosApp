@@ -67,24 +67,11 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task<List<string>> ObtenerGustosDelGrupo(Guid grupoId)
         {
-            var gustos = await _context.GrupoGustos
-                .Where(gg => gg.GrupoId == grupoId)
-                .Join(
-                    _context.MiembrosGrupos.Where(mg =>
-                        mg.GrupoId == grupoId &&
-                        mg.ParticipaEnRecomendacion &&
-                        mg.Activo),
-                    gg => gg.MiembroId,
-                    mg => mg.Id,
-                    (gg, mg) => new { gg, mg }
-                )
-                .Join(
-                    _context.Gustos,
-                    x => x.gg.GustoId,
-                    g => g.Id,
-                    (x, g) => g.Nombre
-                )
-                .Distinct() // evitar duplicados si hay varios miembros activos con el mismo gusto
+            var gustos = await _context.MiembrosGrupos
+                .AsNoTracking()
+                .Where(m => m.GrupoId == grupoId && m.ParticipaEnRecomendacion && m.Activo)
+                .SelectMany(m => m.Usuario.Gustos.Select(g => g.Nombre))
+                .Distinct()
                 .ToListAsync();
 
             return gustos;
@@ -92,16 +79,10 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task<List<Guid>> ObtenerGustosIdsDelGrupo(Guid grupoId)
         {
-            var gustosIds = await _context.GrupoGustos
-                .Where(gg => gg.GrupoId == grupoId)
-                .Join(
-                    _context.MiembrosGrupos.Where(mg =>
-                        mg.GrupoId == grupoId &&
-                        mg.ParticipaEnRecomendacion &&
-                        mg.Activo),
-                    gg => gg.MiembroId,
-                    mg => mg.Id,
-                    (gg, _) => gg.GustoId)
+            var gustosIds = await _context.MiembrosGrupos
+                .AsNoTracking()
+                .Where(m => m.GrupoId == grupoId && m.ParticipaEnRecomendacion && m.Activo)
+                .SelectMany(m => m.Usuario.Gustos.Select(g => g.Id))
                 .Distinct()
                 .ToListAsync();
 

@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.Tests
 {
@@ -64,22 +65,21 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_DatosValidos_DebeRetornarTrueYLlamarAgregarGustos()
+        public async Task Handle_DatosValidos_IndicaEditarElPerfil_YNoEscribeSnapshot()
         {
-            var result = await _useCase.Handle(_gustosInput, _grupoId, _firebaseUid);
-
-            Assert.True(result);
+            await Assert.ThrowsAsync<PreferenciasGrupoDesdePerfilException>(() =>
+                _useCase.Handle(_gustosInput, _grupoId, _firebaseUid));
 
             _mockUsuarioRepo.Verify(r => r.GetByFirebaseUidAsync(_firebaseUid, It.IsAny<CancellationToken>()), Times.Once);
             _mockGrupoRepo.Verify(r => r.ExistsAsync(_grupoId, It.IsAny<CancellationToken>()), Times.Once);
             _mockMiembroGrupoRepo.Verify(r => r.UsuarioEsMiembroActivoAsync(_grupoId, _usuarioMiembro.Id, It.IsAny<CancellationToken>()), Times.Once);
-            _mockGustoRepo.Verify(r => r.obtenerGustosPorNombre(_gustosInput), Times.Once);
+            _mockGustoRepo.Verify(r => r.obtenerGustosPorNombre(_gustosInput), Times.Never);
 
             _mockGustosGrupoRepo.Verify(r => r.AgregarGustosAlGrupo(
                 _grupoId,
                 It.Is<List<Gusto>>(list => list.Count == 2), 
                 _usuarioMiembro.Id
-            ), Times.Once);
+            ), Times.Never);
         }
 
         [Fact]
@@ -158,16 +158,15 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_GustosInexistentes_DebeLanzarKeyNotFoundException()
+        public async Task Handle_GustosInexistentes_NoLosConsultaPorqueElPerfilEsLaFuente()
         {
             _mockGustoRepo.Setup(r => r.obtenerGustosPorNombre(_gustosInput))
                           .ReturnsAsync(new List<Gusto>());
 
-            var exception = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            await Assert.ThrowsAsync<PreferenciasGrupoDesdePerfilException>(() =>
                 _useCase.Handle(_gustosInput, _grupoId, _firebaseUid)
             );
-
-            Assert.Contains("No existen los gustos mencionados.", exception.Message);
+            _mockGustoRepo.Verify(r => r.obtenerGustosPorNombre(It.IsAny<List<string>>()), Times.Never);
         }
     }
 }

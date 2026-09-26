@@ -33,6 +33,9 @@ namespace GustosApp.API.Tests.Repositorios
             var pizza = contexto.Gustos.Single(gusto => gusto.Nombre == "Pizza");
             var sushi = contexto.Gustos.Single(gusto => gusto.Nombre == "Sushi");
 
+            participante.Gustos.Add(pizza);
+            noParticipante.Gustos.Add(sushi);
+
             contexto.Grupos.Add(grupo);
             contexto.MiembrosGrupos.AddRange(miembroParticipante, miembroNoParticipante);
             contexto.GrupoGustos.AddRange(
@@ -77,6 +80,9 @@ namespace GustosApp.API.Tests.Repositorios
             var pizza = contexto.Gustos.Single(gusto => gusto.Nombre == "Pizza");
             var sushi = contexto.Gustos.Single(gusto => gusto.Nombre == "Sushi");
             var hamburguesa = contexto.Gustos.Single(gusto => gusto.Nombre == "Hamburguesa");
+            participante.Gustos.Add(pizza);
+            noSeleccionado.Gustos.Add(sushi);
+            inactivo.Gustos.Add(hamburguesa);
 
             contexto.Grupos.Add(grupo);
             contexto.MiembrosGrupos.AddRange(
@@ -84,7 +90,7 @@ namespace GustosApp.API.Tests.Repositorios
                 miembroNoSeleccionado,
                 miembroInactivo);
             contexto.GrupoGustos.AddRange(
-                CrearGrupoGusto(grupo, miembroParticipante, pizza),
+                CrearGrupoGusto(grupo, miembroParticipante, sushi),
                 CrearGrupoGusto(grupo, miembroNoSeleccionado, sushi),
                 CrearGrupoGusto(grupo, miembroInactivo, hamburguesa));
             await contexto.SaveChangesAsync();

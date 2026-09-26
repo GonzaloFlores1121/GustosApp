@@ -70,6 +70,11 @@ namespace GustosApp.API.Middleware
                     result = new { status = 409, error = "Conflict", message = ex.Message };
                     break;
 
+                case PreferenciasGrupoDesdePerfilException:
+                    status = HttpStatusCode.Gone;
+                    result = new { status = 410, error = "Gone", message = ex.Message };
+                    break;
+
                 
                 case LimiteGruposAlcanzadoException limiteEx:
                     status = (HttpStatusCode)402; 

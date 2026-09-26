@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.Services;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
 
 namespace GustosApp.Application.UseCases.UsuarioUseCases.CondicionesMedicasUseCases
@@ -36,65 +37,23 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases.CondicionesMedicasUseCa
             var usuario = await _user.GetByFirebaseUidAsync(uid, ct)
                 ?? throw new InvalidOperationException("Usuario no encontrado.");
 
-            //
-            // SKIP → vaciar todas las condiciones
-            //
-            if (skip)
-            {
-                usuario.CondicionesMedicas.Clear();
-                await _user.SaveChangesAsync(ct);
-
-                // Guardar en redis SOLO si es registro
-                if (modo == ModoPreferencias.Registro)
-                {
-                    await _cache.SetAsync(
-                        $"registro:{uid}:condiciones",
-                        new List<Guid>(),
-                        TimeSpan.FromHours(12)
-                    );
-                }
-
-                return usuario.ValidarCompatibilidad();
-            }
-
-            //
-            //  Validar entidades enviadas
-            //
-            var entidadesValidas = await _condiciones.GetByIdsAsync(ids, ct);
-            if (entidadesValidas.Count != ids.Count)
+            var idsUnicos = skip ? new List<Guid>() : (ids ?? new List<Guid>()).Distinct().ToList();
+            var entidadesValidas = idsUnicos.Count == 0
+                ? new List<CondicionMedica>()
+                : await _condiciones.GetByIdsAsync(idsUnicos, ct);
+            if (entidadesValidas.Count != idsUnicos.Count)
                 throw new ArgumentException("Una o más condiciones médicas no existen.");
 
             //
             // Determinar cambios
             //
             var actuales = usuario.CondicionesMedicas.Select(c => c.Id).ToHashSet();
-            var nuevas = ids.ToHashSet();
+            var nuevas = idsUnicos.ToHashSet();
 
             var paraAgregar = nuevas.Except(actuales).ToList();
             var paraQuitar = actuales.Except(nuevas).ToList();
 
-            bool huboCambios = paraAgregar.Any() || paraQuitar.Any();
-
-            //
-            //  Si no hubo cambios → solo actualizar Redis si es registro
-            //
-            if (!huboCambios)
-            {
-                if (modo == ModoPreferencias.Registro)
-                {
-                    await _cache.SetAsync(
-                        $"registro:{uid}:condiciones",
-                        ids,
-                        TimeSpan.FromHours(12)
-                    );
-                }
-
-                return new List<string>();
-            }
-
-            //
-            // Aplicar cambios EN DB
-            //
+            var huboCambios = paraAgregar.Count > 0 || paraQuitar.Count > 0;
 
             // Quitar condiciones
             foreach (var c in usuario.CondicionesMedicas.Where(x => paraQuitar.Contains(x.Id)).ToList())
@@ -104,7 +63,9 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases.CondicionesMedicasUseCa
             foreach (var c in entidadesValidas.Where(x => paraAgregar.Contains(x.Id)))
                 usuario.CondicionesMedicas.Add(c);
 
-            await _user.SaveChangesAsync(ct);
+            var gustosRemovidos = usuario.ValidarCompatibilidad();
+            if (huboCambios || gustosRemovidos.Count > 0)
+                await _user.SaveChangesAsync(ct);
 
             //
             // 6Guardar en Redis SOLO si es registro
@@ -113,15 +74,17 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases.CondicionesMedicasUseCa
             {
                 await _cache.SetAsync(
                     $"registro:{uid}:condiciones",
-                    ids,
+                        usuario.CondicionesMedicas.Select(c => c.Id).ToList(),
+                        TimeSpan.FromHours(12)
+                    );
+                await _cache.SetAsync(
+                    $"registro:{uid}:gustos",
+                    usuario.Gustos.Select(g => g.Id).ToList(),
                     TimeSpan.FromHours(12)
                 );
             }
 
-            //
-            //  Validar compatibilidad (gustos removidos)
-            //
-            return usuario.ValidarCompatibilidad();
+            return gustosRemovidos;
         }
     }
 

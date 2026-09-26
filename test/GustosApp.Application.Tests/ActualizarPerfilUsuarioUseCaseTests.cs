@@ -187,5 +187,77 @@ namespace GustosApp.Application.Tests
             _fileStorage.Verify(f => f.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
+        [Fact]
+        public async Task HandleAsync_PrivacidadOmitida_NoSobrescribeElValorActual()
+        {
+            var usuario = new Usuario { FirebaseUid = "uid", EsPrivado = true };
+            _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(usuario);
+
+            await _useCase.HandleAsync("uid", null, "Nuevo nombre", null, null, null);
+
+            Assert.True(usuario.EsPrivado);
+            Assert.Equal("Nuevo nombre", usuario.Nombre);
+        }
+
+        [Fact]
+        public async Task HandleAsync_FallaLaSubida_ConservaLaFotoAnterior()
+        {
+            var usuario = new Usuario { FirebaseUid = "uid", FotoPerfilUrl = "https://old-photo.jpg" };
+            var stream = new MemoryStream(new byte[] { 1 });
+            var file = new FileUpload { Content = stream, FileName = "nueva.jpg", ContentType = "image/jpeg" };
+            _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(usuario);
+            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", "perfil"))
+                        .ThrowsAsync(new IOException("falló la subida"));
+
+            await Assert.ThrowsAsync<IOException>(() =>
+                _useCase.HandleAsync("uid", null, null, null, file, null));
+
+            Assert.Equal("https://old-photo.jpg", usuario.FotoPerfilUrl);
+            _fileStorage.Verify(f => f.DeleteFileAsync(It.IsAny<string>()), Times.Never);
+            _userRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_FallaPersistencia_RestauraAnteriorYEliminaLaNueva()
+        {
+            var usuario = new Usuario { FirebaseUid = "uid", FotoPerfilUrl = "https://old-photo.jpg" };
+            var stream = new MemoryStream(new byte[] { 1 });
+            var file = new FileUpload { Content = stream, FileName = "nueva.jpg", ContentType = "image/jpeg" };
+            _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(usuario);
+            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", "perfil"))
+                        .ReturnsAsync("https://new-photo.jpg");
+            _userRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new InvalidOperationException("falló la base"));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _useCase.HandleAsync("uid", null, null, null, file, null));
+
+            Assert.Equal("https://old-photo.jpg", usuario.FotoPerfilUrl);
+            _fileStorage.Verify(f => f.DeleteFileAsync("https://new-photo.jpg"), Times.Once);
+            _fileStorage.Verify(f => f.DeleteFileAsync("https://old-photo.jpg"), Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_LimpiezaAnteriorFalla_NoRevierteUnaActualizacionGuardada()
+        {
+            var usuario = new Usuario { FirebaseUid = "uid", FotoPerfilUrl = "https://old-photo.jpg" };
+            var stream = new MemoryStream(new byte[] { 1 });
+            var file = new FileUpload { Content = stream, FileName = "nueva.jpg", ContentType = "image/jpeg" };
+            _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(usuario);
+            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", "perfil"))
+                        .ReturnsAsync("https://new-photo.jpg");
+            _fileStorage.Setup(f => f.DeleteFileAsync("https://old-photo.jpg"))
+                        .ThrowsAsync(new IOException("falló limpieza"));
+
+            var resultado = await _useCase.HandleAsync("uid", null, null, null, file, null);
+
+            Assert.Equal("https://new-photo.jpg", resultado.FotoPerfilUrl);
+            _userRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+
     }
 }
