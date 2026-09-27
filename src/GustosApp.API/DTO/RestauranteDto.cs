@@ -34,7 +34,13 @@ namespace GustosApp.API.DTO
         public string Direccion { get; set; }
         public double Latitud { get; set; }
         public double Longitud { get; set; }
-        public double Rating { get; set; }
+        public double? Rating { get; set; }
+        public double? PuntuacionPrincipal { get; set; }
+        public string? FuentePuntuacionPrincipal { get; set; }
+        public double? ValoracionLocal { get; set; }
+        public int CantidadResenasLocales { get; set; }
+        public double? RatingGoogle { get; set; }
+        public int? CantidadResenasGoogle { get; set; }
         public string GooglePlaceId { get; set; }
 
         public string? PrimaryType { get; set; }
@@ -205,8 +211,13 @@ namespace GustosApp.API.DTO
         public string? WebUrl { get; set; }
 
         public double? Rating { get; set; }
-
-        public double RatingCalculado { get; set; }
+        public double? RatingCalculado { get; set; }
+        public double? PuntuacionPrincipal { get; set; }
+        public string? FuentePuntuacionPrincipal { get; set; }
+        public double? ValoracionLocal { get; set; }
+        public int CantidadResenasLocales { get; set; }
+        public double? RatingGoogle { get; set; }
+        public int? CantidadResenasGoogle { get; set; }
         public int? CantidadResenas { get; set; }
         public string? Categoria { get; set; }
         public string PrimaryType { get; set; } = "restaurant";

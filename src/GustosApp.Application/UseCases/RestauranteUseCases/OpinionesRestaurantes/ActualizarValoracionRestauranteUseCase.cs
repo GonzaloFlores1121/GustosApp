@@ -27,7 +27,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
 
             if (!valoraciones.Any())
             {
-                await _restauranteRepository.ActualizarValoracionAsync(restauranteId, 0, cancellationToken);
+                await _restauranteRepository.ActualizarValoracionAsync(restauranteId, null, cancellationToken);
                 return;
             }
 

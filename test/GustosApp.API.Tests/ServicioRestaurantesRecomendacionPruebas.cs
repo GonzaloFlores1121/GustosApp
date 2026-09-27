@@ -82,6 +82,71 @@ namespace GustosApp.API.Tests.Servicios
         }
 
         [Fact]
+        public async Task BuscarAsync_FiltraPorValoracionLocalAntesQuePorGoogle()
+        {
+            await using var contexto = DbContextEnMemoria.Crear(nameof(BuscarAsync_FiltraPorValoracionLocalAntesQuePorGoogle));
+            var gusto = contexto.Gustos.Single(g => g.Nombre == "Pizza");
+            var localAltaGoogleBaja = CrearRestaurante("Local alta", gusto);
+            localAltaGoogleBaja.Valoracion = 4.5m;
+            localAltaGoogleBaja.Rating = 2;
+            var localBajaGoogleAlta = CrearRestaurante("Local baja", gusto);
+            localBajaGoogleAlta.Valoracion = 2;
+            localBajaGoogleAlta.Rating = 5;
+            var ceroHistoricoGoogleAlta = CrearRestaurante("Sin local real", gusto);
+            ceroHistoricoGoogleAlta.Valoracion = 0;
+            ceroHistoricoGoogleAlta.Rating = 4.2;
+            contexto.Restaurantes.AddRange(localAltaGoogleBaja, localBajaGoogleAlta, ceroHistoricoGoogleAlta);
+            await contexto.SaveChangesAsync();
+
+            var resultado = await CrearServicio(contexto).BuscarAsync(
+                4, null, null, null, ["Pizza"], []);
+
+            resultado.Select(r => r.Id).Should().BeEquivalentTo([
+                localAltaGoogleBaja.Id,
+                ceroHistoricoGoogleAlta.Id
+            ]);
+        }
+
+        [Fact]
+        public async Task BuscarAsync_AplicaElRadioCircularExactoLuegoDelPrefiltroRectangular()
+        {
+            await using var contexto = DbContextEnMemoria.Crear(nameof(BuscarAsync_AplicaElRadioCircularExactoLuegoDelPrefiltroRectangular));
+            var gusto = contexto.Gustos.Single(g => g.Nombre == "Pizza");
+            var dentro = CrearRestaurante("Dentro del radio", gusto);
+            dentro.Latitud = 0.008;
+            dentro.Longitud = 0;
+            var esquinaFuera = CrearRestaurante("Esquina fuera", gusto);
+            esquinaFuera.Latitud = 0.008;
+            esquinaFuera.Longitud = 0.008;
+            contexto.Restaurantes.AddRange(dentro, esquinaFuera);
+            await contexto.SaveChangesAsync();
+
+            var resultado = await CrearServicio(contexto).BuscarAsync(
+                0, 0, 0, 1000, ["Pizza"], []);
+
+            resultado.Should().ContainSingle(r => r.Id == dentro.Id);
+        }
+
+        [Theory]
+        [InlineData(null, 0.0, 1000)]
+        [InlineData(0.0, null, 1000)]
+        [InlineData(0.0, 0.0, 0)]
+        [InlineData(91.0, 0.0, 1000)]
+        [InlineData(0.0, 181.0, 1000)]
+        public async Task BuscarAsync_RechazaUbicacionesIncompletasOFueraDeRango(
+            double? latitud,
+            double? longitud,
+            int? radio)
+        {
+            await using var contexto = DbContextEnMemoria.Crear(Guid.NewGuid().ToString());
+
+            var accion = () => CrearServicio(contexto).BuscarAsync(
+                0, latitud, longitud, radio, ["Pizza"], []);
+
+            await accion.Should().ThrowAsync<ArgumentException>();
+        }
+
+        [Fact]
         public async Task GuardarClasificacion_SinMenu_PersisteGustosQueLleganALaRecomendacion()
         {
             await using var contexto = DbContextEnMemoria.Crear(

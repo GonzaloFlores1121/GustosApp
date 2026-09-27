@@ -4,9 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Application.UseCases.UsuarioUseCases;
 using GustosApp.Domain.Common;
+using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 
 namespace GustosApp.Application.Services
@@ -19,6 +21,7 @@ namespace GustosApp.Application.Services
         private readonly SugerirGustosSobreUnRadioUseCase _sugerir;
         private readonly ICacheService _cache;
         private readonly RegistrarTop3IndividualRestaurantesUseCase _registrarTop3;
+        private readonly IGustoRepository _gustosRepository;
 
         public BuscarRestaurantesRecomendadosOrquestador(
             ConstruirPreferenciasUsuarioIndividualUseCase preferenciasSolo,
@@ -26,7 +29,8 @@ namespace GustosApp.Application.Services
             IServicioRestaurantes buscarRestaurantes,
             SugerirGustosSobreUnRadioUseCase sugerir,
             ICacheService cache,
-            RegistrarTop3IndividualRestaurantesUseCase registrarTop3)
+            RegistrarTop3IndividualRestaurantesUseCase registrarTop3,
+            IGustoRepository gustosRepository)
         {
             _preferenciasSolo = preferenciasSolo;
             _preferenciasConAmigo = preferenciasConAmigo;
@@ -34,6 +38,7 @@ namespace GustosApp.Application.Services
             _sugerir = sugerir;
             _cache = cache;
             _registrarTop3 = registrarTop3;
+            _gustosRepository = gustosRepository;
         }
 
 
@@ -41,14 +46,33 @@ namespace GustosApp.Application.Services
             string? amigoUsername, double? lat, double? lng, int? radius, int top, double rating,
             CancellationToken ct)
         {
-            // 1️⃣ Construir preferencias
+            var gustosExplicitos = (gustos ?? new List<string>())
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Select(g => g.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (gustosExplicitos.Count > 0)
+            {
+                var catalogo = await _gustosRepository.GetAllAsync(ct);
+                var nombresValidos = catalogo.Select(g => g.Nombre).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var invalidos = gustosExplicitos.Where(g => !nombresValidos.Contains(g)).ToList();
+                if (invalidos.Count > 0)
+                    throw new FiltroGustosInvalidoException(invalidos);
+            }
+
+            // El filtro explícito no reemplaza el perfil ni los gustos del amigo:
+            // funciona como condición OR obligatoria sobre los candidatos.
             var preferencias = amigoUsername != null
-                ? await _preferenciasConAmigo.HandleAsync(firebaseUid, amigoUsername,gustos,ct)
-                : await _preferenciasSolo.HandleAsync(firebaseUid, gustos,ct);
+                ? await _preferenciasConAmigo.HandleAsync(firebaseUid, amigoUsername, null, ct)
+                : await _preferenciasSolo.HandleAsync(firebaseUid, null, ct);
+
+            if ((preferencias.Gustos == null || preferencias.Gustos.Count == 0) && gustosExplicitos.Count > 0)
+                preferencias.Gustos = gustosExplicitos;
 
             if (preferencias.Gustos == null || !preferencias.Gustos.Any())
             {
-                throw new ArgumentException("No tienes gustos cargados. Debes completar tu perfil para recibir recomendaciones.");
+                throw new SinPreferenciasRecomendacionException();
             }
 
             // 2️⃣ Buscar restaurantes cercanos
@@ -62,6 +86,17 @@ namespace GustosApp.Application.Services
 
             if (candidatos == null || !candidatos.Any())
                 return new List<Restaurante>();
+
+            if (gustosExplicitos.Count > 0)
+            {
+                candidatos = candidatos
+                    .Where(r => r.GustosQueSirve.Any(g =>
+                        gustosExplicitos.Contains(g.Nombre, StringComparer.OrdinalIgnoreCase)))
+                    .ToList();
+
+                if (candidatos.Count == 0)
+                    return new List<Restaurante>();
+            }
 
             // 3️⃣ Guardar ubicación del usuario en cache solo si hay lat y lng
             if (lat.HasValue && lng.HasValue)

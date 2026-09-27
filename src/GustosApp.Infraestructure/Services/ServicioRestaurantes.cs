@@ -510,12 +510,23 @@ namespace GustosApp.Infraestructure.Services
             List<string> gustos,
             List<string> restricciones)
         {
+            if (lat.HasValue != lng.HasValue)
+                throw new ArgumentException("La latitud y la longitud deben informarse juntas.");
+            if (lat is < -90 or > 90 || lng is < -180 or > 180)
+                throw new ArgumentOutOfRangeException(nameof(lat), "Las coordenadas no son válidas.");
+            if (radioMetros is <= 0 or > 50_000)
+                throw new ArgumentOutOfRangeException(nameof(radioMetros), "El radio debe estar entre 1 y 50000 metros.");
+
             var baseQuery = _db.Restaurantes.AsNoTracking();
 
             // Los gustos y restricciones se evalúan en el recomendador. Filtrarlos aquí
             // impediría usar restaurantes con compatibilidad todavía desconocida como respaldo.
 
-            // Resto del filtrado (ubicación / rating)
+            baseQuery = baseQuery.Where(r => rating <= 0 ||
+                (r.Valoracion.HasValue && r.Valoracion.Value > 0 && r.Valoracion.Value >= (decimal)rating) ||
+                ((!r.Valoracion.HasValue || r.Valoracion.Value <= 0) &&
+                    r.Rating.HasValue && r.Rating.Value >= rating));
+
             if (lat.HasValue && lng.HasValue && radioMetros is > 0)
             {
                 double latVal = lat.Value;
@@ -531,27 +542,43 @@ namespace GustosApp.Infraestructure.Services
 
                 baseQuery = baseQuery.Where(r =>
                     r.Latitud >= minLat && r.Latitud <= maxLat &&
-                    r.Longitud >= minLng && r.Longitud <= maxLng &&
-                    (rating <= 0 || r.Rating >= rating));
-
-                baseQuery = baseQuery.OrderBy(r =>
-                        Math.Abs(r.Latitud - latVal) +
-                        Math.Abs(r.Longitud - lngVal))
-                    .Take(200);
+                    r.Longitud >= minLng && r.Longitud <= maxLng);
             }
             else
             {
                 baseQuery = baseQuery
-                    .Where(r => rating <= 0 || r.Rating >= rating)
-                    .OrderBy(r => r.NombreNormalizado)
-                    .Take(1000);
+                    .OrderBy(r => r.NombreNormalizado);
             }
 
-            return await baseQuery
+            var candidatos = await baseQuery
                 .Include(r => r.GustosQueSirve)
                     .ThenInclude(g => g.Tags)
                 .Include(r => r.RestriccionesQueRespeta)
+                .Include(r => r.Reviews)
                 .ToListAsync();
+
+            if (lat.HasValue && lng.HasValue && radioMetros.HasValue)
+            {
+                return candidatos
+                    .Select(r => new { Restaurante = r, Distancia = CalcularDistanciaMetros(lat.Value, lng.Value, r.Latitud, r.Longitud) })
+                    .Where(x => x.Distancia <= radioMetros.Value + 0.5)
+                    .OrderBy(x => x.Distancia)
+                    .Select(x => x.Restaurante)
+                    .ToList();
+            }
+
+            return candidatos;
+        }
+
+        private static double CalcularDistanciaMetros(double lat1, double lng1, double lat2, double lng2)
+        {
+            const double radioTierra = 6_371_000d;
+            var dLat = (lat2 - lat1) * Math.PI / 180d;
+            var dLng = (lng2 - lng1) * Math.PI / 180d;
+            var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                    Math.Cos(lat1 * Math.PI / 180d) * Math.Cos(lat2 * Math.PI / 180d) *
+                    Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+            return radioTierra * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
         }
     }
 }

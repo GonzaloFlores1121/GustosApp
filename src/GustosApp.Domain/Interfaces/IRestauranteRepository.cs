@@ -39,7 +39,7 @@ namespace GustosApp.Domain.Interfaces
             double lat, double lng, int radiusMeters,
             TimeSpan? maxAge = null,
             CancellationToken ct = default);
-        Task ActualizarValoracionAsync(Guid restauranteId, double promedio, CancellationToken cancellationToken);
+        Task ActualizarValoracionAsync(Guid restauranteId, double? promedio, CancellationToken cancellationToken);
         Task UpdateAsync(Restaurante restaurante, CancellationToken ct);
         Task <List<Restaurante>> BuscarPorPrefijo(string prefijo, CancellationToken ct = default);
    

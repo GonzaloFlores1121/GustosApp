@@ -120,6 +120,7 @@ namespace GustosApp.API.Controllers
             return Ok(new
             {
                 total = response.Count,
+                estado = response.Count == 0 ? "SinCoincidencias" : "Encontrados",
                 recomendaciones = response
             });
 

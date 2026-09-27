@@ -203,12 +203,12 @@ namespace GustosApp.Infraestructure.Repositories
             return query.ToList();
         }
 
-        public async Task ActualizarValoracionAsync(Guid restauranteId, double promedio, CancellationToken cancellationToken)
+        public async Task ActualizarValoracionAsync(Guid restauranteId, double? promedio, CancellationToken cancellationToken)
         {
             var restaurante = await _db.Restaurantes.FindAsync(new object[] { restauranteId }, cancellationToken);
             if (restaurante != null)
             {
-                restaurante.Valoracion = (decimal)promedio;
+                restaurante.Valoracion = promedio.HasValue ? (decimal)promedio.Value : null;
                 await _db.SaveChangesAsync(cancellationToken);
             }
 

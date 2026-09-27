@@ -46,7 +46,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task HandleAsync_SinOpiniones_DeberiaActualizarConCero()
+        public async Task HandleAsync_SinOpiniones_DeberiaQuitarLaValoracionLocal()
         {
             var id = Guid.NewGuid();
 
@@ -54,13 +54,13 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(new List<OpinionRestaurante>());
 
             _restauranteRepo.Setup(r =>
-                r.ActualizarValoracionAsync(id, 0, default))
+                r.ActualizarValoracionAsync(id, null, default))
                 .Returns(Task.CompletedTask);
 
             await _useCase.HandleAsync(id, default);
 
             _restauranteRepo.Verify(r =>
-                r.ActualizarValoracionAsync(id, 0, default),
+                r.ActualizarValoracionAsync(id, null, default),
                 Times.Once);
         }
 
@@ -106,7 +106,7 @@ namespace GustosApp.Application.Tests
             await _useCase.HandleAsync(id, default);
 
             _restauranteRepo.Verify(r =>
-                r.ActualizarValoracionAsync(id, It.IsAny<double>(), default),
+                r.ActualizarValoracionAsync(id, It.IsAny<double?>(), default),
                 Times.Once);
         }
 

@@ -17,18 +17,21 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
         private readonly IUsuarioRepository _repoUsuario;
         private readonly IRestauranteRepository _repoRestaurante;
         private readonly IApplicationTransaction _transaction;
+        private readonly ActualizarValoracionRestauranteUseCase? _actualizarValoracion;
 
         public CrearOpinionRestauranteUseCase(IFileStorageService fileStorage,
             IOpinionRestauranteRepository repoOpinionRest,
             IUsuarioRepository repoUsuario,
             IRestauranteRepository repoRestaurante,
-            IApplicationTransaction? transaction = null)
+            IApplicationTransaction? transaction = null,
+            ActualizarValoracionRestauranteUseCase? actualizarValoracion = null)
         {
             _fileStorage = fileStorage;
             _repoOpinionRest = repoOpinionRest;
             _repoUsuario = repoUsuario;
             _repoRestaurante = repoRestaurante;
             _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
+            _actualizarValoracion = actualizarValoracion;
         }
 
         public async Task HandleAsync(string firebaseUid, Guid restauranteId,
@@ -92,6 +95,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
                         transactionCt);
                     return true;
                 }, cancellationToken);
+
+                if (_actualizarValoracion != null)
+                    await _actualizarValoracion.HandleAsync(restauranteId, cancellationToken);
             }
             catch
             {

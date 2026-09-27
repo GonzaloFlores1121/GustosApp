@@ -91,7 +91,7 @@ public class OpinionRestauranteApiPruebas
         {
             var db = alcance.ServiceProvider.GetRequiredService<GustosDbContext>();
             Assert.Empty(await db.OpinionesRestaurantes.ToListAsync());
-            Assert.Equal(0m, (await db.Restaurantes.FindAsync(restauranteId))!.Valoracion);
+            Assert.Null((await db.Restaurantes.FindAsync(restauranteId))!.Valoracion);
             Assert.Single(await db.UsuarioRestauranteVisitados.ToListAsync());
         }
 

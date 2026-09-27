@@ -31,15 +31,18 @@ public sealed class ActualizarOpinionRestauranteUseCase
     private readonly IFileStorageService _archivos;
     private readonly IOpinionRestauranteRepository _opiniones;
     private readonly IUsuarioRepository _usuarios;
+    private readonly ActualizarValoracionRestauranteUseCase? _actualizarValoracion;
 
     public ActualizarOpinionRestauranteUseCase(
         IFileStorageService archivos,
         IOpinionRestauranteRepository opiniones,
-        IUsuarioRepository usuarios)
+        IUsuarioRepository usuarios,
+        ActualizarValoracionRestauranteUseCase? actualizarValoracion = null)
     {
         _archivos = archivos;
         _opiniones = opiniones;
         _usuarios = usuarios;
+        _actualizarValoracion = actualizarValoracion;
     }
 
     public async Task HandleAsync(
@@ -96,6 +99,8 @@ public sealed class ActualizarOpinionRestauranteUseCase
             existente.FechaVisita = fechaVisita;
 
             await _opiniones.ActualizarAsync(existente, ct);
+            if (_actualizarValoracion != null)
+                await _actualizarValoracion.HandleAsync(existente.RestauranteId, ct);
         }
         catch
         {
@@ -121,15 +126,18 @@ public sealed class EliminarOpinionRestauranteUseCase
     private readonly IFileStorageService _archivos;
     private readonly IOpinionRestauranteRepository _opiniones;
     private readonly IUsuarioRepository _usuarios;
+    private readonly ActualizarValoracionRestauranteUseCase? _actualizarValoracion;
 
     public EliminarOpinionRestauranteUseCase(
         IFileStorageService archivos,
         IOpinionRestauranteRepository opiniones,
-        IUsuarioRepository usuarios)
+        IUsuarioRepository usuarios,
+        ActualizarValoracionRestauranteUseCase? actualizarValoracion = null)
     {
         _archivos = archivos;
         _opiniones = opiniones;
         _usuarios = usuarios;
+        _actualizarValoracion = actualizarValoracion;
     }
 
     public async Task HandleAsync(string firebaseUid, Guid opinionId, CancellationToken ct)
@@ -146,6 +154,8 @@ public sealed class EliminarOpinionRestauranteUseCase
 
         var urls = existente.Fotos.Select(f => f.Url).Distinct().ToList();
         await _opiniones.EliminarAsync(existente, ct);
+        if (_actualizarValoracion != null)
+            await _actualizarValoracion.HandleAsync(existente.RestauranteId, ct);
 
         foreach (var url in urls)
         {

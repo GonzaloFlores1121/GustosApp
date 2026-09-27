@@ -42,6 +42,16 @@ namespace GustosApp.API.Middleware
 
             switch (ex)
             {
+                case SinPreferenciasRecomendacionException:
+                    status = HttpStatusCode.UnprocessableEntity;
+                    result = new { status = 422, code = "SIN_PREFERENCIAS", message = ex.Message };
+                    break;
+
+                case FiltroGustosInvalidoException:
+                    status = HttpStatusCode.BadRequest;
+                    result = new { status = 400, code = "FILTRO_GUSTOS_INVALIDO", message = ex.Message };
+                    break;
+
                 case UnauthorizedAccessException:
                     status = HttpStatusCode.Unauthorized;
                     result = new { status = 401, error = "Unauthorized", message = ex.Message };

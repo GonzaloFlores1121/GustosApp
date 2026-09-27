@@ -12,6 +12,12 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                 .ForMember(dest => dest.Latitud, opt => opt.MapFrom(src => src.Latitud))
                 .ForMember(dest => dest.Longitud, opt => opt.MapFrom(src => src.Longitud))
                 .ForMember(dest => dest.Score, opt => opt.MapFrom(src => src.Score))
+                .ForMember(dest => dest.PuntuacionPrincipal, opt => opt.MapFrom(src => src.ObtenerPuntuacionPrincipal()))
+                .ForMember(dest => dest.FuentePuntuacionPrincipal, opt => opt.MapFrom(src => src.ObtenerFuentePuntuacionPrincipal()))
+                .ForMember(dest => dest.ValoracionLocal, opt => opt.MapFrom(src => src.ObtenerValoracionLocal()))
+                .ForMember(dest => dest.CantidadResenasLocales, opt => opt.MapFrom(src => src.ObtenerCantidadResenasLocales()))
+                .ForMember(dest => dest.RatingGoogle, opt => opt.MapFrom(src => src.Rating.HasValue && src.Rating.Value > 0 ? src.Rating : null))
+                .ForMember(dest => dest.CantidadResenasGoogle, opt => opt.MapFrom(src => src.CantidadResenas))
                 .ForMember(dest => dest.NivelCompatibilidad,
                     opt => opt.MapFrom(src => src.NivelCompatibilidad.ToString()))
                 .ForMember(dest => dest.OrigenDatosCompatibilidad,

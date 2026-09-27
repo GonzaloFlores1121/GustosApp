@@ -63,6 +63,30 @@ namespace GustosApp.Domain.Model
         public ICollection<Gusto> GustosQueSirve { get; set; } = new List<Gusto>();
         public ICollection<Restriccion> RestriccionesQueRespeta { get; set; } = new List<Restriccion>();
 
+        public double? ObtenerValoracionLocal()
+        {
+            var locales = Reviews?
+                .Where(r => !r.EsImportada && r.UsuarioId.HasValue)
+                .Select(r => r.Valoracion)
+                .ToList() ?? new List<double>();
+
+            if (locales.Count > 0)
+                return locales.Average();
+
+            return Valoracion is > 0 ? (double)Valoracion.Value : null;
+        }
+
+        public int ObtenerCantidadResenasLocales() =>
+            Reviews?.Count(r => !r.EsImportada && r.UsuarioId.HasValue) ?? 0;
+
+        public double? ObtenerPuntuacionPrincipal() =>
+            ObtenerValoracionLocal() ?? (Rating is > 0 ? Rating : null);
+
+        public string? ObtenerFuentePuntuacionPrincipal() =>
+            ObtenerValoracionLocal().HasValue
+                ? "GustosApp"
+                : Rating is > 0 ? "Google" : null;
+
        
         // ====== V2 ======
 
