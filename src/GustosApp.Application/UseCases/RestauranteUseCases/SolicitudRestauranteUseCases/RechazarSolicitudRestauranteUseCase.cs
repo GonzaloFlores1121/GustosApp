@@ -8,6 +8,7 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Application.UseCases.NotificacionUseCases;
+using Microsoft.Extensions.Logging;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases
 {
@@ -18,19 +19,22 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         private readonly IEmailService _email;
         private readonly IEmailTemplateService _templates;
         private readonly PublicarNotificacionInformativaUseCase? _publicarNotificacion;
+        private readonly ILogger<RechazarSolicitudRestauranteUseCase>? _logger;
 
         public RechazarSolicitudRestauranteUseCase(
             ISolicitudRestauranteRepository solicitudes,
             IFileStorageService firebase,
             IEmailService email,
             IEmailTemplateService templates,
-            PublicarNotificacionInformativaUseCase? publicarNotificacion = null)
+            PublicarNotificacionInformativaUseCase? publicarNotificacion = null,
+            ILogger<RechazarSolicitudRestauranteUseCase>? logger = null)
         {
             _solicitudes = solicitudes;
             _firebase = firebase;
             _email = email;
             _templates = templates;
             _publicarNotificacion = publicarNotificacion;
+            _logger = logger;
         }
 
         public async Task HandleAsync(Guid solicitudId, string motivo, CancellationToken ct = default)
@@ -56,37 +60,65 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 
             if (_publicarNotificacion != null)
             {
-                await _publicarNotificacion.HandleAsync(
-                    solicitud.Usuario,
-                    "Solicitud de restaurante rechazada",
-                    $"Tu solicitud para {solicitud.Nombre} fue rechazada. Revisá el motivo y volvé a intentarlo.",
-                    TipoNotificacion.SolicitudRestauranteRechazada,
-                    $"solicitud-restaurante:{solicitud.Id}:rechazada",
-                    "/restaurante/mi-solicitud",
-                    ct);
+                try
+                {
+                    await _publicarNotificacion.HandleAsync(
+                        solicitud.Usuario,
+                        "Solicitud de restaurante rechazada",
+                        $"Tu solicitud para {solicitud.Nombre} fue rechazada. Revisá el motivo y volvé a intentarlo.",
+                        TipoNotificacion.SolicitudRestauranteRechazada,
+                        $"solicitud-restaurante:{solicitud.Id}:rechazada",
+                        "/restaurante/mi-solicitud",
+                        ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogWarning(ex, "No se pudo publicar la notificación del rechazo {SolicitudId}.", solicitud.Id);
+                }
             }
 
-            //eliminar imagnees de firebase :D
-            foreach (var img in solicitud.Imagenes)
+            if (!solicitud.ArchivosRechazoEliminados)
             {
-                await _firebase.DeleteFileAsync(img.Url);
+                var limpiezaCompleta = true;
+                foreach (var img in solicitud.Imagenes)
+                {
+                    try { await _firebase.DeleteFileAsync(img.Url); }
+                    catch (Exception ex)
+                    {
+                        limpiezaCompleta = false;
+                        _logger?.LogWarning(ex, "No se pudo eliminar un archivo del rechazo {SolicitudId}.", solicitud.Id);
+                    }
+                }
+
+                if (limpiezaCompleta)
+                {
+                    solicitud.ArchivosRechazoEliminados = true;
+                    await _solicitudes.UpdateAsync(solicitud, ct);
+                }
             }
 
             if (solicitud.CorreoRechazoEnviado) return;
 
-            await _email.EnviarEmailAsync(
-                 solicitud.Usuario.Email,
-                 "Tu solicitud fue rechazada",
-             _templates.Render("SolicitudRechazada.html", new Dictionary<string, string>
-                 {
-                { "USUARIO", solicitud.Usuario.Nombre },
-                { "NOMBRE", solicitud.Nombre},
-                { "MOTIVO", solicitud.MotivoRechazo }
-               })
-            );
+            try
+            {
+                await _email.EnviarEmailAsync(
+                    solicitud.Usuario.Email,
+                    "Tu solicitud fue rechazada",
+                    _templates.Render("SolicitudRechazada.html", new Dictionary<string, string>
+                    {
+                        { "USUARIO", solicitud.Usuario.Nombre },
+                        { "NOMBRE", solicitud.Nombre},
+                        { "MOTIVO", solicitud.MotivoRechazo ?? motivo }
+                    }),
+                    ct);
 
-            solicitud.CorreoRechazoEnviado = true;
-            await _solicitudes.UpdateAsync(solicitud, ct);
+                solicitud.CorreoRechazoEnviado = true;
+                await _solicitudes.UpdateAsync(solicitud, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogWarning(ex, "La solicitud {SolicitudId} quedó rechazada, pero falló el correo.", solicitud.Id);
+            }
 
 
         }

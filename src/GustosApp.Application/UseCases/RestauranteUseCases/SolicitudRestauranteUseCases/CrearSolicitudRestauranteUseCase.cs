@@ -9,6 +9,9 @@ using GustosApp.Domain.Model;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using System.Globalization;
+using GustosApp.Application.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases
 {
@@ -21,13 +24,17 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         private readonly IEmailService _email;
         private readonly IEmailTemplateService _templates;
         private readonly IFileStorageService _firebaseStorage;
+        private readonly EnlacesAplicacionOptions _enlaces;
+        private readonly ILogger<CrearSolicitudRestauranteUseCase>? _logger;
 
         public CrearSolicitudRestauranteUseCase(
             ISolicitudRestauranteRepository solicitudes,
              IRestriccionRepository restricciones, IGustoRepository gustos,
             IUsuarioRepository usuarios,
             IEmailService email, IEmailTemplateService templates,
-            IFileStorageService firebaseStorage
+            IFileStorageService firebaseStorage,
+            IOptions<EnlacesAplicacionOptions>? enlaces = null,
+            ILogger<CrearSolicitudRestauranteUseCase>? logger = null
 )
         {
             _solicitudes = solicitudes;
@@ -37,6 +44,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             _email = email;
            _templates = templates;
            _firebaseStorage = firebaseStorage;
+           _enlaces = enlaces?.Value ?? new EnlacesAplicacionOptions();
+           _logger = logger;
         }
 
         public async Task<Guid> HandleAsync(
@@ -64,8 +73,12 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             // 2) Validar rol
             if (usuario.Rol != RolUsuario.Usuario)
                 throw new Exception("Ya sos dueño de un restaurante.");
-            if (await _solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct) != null)
-                throw new InvalidOperationException("Ya tenés una solicitud de restaurante pendiente.");
+            var solicitudPendiente = await _solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct);
+            if (solicitudPendiente != null)
+            {
+                await IntentarNotificarAdministracionAsync(solicitudPendiente, usuario, ct);
+                return solicitudPendiente.Id;
+            }
 
             // Parsear lat/lng
             double? latitud = null;
@@ -121,25 +134,14 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                     WebsiteUrl = websiteUrl.Trim()
                 };
 
-                solicitud.Gustos = await _gustos.GetByIdsAsync(gustosIds, ct);
-                solicitud.Restricciones = await _restricciones.GetRestriccionesByIdsAsync(restriccionesIds, ct);
+                solicitud.Gustos = await _gustos.GetByIdsAsync(gustosIds ?? [], ct);
+                solicitud.Restricciones = await _restricciones.GetRestriccionesByIdsAsync(restriccionesIds ?? [], ct);
 
                 solicitud.Usuario = usuario;
                 await _solicitudes.AddAsync(solicitud, ct);
                 solicitudGuardada = true;
 
-                // Modificar esto si es deploy?
-                await _email.EnviarEmailAsync(
-                    "gonzalomarcos551@gmail.com",
-                    "Nueva solicitud de restaurante",
-                    _templates.Render("SolicitudNueva.html", new Dictionary<string, string>
-                    {
-                        { "USUARIO", usuario.Email },
-                        { "NOMBRE", solicitud.Nombre },
-                        { "DIRECCION", solicitud.Direccion },
-                        { "LINK", "http://localhost:3000/admin" }
-                    })
-                );
+                await IntentarNotificarAdministracionAsync(solicitud, usuario, ct);
 
                 return solicitud.Id;
             }
@@ -151,6 +153,40 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
                     catch { }
                 }
                 throw;
+            }
+        }
+
+        private async Task IntentarNotificarAdministracionAsync(
+            SolicitudRestaurante solicitud,
+            Usuario usuario,
+            CancellationToken ct)
+        {
+            if (solicitud.CorreoNuevaSolicitudEnviado ||
+                string.IsNullOrWhiteSpace(_enlaces.EmailAdministracion))
+                return;
+
+            try
+            {
+                await _email.EnviarEmailAsync(
+                    _enlaces.EmailAdministracion,
+                    "Nueva solicitud de restaurante",
+                    _templates.Render("SolicitudNueva.html", new Dictionary<string, string>
+                    {
+                        { "USUARIO", usuario.Email },
+                        { "NOMBRE", solicitud.Nombre },
+                        { "DIRECCION", solicitud.Direccion },
+                        { "LINK", _enlaces.CrearUrl("/admin") }
+                    }),
+                    ct);
+                solicitud.CorreoNuevaSolicitudEnviado = true;
+                await _solicitudes.UpdateAsync(solicitud, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.LogWarning(
+                    ex,
+                    "La solicitud {SolicitudId} se guardó, pero no se pudo enviar el correo administrativo.",
+                    solicitud.Id);
             }
         }
 

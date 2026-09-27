@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using GustosApp.Application.Configuration;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
 using GustosApp.Domain.Common;
@@ -12,6 +13,7 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Model;
 using Moq;
+using Microsoft.Extensions.Options;
 
 namespace GustosApp.Application.Tests
 {
@@ -46,7 +48,12 @@ namespace GustosApp.Application.Tests
                 _usuariosRepo.Object,
                 _email.Object,
                 _templates.Object,
-                _firebaseStorage.Object
+                _firebaseStorage.Object,
+                Options.Create(new EnlacesAplicacionOptions
+                {
+                    FrontendBaseUrl = "http://localhost:3000",
+                    EmailAdministracion = "gonzalomarcos551@gmail.com"
+                })
             );
         }
 
@@ -160,21 +167,61 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task HandleAsync_NoCreaSegundaSolicitudMientrasHayUnaPendiente()
+        public async Task HandleAsync_ReintentaNotificacionSinCrearSegundaSolicitud()
         {
             var user = FakeUsuario(Guid.NewGuid());
+            var pendiente = new SolicitudRestaurante
+            {
+                Id = Guid.NewGuid(),
+                Usuario = user,
+                Nombre = "Mi Resto",
+                Direccion = "Calle 123"
+            };
             _usuariosRepo.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(user);
             _solicitudesRepo.Setup(r => r.BuscarPendientePorUsuarioAsync(user.Id, default))
-                .ReturnsAsync(new SolicitudRestaurante { Id = Guid.NewGuid() });
+                .ReturnsAsync(pendiente);
+            _templates.Setup(t => t.Render("SolicitudNueva.html", It.IsAny<Dictionary<string, string>>()))
+                .Returns("HTML");
+            _email.Setup(e => e.EnviarEmailAsync(
+                    "gonzalomarcos551@gmail.com", "Nueva solicitud de restaurante", "HTML", default))
+                .Returns(Task.CompletedTask);
 
-            Func<Task> act = () => _useCase.HandleAsync("uid", "Mi Resto", "Calle 123", null, null, null,
+            var resultado = await _useCase.HandleAsync("uid", "Mi Resto", "Calle 123", null, null, null,
                 [], [], null, null, null, null, null, "", default);
 
-            await act.Should().ThrowAsync<InvalidOperationException>()
-                .WithMessage("Ya tenés una solicitud de restaurante pendiente.");
+            resultado.Should().Be(pendiente.Id);
+            pendiente.CorreoNuevaSolicitudEnviado.Should().BeTrue();
             user.Rol.Should().Be(RolUsuario.Usuario);
             _solicitudesRepo.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
+            _solicitudesRepo.Verify(r => r.UpdateAsync(pendiente, default), Times.Once);
+            _firebaseStorage.VerifyNoOtherCalls();
             _firebase.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task HandleAsync_FalloDeCorreo_NoDeshaceSolicitudGuardada()
+        {
+            var user = FakeUsuario(Guid.NewGuid());
+            SolicitudRestaurante? guardada = null;
+            _usuariosRepo.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(user);
+            _gustosRepo.Setup(r => r.GetByIdsAsync(It.IsAny<List<Guid>>(), default)).ReturnsAsync([]);
+            _restriccionesRepo.Setup(r => r.GetRestriccionesByIdsAsync(It.IsAny<List<Guid>>(), default)).ReturnsAsync([]);
+            _solicitudesRepo.Setup(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default))
+                .Callback<SolicitudRestaurante, CancellationToken>((s, _) => guardada = s)
+                .Returns(Task.CompletedTask);
+            _templates.Setup(t => t.Render("SolicitudNueva.html", It.IsAny<Dictionary<string, string>>()))
+                .Returns("HTML");
+            _email.Setup(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), "HTML", default))
+                .ThrowsAsync(new InvalidOperationException("SMTP caído"));
+
+            var resultado = await _useCase.HandleAsync(
+                "uid", "Mi Resto", "Calle 123", null, null, null,
+                [], [], null, null, null, null, null, "", default);
+
+            resultado.Should().Be(guardada!.Id);
+            guardada.CorreoNuevaSolicitudEnviado.Should().BeFalse();
+            _solicitudesRepo.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Once);
+            _solicitudesRepo.Verify(r => r.UpdateAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
         }
 
         [Fact]
@@ -306,7 +353,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(gustosResult);
 
             _restriccionesRepo.Setup(r =>
-                r.GetRestriccionesByIdsAsync(null!, It.IsAny<CancellationToken>()))
+                r.GetRestriccionesByIdsAsync(It.Is<List<Guid>>(ids => ids.Count == 0), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<Restriccion>());
 
             _solicitudesRepo.Setup(r =>
@@ -347,7 +394,7 @@ namespace GustosApp.Application.Tests
             await act.Should().NotThrowAsync();
 
             _restriccionesRepo.Verify(r =>
-                r.GetRestriccionesByIdsAsync(null!, It.IsAny<CancellationToken>()),
+                r.GetRestriccionesByIdsAsync(It.Is<List<Guid>>(ids => ids.Count == 0), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
     }

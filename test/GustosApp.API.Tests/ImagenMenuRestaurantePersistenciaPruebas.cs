@@ -76,6 +76,12 @@ public sealed class ImagenMenuRestaurantePersistenciaPruebas
             cfg => cfg.AddProfile<RestauranteDetalleProfile>(),
             NullLoggerFactory.Instance);
         var detalle = configuracion.CreateMapper().Map<RestauranteDetalleDto>(recargado);
-        detalle.ImagenMenu.Should().Be("https://imagenes.test/menu-persistido.jpg");
+        detalle.ImagenMenu.Should().BeNull("una imagen todavía no confirmada no debe hacerse pública");
+
+        recargado.MenuProcesado = true;
+        detalle = configuracion.CreateMapper().Map<RestauranteDetalleDto>(recargado);
+        detalle.ImagenMenu.Should().Be(
+            "https://imagenes.test/menu-persistido.jpg",
+            "los menús confirmados anteriores siguen usando la imagen histórica");
     }
 }

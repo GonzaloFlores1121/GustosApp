@@ -156,6 +156,10 @@ namespace GustosApp.Application.Tests
             // No existe menú previo
             _menuRepo.Setup(m => m.GetByRestauranteIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((RestauranteMenu?)null);
+            RestauranteMenu? menuCapturado = null;
+            _menuRepo.Setup(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()))
+                .Callback<RestauranteMenu, CancellationToken>((m, _) => menuCapturado = m)
+                .Returns(Task.CompletedTask);
 
             Dictionary<string, string>? valoresPlantilla = null;
             _templates.Setup(t => t.Render("SolicitudAprobada.html", It.IsAny<Dictionary<string, string>>()))
@@ -173,13 +177,17 @@ namespace GustosApp.Application.Tests
             var res = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
             // === ASSERT ===
-            res.MenuProcesado.Should().BeTrue();
+            res.MenuProcesado.Should().NotBeTrue();
             res.MenuError.Should().BeNull();
             res.DuenoId.Should().Be(usuario.Id);
             res.PropietarioUid.Should().Be(usuario.FirebaseUid);
 
             _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Once);
-            _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            menuCapturado.Should().NotBeNull();
+            menuCapturado!.EstadoBorrador.Should().Be(EstadoBorradorMenu.Listo);
+            menuCapturado.BorradorJson.Should().Be("{\"parsed\":true}");
+            menuCapturado.Json.Should().Be("{}");
+            menuCapturado.Version.Should().Be(0);
             valoresPlantilla.Should().NotBeNull();
             valoresPlantilla!["LINK"].Should().Be($"http://localhost:3000/restaurante/{res.Id}/dashboard");
         }
@@ -305,8 +313,16 @@ namespace GustosApp.Application.Tests
             _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), default)).ReturnsAsync(new byte[] { 1 });
             _ocr.Setup(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", default)).ReturnsAsync("Pizza");
             _menuParser.Setup(p => p.ParsearAsync("Pizza", "ARS", default)).ReturnsAsync("{}");
+            RestauranteMenu? borrador = null;
+            _menuRepo.Setup(m => m.GetByRestauranteIdAsync(restaurante.Id, default))
+                .ReturnsAsync((RestauranteMenu?)null);
+            _menuRepo.Setup(m => m.AddAsync(It.IsAny<RestauranteMenu>(), default))
+                .Callback<RestauranteMenu, CancellationToken>((m, _) => borrador = m)
+                .Returns(Task.CompletedTask);
             await _useCase.ReprocesarMenuAsync(solicitud.Id, default);
-            restaurante.MenuProcesado.Should().BeTrue();
+            restaurante.MenuProcesado.Should().NotBeTrue();
+            borrador.Should().NotBeNull();
+            borrador!.EstadoBorrador.Should().Be(EstadoBorradorMenu.Listo);
             _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Never);
             _firebase.VerifyNoOtherCalls();
             _email.VerifyNoOtherCalls();
@@ -352,12 +368,12 @@ namespace GustosApp.Application.Tests
             var result = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
             // === ASSERT ===
-            result.MenuProcesado.Should().BeFalse();
-            result.MenuError.Should().Be("Menú vacío");
-
-            // NO debe crearse ningún menú
-            _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
-            _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            result.MenuProcesado.Should().NotBeTrue();
+            result.MenuError.Should().BeNull();
+            _menuRepo.Verify(m => m.AddAsync(It.Is<RestauranteMenu>(menu =>
+                menu.EstadoBorrador == EstadoBorradorMenu.Error &&
+                menu.BorradorError != null && menu.BorradorError.Contains("detectar texto")),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
 
 
@@ -419,13 +435,15 @@ namespace GustosApp.Application.Tests
 
             var result = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
-            result.MenuProcesado.Should().BeTrue();
+            result.MenuProcesado.Should().NotBeTrue();
             result.MenuError.Should().BeNull();
 
-            menuExistente.Json.Should().Be("{\"menu\":true}");
-            menuExistente.Version.Should().Be(2);
+            menuExistente.Json.Should().Be("{}");
+            menuExistente.Version.Should().Be(1);
+            menuExistente.EstadoBorrador.Should().Be(EstadoBorradorMenu.Listo);
+            menuExistente.BorradorJson.Should().Be("{\"menu\":true}");
 
-            _menuRepo.Verify(m => m.UpdateAsync(menuExistente, It.IsAny<CancellationToken>()), Times.Once);
+            _menuRepo.Verify(m => m.UpdateAsync(menuExistente, It.IsAny<CancellationToken>()), Times.Exactly(2));
             _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
@@ -470,11 +488,12 @@ namespace GustosApp.Application.Tests
 
             var result = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
-            result.MenuProcesado.Should().BeFalse();
-            result.MenuError.Should().Be("Error en OCR");
-
-            _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
-            _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            result.MenuProcesado.Should().NotBeTrue();
+            result.MenuError.Should().BeNull();
+            _menuRepo.Verify(m => m.AddAsync(It.Is<RestauranteMenu>(menu =>
+                menu.EstadoBorrador == EstadoBorradorMenu.Error &&
+                menu.BorradorError != null && menu.BorradorError.Contains("dashboard")),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 }

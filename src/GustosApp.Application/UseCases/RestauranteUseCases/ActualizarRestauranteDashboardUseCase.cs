@@ -35,7 +35,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             string? webUrl,
             List<Guid>? gustosQueSirveIds,
             List<Guid>? restriccionesQueRespetaIds,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            bool webUrlFueEnviado = false)
         {
             var restaurante = await _restauranteRepository.GetByIdAsync(restauranteId, ct);
             if (restaurante == null)
@@ -60,7 +61,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 restaurante.HorariosJson = horariosJson;
 
             // WebUrl: si viene null no tocamos; si viene string vacío, lo seteamos en null
-            if (webUrl != null)
+            if (webUrlFueEnviado || webUrl != null)
                 restaurante.WebUrl = string.IsNullOrWhiteSpace(webUrl) ? null : webUrl;
 
             // Gustos

@@ -1974,8 +1974,35 @@ namespace GustosApp.Infraestructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BorradorError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("BorradorImagenFuenteUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("BorradorJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("BorradorToken")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EstadoBorrador")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasDefaultValue("Ninguno");
+
                     b.Property<DateTime>("FechaActualizacionUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaBorradorUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ImagenFuentePublicadaUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
 
                     b.Property<string>("Json")
                         .IsRequired()
@@ -2131,10 +2158,16 @@ namespace GustosApp.Infraestructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("ArchivosRechazoEliminados")
+                        .HasColumnType("bit");
+
                     b.Property<byte[]>("ComprobanteReclamo")
                         .HasColumnType("varbinary(max)");
 
                     b.Property<bool>("CorreoAprobacionEnviado")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("CorreoNuevaSolicitudEnviado")
                         .HasColumnType("bit");
 
                     b.Property<bool>("CorreoRechazoEnviado")

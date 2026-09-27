@@ -8,6 +8,8 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Model;
 using GustosApp.Application.UseCases.NotificacionUseCases;
+using GustosApp.Application.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases
 {
@@ -26,6 +28,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
         private readonly IEmailService _email;
         private readonly IEmailTemplateService _templates;
         private readonly PublicarNotificacionInformativaUseCase? _publicarNotificacion;
+        private readonly EnlacesAplicacionOptions _enlaces;
 
 
         public AprobarSolicitudRestauranteUseCase(ISolicitudRestauranteRepository solicitudes,
@@ -34,7 +37,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             IGustoRepository gustos, IRestauranteMenuRepository menuRepo, 
             IFirebaseAuthService firebase, IEmailService email, 
             IEmailTemplateService templates, IHttpDownloader downloader,
-            PublicarNotificacionInformativaUseCase? publicarNotificacion = null
+            PublicarNotificacionInformativaUseCase? publicarNotificacion = null,
+            IOptions<EnlacesAplicacionOptions>? enlaces = null
 
             )
         {
@@ -51,6 +55,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             _templates = templates;
             _downloader = downloader;
             _publicarNotificacion = publicarNotificacion;
+            _enlaces = enlaces?.Value ?? new EnlacesAplicacionOptions();
         }
 
 
@@ -142,7 +147,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             }
             if (solicitud.CorreoAprobacionEnviado) return;
 
-            //modifcar para deploy
             await _email.EnviarEmailAsync(
                 solicitud.Usuario.Email,
                 "Tu solicitud fue aprobada",
@@ -150,7 +154,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
               {
              { "USUARIO", solicitud.Usuario.Nombre },
             { "NOMBRE", restaurante.Nombre },
-             { "LINK", $"http://localhost:3000/restaurante/{restaurante.Id}/dashboard" }
+             { "LINK", _enlaces.CrearUrl($"/restaurante/{restaurante.Id}/dashboard") }
              }), ct
             );
 
@@ -236,12 +240,33 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             var imgMenu = solicitud.Imagenes
                 .FirstOrDefault(i => i.Tipo == TipoImagenSolicitud.Menu);
 
-            if (imgMenu == null) { 
-                restaurante.MenuProcesado = false;
-            restaurante.MenuError = "Menú vacío";
-            return;
+            if (imgMenu == null) return;
 
-        }
+            var existente = await _menuRepo.GetByRestauranteIdAsync(restaurante.Id, ct);
+            if (existente?.BorradorToken.HasValue == true &&
+                !string.Equals(existente.BorradorImagenFuenteUrl, imgMenu.Url, StringComparison.Ordinal))
+            {
+                // La aprobación de un reclamo no debe reemplazar un borrador más nuevo
+                // que el propietario ya haya cargado desde el dashboard.
+                return;
+            }
+
+            var esNuevo = existente == null;
+            existente ??= new RestauranteMenu
+            {
+                RestauranteId = restaurante.Id,
+                Moneda = "ARS",
+                Json = "{}",
+                Version = 0,
+                FechaActualizacionUtc = DateTime.UtcNow
+            };
+            var token = Guid.NewGuid();
+            existente.IniciarBorrador(token, imgMenu.Url, DateTime.UtcNow);
+            if (esNuevo)
+                await _menuRepo.AddAsync(existente, ct);
+            else
+                await _menuRepo.UpdateAsync(existente, ct);
+
             try
             {
                 var bytes = await _downloader.DownloadAsync(imgMenu.Url, ct);
@@ -252,46 +277,32 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 
                 if (string.IsNullOrWhiteSpace(texto))
                 {
-                    restaurante.MenuProcesado = false;
-                    restaurante.MenuError = "Menú vacío";
+                    await _menuRepo.ReloadAsync(existente, ct);
+                    if (existente.MarcarErrorBorrador(
+                        token,
+                        "No pudimos detectar texto en la imagen del menú.",
+                        DateTime.UtcNow))
+                        await _menuRepo.UpdateAsync(existente, ct);
                     return;
                 }
 
                 var menuJson = await _menuParser.ParsearAsync(texto, "ARS", ct);
-
-                var existente = await _menuRepo.GetByRestauranteIdAsync(restaurante.Id, ct);
-
-                if (existente == null)
-                {
-                    await _menuRepo.AddAsync(new RestauranteMenu
-                    {
-                        RestauranteId = restaurante.Id,
-                        Moneda = "ARS",
-                        Json = menuJson,
-                        Version = 1,
-                        FechaActualizacionUtc = DateTime.UtcNow
-                    }, ct);
-                }
-                else
-                {
-                    existente.Json = menuJson;
-                    existente.Version++;
-                    existente.FechaActualizacionUtc = DateTime.UtcNow;
-
+                await _menuRepo.ReloadAsync(existente, ct);
+                if (existente.CompletarBorrador(token, menuJson, DateTime.UtcNow))
                     await _menuRepo.UpdateAsync(existente, ct);
-                }
-
-                restaurante.MenuProcesado = true;
-                restaurante.MenuError = null;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                restaurante.MenuProcesado = false;
-                restaurante.MenuError = ex.Message;
+                await _menuRepo.ReloadAsync(existente, ct);
+                if (existente.MarcarErrorBorrador(
+                    token,
+                    "No pudimos procesar la imagen del menú. Podés intentarlo nuevamente desde el dashboard.",
+                    DateTime.UtcNow))
+                    await _menuRepo.UpdateAsync(existente, ct);
             }
         }
 

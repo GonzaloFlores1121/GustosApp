@@ -167,6 +167,36 @@ namespace GustosApp.Application.Tests
             Assert.Null(restaurante.WebUrl);
         }
 
+        [Fact]
+        public async Task HandleAsync_WebUrlOmitida_LaConserva()
+        {
+            var restaurante = CreateRestaurante();
+            _restauranteRepositoryMock
+                .Setup(r => r.GetByIdAsync(restaurante.Id, default))
+                .ReturnsAsync(restaurante);
+
+            await _sut.HandleAsync(
+                restaurante.Id, _usuarioId, null, null, null, null, null,
+                null, null, default, webUrlFueEnviado: false);
+
+            Assert.Equal("https://original.example.com", restaurante.WebUrl);
+        }
+
+        [Fact]
+        public async Task HandleAsync_WebUrlNullExplicita_LaLimpia()
+        {
+            var restaurante = CreateRestaurante();
+            _restauranteRepositoryMock
+                .Setup(r => r.GetByIdAsync(restaurante.Id, default))
+                .ReturnsAsync(restaurante);
+
+            await _sut.HandleAsync(
+                restaurante.Id, _usuarioId, null, null, null, null, null,
+                null, null, default, webUrlFueEnviado: true);
+
+            Assert.Null(restaurante.WebUrl);
+        }
+
         // --------------------------------------------------------------------
         // 4. Cuando se envían gustosQueSirveIds, se consulta repositorio y se
         //    aplican los gustos al restaurante

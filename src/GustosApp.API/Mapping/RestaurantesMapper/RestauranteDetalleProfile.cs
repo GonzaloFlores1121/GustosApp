@@ -50,15 +50,19 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
 
                 .ForMember(dest => dest.ImagenMenu,
                     opt => opt.MapFrom(src =>
-                        src.Imagenes
+                        src.MenuProcesado == true
+                            ? src.Menu != null && !string.IsNullOrWhiteSpace(src.Menu.ImagenFuentePublicadaUrl)
+                                ? src.Menu.ImagenFuentePublicadaUrl
+                                : src.Imagenes
                             .Where(i => i.Tipo == TipoImagenRestaurante.Menu)
                             .OrderBy(i => i.Orden)
                             .Select(i => i.Url)
-                            .FirstOrDefault()))
+                            .FirstOrDefault()
+                            : null))
 
                 .ForMember(dest => dest.Menu,
                     opt => opt.MapFrom(src =>
-                        src.Menu != null &&
+                        src.MenuProcesado == true && src.Menu != null &&
                         !string.IsNullOrWhiteSpace(src.Menu.Json)
                             ? DeserializeMenu(src)
                             : null))

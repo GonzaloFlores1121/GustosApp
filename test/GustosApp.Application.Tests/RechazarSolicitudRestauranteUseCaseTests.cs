@@ -174,10 +174,61 @@ namespace GustosApp.Application.Tests
 
             // La solicitud y el usuario se guardan juntos antes de los efectos externos.
             _solicitudes.Verify(s => s.UpdateAsync(It.Is<SolicitudRestaurante>(s =>
-                s.Usuario.Rol == RolUsuario.Usuario && s.Estado == EstadoSolicitudRestaurante.Rechazada), default), Times.Exactly(2));
+                s.Usuario.Rol == RolUsuario.Usuario && s.Estado == EstadoSolicitudRestaurante.Rechazada), default), Times.Exactly(3));
 
             // Update solicitud
-            _solicitudes.Verify(s => s.UpdateAsync(solicitud, default), Times.Exactly(2));
+            _solicitudes.Verify(s => s.UpdateAsync(solicitud, default), Times.Exactly(3));
+        }
+
+        [Fact]
+        public async Task FalloDeCorreo_ConservaRechazoYPermiteReintentarSinBorrarOtraVez()
+        {
+            var solicitud = FakeSolicitud(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()));
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _templates.Setup(t => t.Render("SolicitudRechazada.html", It.IsAny<Dictionary<string, string>>()))
+                .Returns("HTML");
+            _email.SetupSequence(e => e.EnviarEmailAsync(solicitud.Usuario.Email,
+                    "Tu solicitud fue rechazada", "HTML", default))
+                .ThrowsAsync(new InvalidOperationException("SMTP caído"))
+                .Returns(Task.CompletedTask);
+
+            await _useCase.HandleAsync(solicitud.Id, "Motivo", default);
+
+            solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Rechazada);
+            solicitud.ArchivosRechazoEliminados.Should().BeTrue();
+            solicitud.CorreoRechazoEnviado.Should().BeFalse();
+
+            await _useCase.HandleAsync(solicitud.Id, "Motivo", default);
+
+            solicitud.CorreoRechazoEnviado.Should().BeTrue();
+            _firebase.Verify(f => f.DeleteFileAsync(It.IsAny<string>()), Times.Exactly(2));
+            _email.Verify(e => e.EnviarEmailAsync(solicitud.Usuario.Email,
+                "Tu solicitud fue rechazada", "HTML", default), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task FalloDeLimpieza_ConservaRechazoYReintentaArchivos()
+        {
+            var solicitud = FakeSolicitud(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()));
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _firebase.SetupSequence(f => f.DeleteFileAsync("url1"))
+                .ThrowsAsync(new InvalidOperationException("Storage caído"))
+                .Returns(Task.CompletedTask);
+            _firebase.Setup(f => f.DeleteFileAsync("url2")).Returns(Task.CompletedTask);
+            _templates.Setup(t => t.Render("SolicitudRechazada.html", It.IsAny<Dictionary<string, string>>()))
+                .Returns("HTML");
+            _email.Setup(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), "HTML", default))
+                .Returns(Task.CompletedTask);
+
+            await _useCase.HandleAsync(solicitud.Id, "Motivo", default);
+
+            solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Rechazada);
+            solicitud.ArchivosRechazoEliminados.Should().BeFalse();
+
+            await _useCase.HandleAsync(solicitud.Id, "Motivo", default);
+
+            solicitud.ArchivosRechazoEliminados.Should().BeTrue();
+            _firebase.Verify(f => f.DeleteFileAsync("url1"), Times.Exactly(2));
         }
 
         [Fact]

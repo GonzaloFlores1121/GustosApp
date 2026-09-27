@@ -6,6 +6,7 @@ using GustosApp.API.Hubs.GustosApp.API.Hubs;
 using GustosApp.API.Middleware;
 using GustosApp.API.Validations.OpinionRestaurantes;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Configuration;
 using GustosApp.Application.Services;
 using GustosApp.Application.Validations.Restaurantes;
 using GustosApp.Infraestructure;
@@ -17,6 +18,8 @@ using System.Globalization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.Configure<EnlacesAplicacionOptions>(
+    builder.Configuration.GetSection(EnlacesAplicacionOptions.Seccion));
 
 
 // =====================

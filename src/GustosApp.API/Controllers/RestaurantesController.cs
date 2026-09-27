@@ -39,6 +39,7 @@ namespace GustosApp.API.Controllers
         private readonly EliminarRestauranteUseCase _eliminarRestaurante;
         private readonly ObtenerRestauranteIdPorPropietarioUseCase _obtenerRestauranteIdPorPropietario;
         private readonly ObtenerMiSolicitudRestauranteUseCase _obtenerMiSolicitudRestaurante;
+        private readonly GestionarBorradorMenuRestauranteUseCase _gestionarBorradorMenu;
 
         public RestaurantesController(
       ObtenerUsuarioUseCase obtenerUsuario,
@@ -53,7 +54,8 @@ namespace GustosApp.API.Controllers
     IActualizarImagenesRestauranteUseCase actualizarImagenesUseCase,
     EliminarRestauranteUseCase eliminarRestaurante,
     ObtenerRestauranteIdPorPropietarioUseCase obtenerRestauranteIdPorPropietario,
-    ObtenerMiSolicitudRestauranteUseCase obtenerMiSolicitudRestaurante)
+    ObtenerMiSolicitudRestauranteUseCase obtenerMiSolicitudRestaurante,
+    GestionarBorradorMenuRestauranteUseCase gestionarBorradorMenu)
         {
             _obtenerUsuario = obtenerUsuario;
             _solicitudesRestaurantes = solicitudesRestaurantes;
@@ -69,6 +71,7 @@ namespace GustosApp.API.Controllers
             _eliminarRestaurante = eliminarRestaurante;
             _obtenerRestauranteIdPorPropietario = obtenerRestauranteIdPorPropietario;
             _obtenerMiSolicitudRestaurante = obtenerMiSolicitudRestaurante;
+            _gestionarBorradorMenu = gestionarBorradorMenu;
         }
 
         [HttpGet("mi-solicitud")]
@@ -249,7 +252,8 @@ namespace GustosApp.API.Controllers
                 dto.WebUrl,
                 dto.GustosQueSirveIds,
                 dto.RestriccionesQueRespetaIds,
-                ct);
+                ct,
+                dto.WebUrlFueEnviado);
 
             var detalle = _mapper.Map<RestauranteDetalleDto>(restauranteActualizado);
             return Ok(detalle);
@@ -399,14 +403,55 @@ namespace GustosApp.API.Controllers
             CancellationToken ct = default)
         {
             var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
-            var archivos = request.Archivo != null 
-                ? new List<ArchivoEntrada> { new ArchivoEntrada(request.Archivo.OpenReadStream(), request.Archivo.FileName) }
-                : null;
+            if (request.SoloBorrar)
+                return BadRequest(new { code = "BORRADOR_TOKEN_REQUERIDO", message = "Usá la acción Descartar borrador para quitar una carga sin afectar el menú publicado." });
+            if (request.Archivo == null)
+                return BadRequest(new { message = "Seleccioná una imagen de menú." });
 
-            var urls = await _actualizarImagenesUseCase.ActualizarImagenesColeccionAsync(
-                id, usuarioId, TipoImagenRestaurante.Menu, archivos, request.SoloBorrar, ct);
+            var borrador = await _gestionarBorradorMenu.CrearDesdeArchivoAsync(
+                id,
+                usuarioId,
+                new ArchivoEntrada(request.Archivo.OpenReadStream(), request.Archivo.FileName),
+                ct);
 
-            return Ok(new { imagenMenu = urls.FirstOrDefault() });
+            return Ok(CrearRespuestaBorrador(borrador, borrador.Version > 0));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpGet("{id:guid}/menu/borrador")]
+        public async Task<IActionResult> ObtenerBorradorMenu(Guid id, CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            var menu = await _gestionarBorradorMenu.ObtenerAsync(id, usuarioId, ct);
+            return Ok(menu == null
+                ? new BorradorMenuRestauranteResponse()
+                : CrearRespuestaBorrador(menu, menu.Version > 0));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPut("{id:guid}/menu/borrador/publicar")]
+        public async Task<IActionResult> PublicarBorradorMenu(
+            Guid id,
+            [FromBody] PublicarBorradorMenuRequest request,
+            CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            await _gestionarBorradorMenu.PublicarAsync(
+                id, usuarioId, request.Token, request.JsonRevisado, ct);
+            var menu = await _gestionarBorradorMenu.ObtenerAsync(id, usuarioId, ct);
+            return Ok(CrearRespuestaBorrador(menu!, true));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpDelete("{id:guid}/menu/borrador/{token:guid}")]
+        public async Task<IActionResult> DescartarBorradorMenu(
+            Guid id,
+            Guid token,
+            CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            await _gestionarBorradorMenu.DescartarAsync(id, usuarioId, token, ct);
+            return NoContent();
         }
         
         [HttpDelete("{id:guid}")]
@@ -505,6 +550,21 @@ namespace GustosApp.API.Controllers
 
             return Ok(rest);
         }
+
+        private static BorradorMenuRestauranteResponse CrearRespuestaBorrador(
+            RestauranteMenu menu,
+            bool tieneMenuPublicado) => new()
+        {
+            Token = menu.BorradorToken,
+            Estado = menu.EstadoBorrador.ToString(),
+            Json = menu.BorradorJson,
+            ImagenFuenteUrl = menu.BorradorImagenFuenteUrl,
+            ImagenPublicadaUrl = menu.ImagenFuentePublicadaUrl,
+            Error = menu.BorradorError,
+            FechaUtc = menu.FechaBorradorUtc,
+            TieneMenuPublicado = tieneMenuPublicado,
+            VersionPublicada = menu.Version
+        };
 
         private async Task<Guid> ObtenerUsuarioIdActualAsync(CancellationToken ct)
         {

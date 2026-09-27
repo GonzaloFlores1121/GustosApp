@@ -390,6 +390,7 @@ public sealed class ConfirmarMenuRestauranteImportadoUseCase
             {
                 RestauranteId = restauranteId,
                 Json = json,
+                Version = 1,
                 FechaActualizacionUtc = ahora
             }, ct);
         }
