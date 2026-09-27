@@ -50,6 +50,9 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<INotificacionesVotacionService, NotificacionesVotacionService>();
             services.AddScoped<INotificacionRealtimeService, SignalRNotificacionRealtimeService>();
             services.AddScoped<IChatRealTimeService, SignalRChatRealtimeService>();
+            // Registro en memoria por instancia. Si el chat escala horizontalmente,
+            // debe reemplazarse por un backplane/registro distribuido coordinado.
+            services.AddSingleton<IChatConnectionRegistry, ChatConnectionRegistry>();
             services.AddScoped<ISolicitudAmistadRealtimeService, SignalRSolicitudAmistadRealtimeService>();
             services.AddScoped<IApplicationTransaction, EfApplicationTransaction>();
 

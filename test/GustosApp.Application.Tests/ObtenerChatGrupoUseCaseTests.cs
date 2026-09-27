@@ -87,7 +87,9 @@ namespace GustosApp.Application.Tests
                 .WithMessage("No pertenece a este grupo");
 
             _chatRepo.Verify(
-                r => r.GetMessagesByGrupoIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                r => r.GetMessagesByGrupoIdAsync(
+                    It.IsAny<Guid>(), It.IsAny<DateTime?>(), It.IsAny<Guid?>(),
+                    It.IsAny<int>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
 
@@ -105,7 +107,9 @@ namespace GustosApp.Application.Tests
             await accion.Should().ThrowAsync<AccesoProhibidoException>()
                 .WithMessage("No pertenece a este grupo");
             _chatRepo.Verify(
-                r => r.GetMessagesByGrupoIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                r => r.GetMessagesByGrupoIdAsync(
+                    It.IsAny<Guid>(), It.IsAny<DateTime?>(), It.IsAny<Guid?>(),
+                    It.IsAny<int>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
 
@@ -129,14 +133,68 @@ namespace GustosApp.Application.Tests
             _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(grupo);
 
-            _chatRepo.Setup(r => r.GetMessagesByGrupoIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+            _chatRepo.Setup(r => r.GetMessagesByGrupoIdAsync(
+                    grupo.Id, null, null, 51, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(mensajes);
 
             var result = await _sut.HandleAsync("uid123", grupo.Id);
 
             result.Should().NotBeNull();
-            result.Should().HaveCount(1);
-            result.First().Mensaje.Should().Be("Hola");
+            result.Mensajes.Should().HaveCount(1);
+            result.Mensajes.First().Mensaje.Should().Be("Hola");
+            result.HayMas.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task HandleAsync_cincuentaYUnMensajes_devuelveUltimosCincuentaEIndicaQueHayMas()
+        {
+            var grupo = CrearGrupoConMiembro("uid123");
+            var mensajes = Enumerable.Range(0, 51)
+                .Select(index => new ChatMensaje
+                {
+                    Id = Guid.NewGuid(), GrupoId = grupo.Id,
+                    Mensaje = index.ToString(), FechaEnvio = DateTime.UtcNow.AddMinutes(index)
+                })
+                .ToList();
+            _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+            _chatRepo.Setup(r => r.GetMessagesByGrupoIdAsync(
+                    grupo.Id, null, null, 51, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(mensajes);
+
+            var result = await _sut.HandleAsync("uid123", grupo.Id);
+
+            result.HayMas.Should().BeTrue();
+            result.Mensajes.Should().HaveCount(50);
+            result.Mensajes.First().Mensaje.Should().Be("1");
+            result.Mensajes.Last().Mensaje.Should().Be("50");
+        }
+
+        [Fact]
+        public async Task ObtenerPosterioresAsync_limitaCadaLoteSinSaltarElSiguienteCursor()
+        {
+            var grupo = CrearGrupoConMiembro("uid123");
+            var cursorFecha = DateTime.UtcNow;
+            var cursorId = Guid.NewGuid();
+            var mensajes = Enumerable.Range(1, 51)
+                .Select(index => new ChatMensaje
+                {
+                    Id = Guid.NewGuid(), GrupoId = grupo.Id,
+                    Mensaje = index.ToString(), FechaEnvio = cursorFecha.AddSeconds(index)
+                })
+                .ToList();
+            _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+            _chatRepo.Setup(r => r.GetMessagesAfterAsync(
+                    grupo.Id, cursorFecha, cursorId, 51, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(mensajes);
+
+            var result = await _sut.ObtenerPosterioresAsync(
+                "uid123", grupo.Id, cursorFecha, cursorId);
+
+            result.HayMas.Should().BeTrue();
+            result.Mensajes.Should().HaveCount(50);
+            result.Mensajes.Last().Mensaje.Should().Be("50");
         }
     }
     }

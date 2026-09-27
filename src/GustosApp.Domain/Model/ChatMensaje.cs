@@ -12,5 +12,6 @@ namespace GustosApp.Domain.Model
         public DateTime FechaEnvio { get; set; } = DateTime.UtcNow;
         public Guid GrupoId { get; set; }
         public Guid UsuarioId { get; set; }
+        public Guid OperacionId { get; set; } = Guid.NewGuid();
     }
 }

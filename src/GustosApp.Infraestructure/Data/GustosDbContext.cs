@@ -372,7 +372,16 @@ public class GustosDbContext : DbContext
             .HasKey(c => c.Id);
         modelBuilder.Entity<ChatMensaje>()
             .Property(c => c.Mensaje)
+            .HasMaxLength(2000)
             .IsRequired();
+        modelBuilder.Entity<ChatMensaje>()
+            .Property(c => c.OperacionId)
+            .HasDefaultValueSql("NEWID()");
+        modelBuilder.Entity<ChatMensaje>()
+            .HasIndex(c => new { c.GrupoId, c.FechaEnvio, c.Id });
+        modelBuilder.Entity<ChatMensaje>()
+            .HasIndex(c => new { c.GrupoId, c.UsuarioId, c.OperacionId })
+            .IsUnique();
 
         
 

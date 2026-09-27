@@ -200,5 +200,75 @@ namespace GustosApp.Application.Tests
             _chatRepo.Verify(r => r.AddMessageAsync(It.IsAny<ChatMensaje>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
+
+        [Fact]
+        public async Task HandleAsync_mismaOperacion_devuelveMensajeExistenteSinDuplicarlo()
+        {
+            var usuario = CrearUsuario("uid");
+            var grupo = CrearGrupo(usuario.Id);
+            grupo.Miembros.Add(new MiembroGrupo(grupo.Id, usuario.Id));
+            var operacionId = Guid.NewGuid();
+            var existente = new ChatMensaje
+            {
+                Id = Guid.NewGuid(), GrupoId = grupo.Id, UsuarioId = usuario.Id,
+                OperacionId = operacionId, Mensaje = "Hola", UsuarioNombre = "Juan Pérez"
+            };
+            _usuarioRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(usuario);
+            _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+            _chatRepo.Setup(r => r.GetByOperacionIdAsync(
+                    grupo.Id, usuario.Id, operacionId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(existente);
+
+            var resultado = await _sut.HandleAsync(
+                "uid", grupo.Id, "Hola", operacionId: operacionId);
+
+            resultado.Should().BeSameAs(existente);
+            _chatRepo.Verify(
+                r => r.AddMessageAsync(It.IsAny<ChatMensaje>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_mismoTextoConOperacionesDistintas_guardaAmbosMensajes()
+        {
+            var usuario = CrearUsuario("uid");
+            var grupo = CrearGrupo(usuario.Id);
+            grupo.Miembros.Add(new MiembroGrupo(grupo.Id, usuario.Id));
+            _usuarioRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(usuario);
+            _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+            _chatRepo.Setup(r => r.AddMessageAsync(It.IsAny<ChatMensaje>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((ChatMensaje mensaje, CancellationToken _) => mensaje);
+
+            await _sut.HandleAsync("uid", grupo.Id, "Igual", operacionId: Guid.NewGuid());
+            await _sut.HandleAsync("uid", grupo.Id, "Igual", operacionId: Guid.NewGuid());
+
+            _chatRepo.Verify(
+                r => r.AddMessageAsync(It.IsAny<ChatMensaje>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task HandleAsync_mensajeDemasiadoLargo_noLoGuarda()
+        {
+            var usuario = CrearUsuario("uid");
+            var grupo = CrearGrupo(usuario.Id);
+            grupo.Miembros.Add(new MiembroGrupo(grupo.Id, usuario.Id));
+            _usuarioRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(usuario);
+            _grupoRepo.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(grupo);
+
+            Func<Task> accion = () => _sut.HandleAsync("uid", grupo.Id, new string('a', 2001));
+
+            await accion.Should().ThrowAsync<ArgumentException>()
+                .WithMessage("El mensaje no puede superar los 2000 caracteres.");
+            _chatRepo.Verify(
+                r => r.AddMessageAsync(It.IsAny<ChatMensaje>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
     }
 }

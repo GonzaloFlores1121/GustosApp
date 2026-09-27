@@ -283,9 +283,12 @@ namespace GustosApp.API.Controllers
             var firebaseUid = GetFirebaseUid();
             if (!Guid.TryParse(grupoId, out var gid)) return BadRequest("El id de grupo no es un GUID válido");
 
-            var msgs = await _obtenerChatGrupoUseCase.HandleAsync(firebaseUid, gid, ct);
+            var pagina = await _obtenerChatGrupoUseCase.HandleAsync(
+                firebaseUid,
+                gid,
+                cancellationToken: ct);
 
-            var response = _mapper.Map<IEnumerable<ChatMensajeResponse>>(msgs);
+            var response = _mapper.Map<IEnumerable<ChatMensajeResponse>>(pagina.Mensajes);
 
             return Ok(response);
         }

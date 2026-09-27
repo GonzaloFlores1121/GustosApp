@@ -940,7 +940,13 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.Property<string>("Mensaje")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("OperacionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
 
                     b.Property<Guid>("UsuarioId")
                         .HasColumnType("uniqueidentifier");
@@ -951,9 +957,12 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("GrupoId");
-
                     b.HasIndex("UsuarioId");
+
+                    b.HasIndex("GrupoId", "FechaEnvio", "Id");
+
+                    b.HasIndex("GrupoId", "UsuarioId", "OperacionId")
+                        .IsUnique();
 
                     b.ToTable("ChatMessages");
                 });
@@ -1990,6 +1999,7 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.Property<string>("EstadoBorrador")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)")
                         .HasDefaultValue("Ninguno");
