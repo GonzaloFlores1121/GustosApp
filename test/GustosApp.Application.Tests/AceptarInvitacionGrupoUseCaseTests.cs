@@ -77,6 +77,25 @@ namespace GustosApp.Application.Tests
             return invitacion;
         }
 
+        [Fact]
+        public async Task HandleAsync_UsuarioFreeConTresGrupos_NoAceptaInvitacionNiLaMarcaProcesada()
+        {
+            var usuario = CreateUsuario();
+            usuario.Plan = PlanUsuario.Free;
+            var invitacion = CreateInvitacion(Guid.NewGuid(), usuario.Id, EstadoInvitacion.Pendiente);
+            _usuarioRepositoryMock.Setup(r => r.GetByFirebaseUidAsync(usuario.FirebaseUid, It.IsAny<CancellationToken>())).ReturnsAsync(usuario);
+            _invitacionRepositoryMock.Setup(r => r.GetByIdAsync(invitacion.Id, It.IsAny<CancellationToken>())).ReturnsAsync(invitacion);
+            _miembroGrupoRepositoryMock.Setup(r => r.UsuarioEsMiembroActivoAsync(invitacion.GrupoId, usuario.Id, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+            _grupoRepositoryMock.Setup(r => r.GetGruposByUsuarioIdAsync(usuario.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync([new Grupo("Uno", usuario.Id), new Grupo("Dos", usuario.Id), new Grupo("Tres", usuario.Id)]);
+
+            Func<Task> action = () => _sut.HandleAsync(usuario.FirebaseUid, invitacion.Id);
+
+            await action.Should().ThrowAsync<LimiteGruposAlcanzadoException>();
+            invitacion.Estado.Should().Be(EstadoInvitacion.Pendiente);
+            _invitacionRepositoryMock.Verify(r => r.UpdateAsync(It.IsAny<InvitacionGrupo>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
         // Verifica que al no encontrar el usuario se lanza UnauthorizedAccessException con el mensaje correcto.
         [Fact]
         public async Task HandleAsync_UsuarioNoEncontrado_LanzaUnauthorizedAccessException()

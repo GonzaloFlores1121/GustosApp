@@ -1,5 +1,6 @@
 using GustosApp.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace GustosApp.Infraestructure.Services;
 
@@ -19,7 +20,9 @@ public sealed class EfApplicationTransaction : IApplicationTransaction
         if (!_dbContext.Database.IsRelational())
             return await operation(cancellationToken);
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // Serializable protege el cupo Free frente a creación/unión concurrente en dos pestañas.
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
         try
         {
             var result = await operation(cancellationToken);

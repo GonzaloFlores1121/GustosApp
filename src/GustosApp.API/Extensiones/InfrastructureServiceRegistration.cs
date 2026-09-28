@@ -84,7 +84,7 @@ namespace GustosApp.API.Extensiones
                 .ValidateOnStart();
             services.AddHostedService<ActualizacionExternaRestaurantesHostedService>();
             services.AddScoped<ISolicitudAmistadRepository, SolicitudAmistadRepositoryEF>();
-            services.AddScoped<IPagoService, MercadoPagoService>();
+            services.AddHttpClient<IPagoService, MercadoPagoService>();
             services.AddScoped<IBuscarRestaurantesRecomendadosOrquestador, BuscarRestaurantesRecomendadosOrquestador>();
             services.AddScoped<IUsuarioPreferenciasService, UsuarioPreferenciasService>();
             services.AddHttpClient<IBuscadorRestaurantesExternos, BuscadorRestaurantesGooglePlaces>();

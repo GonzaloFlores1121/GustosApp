@@ -1,6 +1,7 @@
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Interfaces;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases
 {
@@ -10,17 +11,20 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;
         private IGustosGrupoRepository _gustosGrupoRepository;
+        private readonly IApplicationTransaction _transaction;
 
 
         public UnirseGrupoUseCase(IGrupoRepository grupoRepository,
             IUsuarioRepository usuarioRepository,
             IMiembroGrupoRepository miembroGrupoRepository,
-            IGustosGrupoRepository gustosGrupoRepository)
+            IGustosGrupoRepository gustosGrupoRepository,
+            IApplicationTransaction? transaction = null)
         {
             _grupoRepository = grupoRepository;
             _usuarioRepository = usuarioRepository;
             _miembroGrupoRepository = miembroGrupoRepository;
             _gustosGrupoRepository = gustosGrupoRepository;
+            _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
         }
 
         public async Task<Grupo> HandleAsync(string firebaseUid, string codigoInvitacion, CancellationToken cancellationToken = default)
@@ -43,27 +47,19 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
             if (await _miembroGrupoRepository.UsuarioEsMiembroActivoAsync(grupo.Id, usuario.Id, cancellationToken))
                 throw new ArgumentException("Ya eres miembro de este grupo");
 
-            // Verificar límite de grupos para usuarios Free
-            if (!usuario.EsPremium())
+            await _transaction.ExecuteAsync(async transactionCt =>
             {
-                var gruposActuales = await _grupoRepository.GetGruposByUsuarioIdAsync(usuario.Id, cancellationToken);
-                var cantidadGrupos = gruposActuales.Count();
-
-                if (cantidadGrupos >= 3)
+                if (!usuario.EsPremium())
                 {
-                    throw new LimiteGruposAlcanzadoException(
-                        tipoPlan: "Free",
-                        limiteActual: 3,
-                        gruposActuales: cantidadGrupos,
-                        message: "Has alcanzado el límite de 3 grupos para usuarios gratuitos. Mejora a Premium para unirte a más grupos."
-                    );
+                    var cantidad = (await _grupoRepository.GetGruposByUsuarioIdAsync(usuario.Id, transactionCt)).Count();
+                    if (cantidad >= 3) throw new LimiteGruposAlcanzadoException("Free", 3, cantidad,
+                        "Has alcanzado el límite de 3 grupos para usuarios gratuitos. Mejora a Premium para unirte a más grupos.");
                 }
-            }
-
-            // Agregar al usuario como miembro del grupo
-            var miembro = new MiembroGrupo(grupo.Id, usuario.Id, false);
-            await _miembroGrupoRepository.CreateAsync(miembro, cancellationToken);
-            await _gustosGrupoRepository.AgregarGustosAlGrupo(grupo.Id, usuario.Gustos.ToList(), miembro.Id);
+                var miembro = new MiembroGrupo(grupo.Id, usuario.Id, false);
+                await _miembroGrupoRepository.CreateAsync(miembro, transactionCt);
+                await _gustosGrupoRepository.AgregarGustosAlGrupo(grupo.Id, usuario.Gustos.ToList(), miembro.Id);
+                return true;
+            }, cancellationToken);
 
             // Obtener el grupo completo con relaciones
             var grupoCompleto = await _grupoRepository.GetByIdAsync(grupo.Id, cancellationToken);

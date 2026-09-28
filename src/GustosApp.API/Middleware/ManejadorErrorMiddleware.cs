@@ -88,7 +88,7 @@ namespace GustosApp.API.Middleware
                 
                 case LimiteGruposAlcanzadoException limiteEx:
                     status = (HttpStatusCode)402; 
-                    var beneficios = new BeneficiosPremiumDto { Precio = 9999.99m };
+                    var beneficios = new BeneficiosPremiumDto();
 
                     var responseObj = new LimiteGruposAlcanzadoResponse(
                         $"Has alcanzado el límite de {limiteEx.LimiteActual} grupos para usuarios del plan {limiteEx.TipoPlan}.",
@@ -106,7 +106,7 @@ namespace GustosApp.API.Middleware
                 case LimiteFavoritosAlcanzadoException favEx:
                     status = (HttpStatusCode)402;
 
-                    var beneficiosFav = new BeneficiosPremiumDto { Precio = 9999.99m };
+                    var beneficiosFav = new BeneficiosPremiumDto();
 
                     var favResponse = new
                     {

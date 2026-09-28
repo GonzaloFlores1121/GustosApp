@@ -77,6 +77,12 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
 
             await _transaction.ExecuteAsync(async transactionCt =>
             {
+                if (!usuario.EsPremium())
+                {
+                    var cantidad = (await _grupoRepository.GetGruposByUsuarioIdAsync(usuario.Id, transactionCt)).Count();
+                    if (cantidad >= 3) throw new LimiteGruposAlcanzadoException("Free", 3, cantidad,
+                        "Has alcanzado el límite de 3 grupos para usuarios gratuitos. Mejora a Premium para aceptar nuevas invitaciones.");
+                }
                 invitacion.Aceptar(ahora);
                 await _invitacionRepository.UpdateAsync(invitacion, transactionCt);
 
