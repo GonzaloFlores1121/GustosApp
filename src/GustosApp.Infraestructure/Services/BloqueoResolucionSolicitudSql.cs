@@ -6,7 +6,13 @@ namespace GustosApp.Infraestructure.Services;
 
 public sealed class BloqueoResolucionSolicitudSql(GustosDbContext db) : IBloqueoResolucionSolicitud
 {
-    public async Task<bool> IntentarAsync(Guid solicitudId, Func<CancellationToken, Task> trabajo, CancellationToken ct)
+    public Task<bool> IntentarAsync(Guid solicitudId, Func<CancellationToken, Task> trabajo, CancellationToken ct) =>
+        BloqueoExclusivoSql.IntentarAsync(db, $"gustos:resolucion-solicitud:{solicitudId:N}", trabajo, ct);
+}
+
+internal static class BloqueoExclusivoSql
+{
+    internal static async Task<bool> IntentarAsync(GustosDbContext db, string recurso, Func<CancellationToken, Task> trabajo, CancellationToken ct)
     {
         // El contexto de escritura queda separado de la transacción que sólo posee el bloqueo.
         if (!db.Database.IsRelational())
@@ -26,10 +32,10 @@ public sealed class BloqueoResolucionSolicitudSql(GustosDbContext db) : IBloqueo
                 @LockOwner='Transaction', @LockTimeout=0, @DbPrincipal='public';
             SELECT @resultado;
             """;
-        comando.Parameters.AddWithValue("@recurso", $"gustos:resolucion-solicitud:{solicitudId:N}");
+        comando.Parameters.AddWithValue("@recurso", recurso);
         var resultado = (int)(await comando.ExecuteScalarAsync(ct))!;
         if (resultado == -1) return false;
-        if (resultado < 0) throw new InvalidOperationException("No se pudo obtener el bloqueo de la solicitud.");
+        if (resultado < 0) throw new InvalidOperationException("No se pudo obtener el bloqueo exclusivo.");
         await trabajo(ct);
         await transaccion.CommitAsync(ct);
         return true;

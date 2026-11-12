@@ -11,7 +11,7 @@ public interface IPagoService
     CatalogoPremium ObtenerCatalogo();
     Task<InicioCompraPremium> IniciarCompraAsync(string firebaseUid, CancellationToken ct = default);
     Task<EstadoCompraPremiumResultado> ObtenerEstadoCompraAsync(string firebaseUid, Guid compraId, bool reconciliar, CancellationToken ct = default);
-    Task<ResultadoWebhookPago> ProcesarNotificacionPagoAsync(string pagoId, CancellationToken ct = default);
+    Task<ResultadoWebhookPago> ProcesarNotificacionOrdenAsync(string ordenId, CancellationToken ct = default);
     Task<bool> VerificarYProcesarPagosPendientesAsync(string firebaseUid, CancellationToken ct = default);
     bool ValidarFirmaWebhook(string dataId, string requestId, string signature);
     Task<IReadOnlyList<CobroDuplicadoPendiente>> ObtenerCobrosDuplicadosAsync(CancellationToken ct = default);

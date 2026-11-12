@@ -61,9 +61,9 @@ public sealed class PagoController : ControllerBase
             // La misma respuesta evita revelar si el identificador pertenece a otra cuenta.
             return NotFound(new ProblemDetails { Title = "Compra no encontrada", Status = 404 });
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or PagoTemporalmenteNoDisponibleException)
         {
-            _logger.LogWarning(ex, "No se pudo reconciliar la compra {CompraId}", compraId);
+            _logger.LogWarning("No se pudo reconciliar la compra {CompraId}. Tipo {Tipo}", compraId, ex.GetType().Name);
             return StatusCode(503, new ProblemDetails { Title = "Verificación temporalmente no disponible", Status = 503 });
         }
     }
@@ -72,14 +72,15 @@ public sealed class PagoController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> WebhookPago([FromBody] WebhookPagoRequest request, CancellationToken ct)
     {
-        var dataId = request.Data?.Id ?? Request.Query["data.id"].ToString();
+        var ids = Request.Query["data.id"];
+        var dataId = ids.Count == 1 ? ids.ToString() : string.Empty;
         var requestId = Request.Headers["x-request-id"].ToString();
         var signature = Request.Headers["x-signature"].ToString();
         if (!_pagos.ValidarFirmaWebhook(dataId, requestId, signature)) return Unauthorized();
-        if (!string.Equals(request.Type, "payment", StringComparison.OrdinalIgnoreCase)) return Ok(new { estado = "ignorado" });
-        if (string.IsNullOrWhiteSpace(dataId)) return BadRequest();
+        if (request.Type is not ("order" or "orders_v2")) return Ok(new { estado = "ignorado" });
+        if (!string.Equals(dataId, request.Data?.Id, StringComparison.OrdinalIgnoreCase)) return BadRequest();
 
-        var resultado = await _pagos.ProcesarNotificacionPagoAsync(dataId, ct);
+        var resultado = await _pagos.ProcesarNotificacionOrdenAsync(dataId, ct);
         return resultado switch
         {
             ResultadoWebhookPago.FalloTransitorio => StatusCode(503, new { estado = "reintentar" }),
@@ -93,7 +94,8 @@ public sealed class PagoController : ControllerBase
     {
         var uid = GetFirebaseUid();
         try { await _pagos.VerificarYProcesarPagosPendientesAsync(uid, ct); }
-        catch (HttpRequestException ex) { _logger.LogWarning(ex, "Reconciliación Premium no disponible"); }
+        catch (Exception ex) when (ex is HttpRequestException or PagoTemporalmenteNoDisponibleException)
+        { _logger.LogWarning("Reconciliación Premium no disponible. Tipo {Tipo}", ex.GetType().Name); }
         var usuario = await _usuarios.GetByFirebaseUidAsync(uid, ct);
         if (usuario == null) return NotFound();
         return Ok(new { success = true, isPremium = usuario.Plan == PlanUsuario.Plus, plan = usuario.Plan.ToString() });

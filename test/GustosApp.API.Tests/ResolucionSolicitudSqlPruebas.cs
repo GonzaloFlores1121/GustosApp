@@ -21,6 +21,7 @@ public sealed class SqlResolucionFactAttribute : FactAttribute
     }
 }
 
+[Collection("SQL Server local")]
 public sealed class ResolucionSolicitudSqlPruebas
 {
     [SqlResolucionFact]
