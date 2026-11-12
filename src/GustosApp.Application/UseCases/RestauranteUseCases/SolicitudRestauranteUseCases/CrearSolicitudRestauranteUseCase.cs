@@ -10,6 +10,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using System.Globalization;
 using GustosApp.Application.Configuration;
+using GustosApp.Application.Common.Exceptions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -63,7 +64,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
              ArchivoEntrada? imagenMenu,
              ArchivoEntrada? logo,
              string websiteUrl,
-             CancellationToken ct = default)
+             CancellationToken ct = default,
+             bool declaroOtroLocal = false)
         {
             // 1) Obtener usuario
             var usuario = await _usuarios.GetByFirebaseUidAsync(firebaseUid, ct);
@@ -73,56 +75,68 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             // 2) Validar rol
             if (usuario.Rol != RolUsuario.Usuario)
                 throw new Exception("Ya sos dueño de un restaurante.");
-            var solicitudPendiente = await _solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct);
-            if (solicitudPendiente != null)
-            {
-                await IntentarNotificarAdministracionAsync(solicitudPendiente, usuario, ct);
-                return solicitudPendiente.Id;
-            }
-
             // Parsear lat/lng
             double? latitud = null;
             double? longitud = null;
             if (!string.IsNullOrWhiteSpace(latitudStr))
             {
                 var latStr = latitudStr.Replace(",", ".");
-                latitud = double.Parse(latStr, CultureInfo.InvariantCulture);
+                latitud = Math.Round(double.Parse(latStr, CultureInfo.InvariantCulture), 7);
             }
             if (!string.IsNullOrWhiteSpace(longitudStr))
             {
                 var lngStr = longitudStr.Replace(",", ".");
-                longitud = double.Parse(lngStr, CultureInfo.InvariantCulture);
+                longitud = Math.Round(double.Parse(lngStr, CultureInfo.InvariantCulture), 7);
             }
+
+            async Task<Guid?> ReutilizarAltaPendienteAsync(bool notificar)
+            {
+                var pendiente = await _solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct);
+                if (pendiente == null) return null;
+                if (pendiente.RestauranteExistenteId.HasValue
+                    || BuscarCoincidenciasAltaUseCase.Normalizar(pendiente.Nombre) != BuscarCoincidenciasAltaUseCase.Normalizar(nombre)
+                    || BuscarCoincidenciasAltaUseCase.Normalizar(pendiente.Direccion) != BuscarCoincidenciasAltaUseCase.Normalizar(direccion)
+                    || pendiente.Latitud != latitud || pendiente.Longitud != longitud)
+                    throw new SolicitudRestaurantePendienteException();
+                if (notificar) await IntentarNotificarAdministracionAsync(pendiente, usuario, ct);
+                return pendiente.Id;
+            }
+
+            if (await ReutilizarAltaPendienteAsync(notificar: true) is Guid idPendiente) return idPendiente;
 
             var imagenes = new List<SolicitudRestauranteImagen>();
             var urlsSubidas = new List<string>();
             var solicitudGuardada = false;
+            var solicitudId = Guid.NewGuid();
+            var carpetaArchivos = $"solicitudes/{solicitudId:N}";
 
             try
             {
                 if (imagenDestacada != null)
-                    imagenes.Add(await SubirImagenAsync(imagenDestacada, TipoImagenSolicitud.Destacada, urlsSubidas));
+                    imagenes.Add(await SubirImagenAsync(imagenDestacada, TipoImagenSolicitud.Destacada, urlsSubidas, carpetaArchivos));
 
                 if (imagenesInterior != null)
                     foreach (var file in imagenesInterior)
-                        imagenes.Add(await SubirImagenAsync(file, TipoImagenSolicitud.Interior, urlsSubidas));
+                        imagenes.Add(await SubirImagenAsync(file, TipoImagenSolicitud.Interior, urlsSubidas, carpetaArchivos));
 
                 if (imagenesComidas != null)
                     foreach (var file in imagenesComidas)
-                        imagenes.Add(await SubirImagenAsync(file, TipoImagenSolicitud.Comida, urlsSubidas));
+                        imagenes.Add(await SubirImagenAsync(file, TipoImagenSolicitud.Comida, urlsSubidas, carpetaArchivos));
 
                 if (imagenMenu != null)
-                    imagenes.Add(await SubirImagenAsync(imagenMenu, TipoImagenSolicitud.Menu, urlsSubidas));
+                    imagenes.Add(await SubirImagenAsync(imagenMenu, TipoImagenSolicitud.Menu, urlsSubidas, carpetaArchivos));
 
                 if (logo != null)
-                    imagenes.Add(await SubirImagenAsync(logo, TipoImagenSolicitud.Logo, urlsSubidas));
+                    imagenes.Add(await SubirImagenAsync(logo, TipoImagenSolicitud.Logo, urlsSubidas, carpetaArchivos));
 
                 // 3) Crear la solicitud
                 var solicitud = new SolicitudRestaurante
                 {
+                    Id = solicitudId,
                     UsuarioId = usuario.Id,
                     Nombre = nombre.Trim(),
                     Direccion = direccion.Trim(),
+                    DeclaroOtroLocal = declaroOtroLocal && BuscarCoincidenciasAltaUseCase.UbicacionValida(latitud, longitud),
                     Latitud = latitud,
                     Longitud = longitud,
                     HorariosJson = horariosJson,
@@ -145,13 +159,18 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
 
                 return solicitud.Id;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                foreach (var url in solicitudGuardada ? Enumerable.Empty<string>() : urlsSubidas)
-                {
-                    try { await _firebaseStorage.DeleteFileAsync(url); }
-                    catch { }
-                }
+                // La capa de almacenamiento comprueba todas las referencias antes de borrar.
+                // Así, un commit exitoso con respuesta fallida conserva la solicitud válida.
+                if (!solicitudGuardada)
+                    foreach (var url in urlsSubidas)
+                    {
+                        try { await _firebaseStorage.ScheduleCleanupAsync(url, carpetaArchivos); }
+                        catch (Exception falloLimpieza) { _logger?.LogWarning(falloLimpieza, "Falló limpieza de archivo de solicitud {SolicitudId}.", solicitudId); }
+                    }
+                if (ex is SolicitudRestauranteConcurrenteException && await ReutilizarAltaPendienteAsync(notificar: false) is Guid idConcurrente)
+                    return idConcurrente;
                 throw;
             }
         }
@@ -190,9 +209,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestaurant
             }
         }
 
-        private async Task<SolicitudRestauranteImagen> SubirImagenAsync(ArchivoEntrada archivo, TipoImagenSolicitud tipo, List<string> urlsSubidas)
+        private async Task<SolicitudRestauranteImagen> SubirImagenAsync(ArchivoEntrada archivo, TipoImagenSolicitud tipo, List<string> urlsSubidas, string carpeta)
         {
-            var url = await _firebaseStorage.UploadFileAsync(archivo.Stream, archivo.FileName, "solicitudes");
+            var url = await _firebaseStorage.UploadFileAsync(archivo.Stream, archivo.FileName, carpeta);
             urlsSubidas.Add(url);
             return new SolicitudRestauranteImagen
             {

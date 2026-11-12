@@ -46,7 +46,8 @@ namespace GustosApp.Application.UseCases.GrupoUseCases
                     .ToList(),
                 CondicionesMedicas = preferenciasMiembros.CondicionesMedicas
                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList()
+                    .ToList(),
+                ReglasCompatibilidad = preferenciasMiembros.ReglasCompatibilidad
             };
         }
     }

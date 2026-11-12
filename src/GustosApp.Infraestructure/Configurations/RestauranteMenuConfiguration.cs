@@ -24,7 +24,8 @@ namespace GustosApp.Infraestructure.Configurations
 
             b.HasIndex(x => x.RestauranteId).HasDatabaseName("IX_RestMenu_RestauranteId");
 
-            b.Property(x => x.Version).IsRequired();
+            b.Property(x => x.Version).IsRequired().IsConcurrencyToken();
+            b.Property(x => x.BorradorToken).IsConcurrencyToken();
             b.Property(x => x.FechaActualizacionUtc).IsRequired();
             b.Property(x => x.ImagenFuentePublicadaUrl).HasMaxLength(2048);
             b.Property(x => x.BorradorImagenFuenteUrl).HasMaxLength(2048);

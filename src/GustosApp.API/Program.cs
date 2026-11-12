@@ -12,6 +12,7 @@ using GustosApp.Application.Validations.Restaurantes;
 using GustosApp.Infraestructure;
 using GustosApp.Infraestructure.ML;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
 using System.Globalization;
@@ -43,7 +44,7 @@ builder.Services.AgregarRedisCache(builder.Configuration);
 // =====================
 //      Automapper
 // =====================
-builder.Services.AddAutoMapper(cfg => {}, AppDomain.CurrentDomain.GetAssemblies());
+builder.Services.AddAutoMapper(_ => { }, typeof(Program).Assembly);
 
 // ===========================
 //    Autorización explícita
@@ -53,6 +54,9 @@ builder.Services.AgregarAutorizacion();
 builder.Services.AddRateLimiter(opciones =>
 {
     opciones.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    opciones.AddPolicy("FotosGoogle", contexto => RateLimitPartition.GetFixedWindowLimiter(
+        ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
+        { PermitLimit = 12, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
     opciones.AddPolicy("ReclamosRestaurante", contexto => RateLimitPartition.GetFixedWindowLimiter(
         ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
         {
@@ -132,7 +136,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<CrearOpinionRestauranteVali
 // =====================
 //    Controllers / JSON
 // =====================
-builder.Services.AddControllers()
+builder.Services.AddControllers(options => options.Filters.Add<GustosApp.API.Middleware.FotosGooglePublicasFilter>())
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
@@ -146,7 +150,9 @@ builder.Services.AddControllers()
 // =====================
 builder.Services.AddDbContext<GustosDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
-            sqlOptions => sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+            sqlOptions => sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
+        // Los fallos de persistencia se registran sin detalles de datos en la frontera de la API.
+        .ConfigureWarnings(warnings => warnings.Ignore(CoreEventId.SaveChangesFailed, RelationalEventId.CommandError)));
 
 
 

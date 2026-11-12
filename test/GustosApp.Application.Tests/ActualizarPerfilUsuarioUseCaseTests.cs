@@ -16,7 +16,6 @@ namespace GustosApp.Application.Tests
     {
         private readonly Mock<IUsuarioRepository> _userRepo;
         private readonly Mock<IFileStorageService> _fileStorage;
-        private readonly Mock<IFirebaseAuthService> _firebase;
 
         private readonly ActualizarPerfilUsuarioUseCase _useCase;
 
@@ -24,12 +23,10 @@ namespace GustosApp.Application.Tests
         {
             _userRepo = new Mock<IUsuarioRepository>();
             _fileStorage = new Mock<IFileStorageService>();
-            _firebase = new Mock<IFirebaseAuthService>();
 
             _useCase = new ActualizarPerfilUsuarioUseCase(
                 _userRepo.Object,
-                _fileStorage.Object,
-                _firebase.Object
+                _fileStorage.Object
             );
         }
 
@@ -42,11 +39,11 @@ namespace GustosApp.Application.Tests
 
             // Act + Assert
             await Assert.ThrowsAsync<Exception>(() =>
-                _useCase.HandleAsync("uid", null, null, null, null, false));
+                _useCase.HandleAsync("uid", null, null, null, false));
         }
 
         [Fact]
-        public async Task HandleAsync_CambiaEmail_ActualizaFirebaseYUsuario()
+        public async Task HandleAsync_GuardarPerfil_NoCambiaEmail()
         {
             var usuario = new Usuario
             {
@@ -57,16 +54,11 @@ namespace GustosApp.Application.Tests
             _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
                      .ReturnsAsync(usuario);
 
-            // Firebase update email OK
-            _firebase.Setup(f => f.UpdateUserEmailAsync("uid", "nuevo@mail.com"))
-                     .Returns(Task.CompletedTask);
-
             // Act
-            var result = await _useCase.HandleAsync("uid", "nuevo@mail.com", null, null, null, false);
+            var result = await _useCase.HandleAsync("uid", "Nuevo", null, null, false);
 
             // Assert
-            Assert.Equal("nuevo@mail.com", usuario.Email);
-            _firebase.Verify(f => f.UpdateUserEmailAsync("uid", "nuevo@mail.com"), Times.Once);
+            Assert.Equal("viejo@mail.com", usuario.Email);
         }
 
         [Fact]
@@ -86,7 +78,6 @@ namespace GustosApp.Application.Tests
             // Act
             var result = await _useCase.HandleAsync(
                 "uid",
-                null,
                 "NuevoNombre",
                 "NuevoApellido",
                 null,
@@ -121,15 +112,15 @@ namespace GustosApp.Application.Tests
 
             // Mock: Upload devuelve nueva URL
             _fileStorage.Setup(f =>
-                f.UploadFileAsync(stream, "nueva.jpg", "perfil"))
+                f.UploadFileAsync(stream, "nueva.jpg", $"perfil/{usuario.Id:N}"))
             .ReturnsAsync("https://new-photo.jpg");
 
             // Act
-            var result = await _useCase.HandleAsync("uid", null, null, null, file, false);
+            var result = await _useCase.HandleAsync("uid", null, null, file, false);
 
             // Assert
-            _fileStorage.Verify(f => f.DeleteFileAsync("https://old-photo.jpg"), Times.Once);
-            _fileStorage.Verify(f => f.UploadFileAsync(stream, "nueva.jpg", "perfil"), Times.Once);
+            _fileStorage.Verify(f => f.DeleteFileAsync("https://old-photo.jpg", $"perfil/{usuario.Id:N}"), Times.Once);
+            _fileStorage.Verify(f => f.UploadFileAsync(stream, "nueva.jpg", $"perfil/{usuario.Id:N}"), Times.Once);
             Assert.Equal("https://new-photo.jpg", usuario.FotoPerfilUrl);
         }
 
@@ -156,11 +147,11 @@ namespace GustosApp.Application.Tests
          
 
             _fileStorage.Setup(f =>
-                f.UploadFileAsync(stream, "foto.jpg", "perfil"))
+                f.UploadFileAsync(stream, "foto.jpg", $"perfil/{usuario.Id:N}"))
             .ReturnsAsync("https://foto-nueva.jpg");
 
             // Act
-            var result = await _useCase.HandleAsync("uid", null, null, null, file, false);
+            var result = await _useCase.HandleAsync("uid", null, null, file, false);
 
             // Assert
             _fileStorage.Verify(f => f.DeleteFileAsync(It.IsAny<string>()), Times.Never);
@@ -180,7 +171,7 @@ namespace GustosApp.Application.Tests
                      .ReturnsAsync(usuario);
 
             // Act
-            var result = await _useCase.HandleAsync("uid", null, null, null, null, false);
+            var result = await _useCase.HandleAsync("uid", null, null, null, false);
 
             // Assert
             Assert.Equal("foto-actual.jpg", usuario.FotoPerfilUrl);
@@ -194,7 +185,7 @@ namespace GustosApp.Application.Tests
             _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
                      .ReturnsAsync(usuario);
 
-            await _useCase.HandleAsync("uid", null, "Nuevo nombre", null, null, null);
+            await _useCase.HandleAsync("uid", "Nuevo nombre", null, null, null);
 
             Assert.True(usuario.EsPrivado);
             Assert.Equal("Nuevo nombre", usuario.Nombre);
@@ -208,11 +199,11 @@ namespace GustosApp.Application.Tests
             var file = new FileUpload { Content = stream, FileName = "nueva.jpg", ContentType = "image/jpeg" };
             _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
                      .ReturnsAsync(usuario);
-            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", "perfil"))
+            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", $"perfil/{usuario.Id:N}"))
                         .ThrowsAsync(new IOException("falló la subida"));
 
             await Assert.ThrowsAsync<IOException>(() =>
-                _useCase.HandleAsync("uid", null, null, null, file, null));
+                _useCase.HandleAsync("uid", null, null, file, null));
 
             Assert.Equal("https://old-photo.jpg", usuario.FotoPerfilUrl);
             _fileStorage.Verify(f => f.DeleteFileAsync(It.IsAny<string>()), Times.Never);
@@ -227,16 +218,16 @@ namespace GustosApp.Application.Tests
             var file = new FileUpload { Content = stream, FileName = "nueva.jpg", ContentType = "image/jpeg" };
             _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
                      .ReturnsAsync(usuario);
-            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", "perfil"))
+            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", $"perfil/{usuario.Id:N}"))
                         .ReturnsAsync("https://new-photo.jpg");
             _userRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new InvalidOperationException("falló la base"));
 
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _useCase.HandleAsync("uid", null, null, null, file, null));
+                _useCase.HandleAsync("uid", null, null, file, null));
 
             Assert.Equal("https://old-photo.jpg", usuario.FotoPerfilUrl);
-            _fileStorage.Verify(f => f.DeleteFileAsync("https://new-photo.jpg"), Times.Once);
+            _fileStorage.Verify(f => f.ScheduleCleanupAsync("https://new-photo.jpg", $"perfil/{usuario.Id:N}"), Times.Once);
             _fileStorage.Verify(f => f.DeleteFileAsync("https://old-photo.jpg"), Times.Never);
         }
 
@@ -248,12 +239,12 @@ namespace GustosApp.Application.Tests
             var file = new FileUpload { Content = stream, FileName = "nueva.jpg", ContentType = "image/jpeg" };
             _userRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
                      .ReturnsAsync(usuario);
-            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", "perfil"))
+            _fileStorage.Setup(f => f.UploadFileAsync(stream, "nueva.jpg", $"perfil/{usuario.Id:N}"))
                         .ReturnsAsync("https://new-photo.jpg");
-            _fileStorage.Setup(f => f.DeleteFileAsync("https://old-photo.jpg"))
+            _fileStorage.Setup(f => f.DeleteFileAsync("https://old-photo.jpg", $"perfil/{usuario.Id:N}"))
                         .ThrowsAsync(new IOException("falló limpieza"));
 
-            var resultado = await _useCase.HandleAsync("uid", null, null, null, file, null);
+            var resultado = await _useCase.HandleAsync("uid", null, null, file, null);
 
             Assert.Equal("https://new-photo.jpg", resultado.FotoPerfilUrl);
             _userRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);

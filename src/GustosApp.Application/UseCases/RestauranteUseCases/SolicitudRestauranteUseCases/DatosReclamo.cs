@@ -1,5 +1,8 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using UglyToad.PdfPig;
+using SixLabors.ImageSharp;
+using System.Globalization;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
 
@@ -23,8 +26,8 @@ public sealed record DatosReclamo(string NombreSolicitante, string RelacionResta
             throw new ArgumentException("Adjuntá un comprobante de hasta 2 MB.");
         var extension = Path.GetExtension(NombreComprobante).ToLowerInvariant();
         if (extension == ".pdf" && EsPdfValido()) return "application/pdf";
-        if (extension == ".png" && EsPngValido()) return "image/png";
-        if (extension is ".jpg" or ".jpeg" && EsJpegValido()) return "image/jpeg";
+        if (extension == ".png" && EsImagenValida("PNG")) return "image/png";
+        if (extension is ".jpg" or ".jpeg" && EsImagenValida("JPEG")) return "image/jpeg";
         throw new ArgumentException("El comprobante debe ser un archivo PDF, PNG o JPEG válido.");
     }
 
@@ -47,20 +50,40 @@ public sealed record DatosReclamo(string NombreSolicitante, string RelacionResta
         if (!contenido.StartsWith("%PDF-"u8)) return false;
         var texto = Encoding.ASCII.GetString(Comprobante);
         if (!texto.TrimEnd().EndsWith("%%EOF", StringComparison.Ordinal)) return false;
-        string[] accionesActivas = ["/JavaScript", "/Launch", "/EmbeddedFile", "/OpenAction"];
-        return accionesActivas.All(accion => !texto.Contains(accion, StringComparison.OrdinalIgnoreCase));
+        // Los nombres PDF admiten escapes hexadecimales (#NN). Normalizarlos evita
+        // aceptar, por ejemplo, /J#61vaScript como una acción inofensiva.
+        var nombresNormalizados = Regex.Replace(texto, @"#([0-9a-fA-F]{2})", match =>
+            ((char)byte.Parse(match.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToString());
+        string[] accionesActivas = ["/JavaScript", "/JS", "/Launch", "/EmbeddedFile", "/OpenAction",
+            "/AA", "/GoToR", "/SubmitForm", "/ImportData", "/RichMedia", "/AcroForm", "/XFA", "/Filespec"];
+        if (accionesActivas.Any(accion => nombresNormalizados.Contains(accion, StringComparison.OrdinalIgnoreCase))) return false;
+        try
+        {
+            using var stream = new MemoryStream(Comprobante, writable: false);
+            using var documento = PdfDocument.Open(stream, ParsingOptions.LenientParsingOff);
+            if (documento.IsEncrypted || documento.NumberOfPages is < 1 or > 20) return false;
+            for (var pagina = 1; pagina <= documento.NumberOfPages; pagina++)
+                _ = documento.GetPage(pagina);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return false;
+        }
     }
 
-    private bool EsPngValido()
+    private bool EsImagenValida(string formatoEsperado)
     {
-        ReadOnlySpan<byte> firma = [137, 80, 78, 71, 13, 10, 26, 10];
-        ReadOnlySpan<byte> cierre = [73, 69, 78, 68, 174, 66, 96, 130];
-        return Comprobante.AsSpan().StartsWith(firma) && Comprobante.AsSpan().EndsWith(cierre);
-    }
-
-    private bool EsJpegValido()
-    {
-        var contenido = Comprobante.AsSpan();
-        return contenido.StartsWith(new byte[] { 255, 216, 255 }) && contenido.EndsWith(new byte[] { 255, 217 });
+        try
+        {
+            using var imagen = Image.Load(Comprobante);
+            return imagen.Metadata.DecodedImageFormat?.Name == formatoEsperado &&
+                   imagen.Frames.Count == 1 && imagen.Width <= 12_000 && imagen.Height <= 12_000 &&
+                   (long)imagen.Width * imagen.Height <= 40_000_000;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return false;
+        }
     }
 }

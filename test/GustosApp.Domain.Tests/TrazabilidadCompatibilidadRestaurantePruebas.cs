@@ -39,10 +39,10 @@ namespace GustosApp.Domain.Tests
         }
 
         [Theory]
-        [InlineData(180, EstadoDatosCompatibilidadRestaurante.Verificado)]
-        [InlineData(181, EstadoDatosCompatibilidadRestaurante.Desactualizado)]
-        public void ObtenerEstadoActual_CambiaAVencidoDespuesDeLaVigencia(
-            int diasTranscurridos,
+        [InlineData(3, EstadoDatosCompatibilidadRestaurante.Verificado)]
+        [InlineData(4, EstadoDatosCompatibilidadRestaurante.Desactualizado)]
+        public void ObtenerEstadoActual_CambiaAVencidoAlCumplirCuatroMeses(
+            int mesesTranscurridos,
             EstadoDatosCompatibilidadRestaurante estadoEsperado)
         {
             var restaurante = new Restaurante();
@@ -52,7 +52,7 @@ namespace GustosApp.Domain.Tests
                 fechaVerificacion);
 
             var estado = restaurante.ObtenerEstadoActualDatosCompatibilidad(
-                fechaVerificacion.AddDays(diasTranscurridos));
+                fechaVerificacion.AddMonths(mesesTranscurridos));
 
             Assert.Equal(estadoEsperado, estado);
         }

@@ -55,8 +55,7 @@ public sealed class BuscadorRestaurantesGooglePlacesPruebas
         restaurante.TypesJson.Should().Be("[\"cafe\",\"food\",\"establishment\"]");
         restaurante.Rating.Should().Be(4.7);
         restaurante.CantidadResenas.Should().Be(128);
-        restaurante.ImagenUrl.Should().Be(
-            "https://places.googleapis.com/v1/places/place-1/photos/foto-1/media?maxWidthPx=800&key=clave-prueba");
+        restaurante.ImagenUrl.Should().BeNull("una búsqueda sin ficha interna no publica URLs con claves ni referencias cacheadas");
         restaurante.FechaDatosUtc.Should().Be(fecha.UtcDateTime);
         manejador.Metodo.Should().Be(HttpMethod.Post);
         manejador.Url.Should().Be("https://places.googleapis.com/v1/places:searchNearby");

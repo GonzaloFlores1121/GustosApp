@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Domain.Common;
+using System.Text.Json;
 
 using System.Threading.Tasks;
 
@@ -93,7 +94,8 @@ namespace GustosApp.Domain.Model
         public string PrimaryType { get; set; } = "restaurant";
         public string TypesJson { get; set; } = "[]";
 
-        public string? ImagenUrl { get; set; }                
+        public string? ImagenUrl { get; set; }
+        public OrigenImagenRestaurante OrigenImagen { get; set; } = OrigenImagenRestaurante.Desconocida;
         public decimal? Valoracion { get; set; }                  
         public ICollection<RestaurantePlato> Platos { get; set; } = new List<RestaurantePlato>();
         public double Score { get; set; }
@@ -105,12 +107,104 @@ namespace GustosApp.Domain.Model
             EstadoDatosCompatibilidadRestaurante.Estimado;
         public DateTime? FechaObtencionDatosCompatibilidadUtc { get; private set; }
         public DateTime? FechaUltimaVerificacionDatosCompatibilidadUtc { get; private set; }
+        public DateTime? FechaRevisionOfertaUtc { get; private set; }
+        public DateTime? FechaRevisionRestriccionesUtc { get; private set; }
+        public string VigenciaGustosJson { get; private set; } = "{}";
+        public string VigenciaRestriccionesJson { get; private set; } = "{}";
+        public int VersionOferta { get; private set; }
+        public int VersionRestricciones { get; private set; }
 
-        public static readonly TimeSpan VigenciaDatosCompatibilidad = TimeSpan.FromDays(180);
+
+        public EstadoVigenciaInformacion ObtenerEstadoOferta(DateTime ahoraUtc) =>
+            EvaluarVigencia(FechaRevisionOfertaUtc, ahoraUtc);
+
+        public EstadoVigenciaInformacion ObtenerEstadoRestricciones(DateTime ahoraUtc) =>
+            EvaluarVigencia(FechaRevisionRestriccionesUtc, ahoraUtc);
+
+        public EstadoVigenciaInformacion ObtenerEstadoDeclaracion(Guid restriccionId, DateTime ahoraUtc) =>
+            EvaluarVigencia(LeerVigencias(VigenciaRestriccionesJson)
+                .GetValueOrDefault(restriccionId), ahoraUtc);
+
+        public DateTime? ObtenerFechaRevisionGusto(Guid gustoId) =>
+            LeerVigencias(VigenciaGustosJson).GetValueOrDefault(gustoId);
+
+        public DateTime? ObtenerFechaRevisionDeclaracion(Guid restriccionId) =>
+            LeerVigencias(VigenciaRestriccionesJson).GetValueOrDefault(restriccionId);
+
+        public void RegistrarCambioOferta(IEnumerable<Guid> idsAnteriores, DateTime fechaUtc)
+        {
+            var nuevos = GustosQueSirve.Select(g => g.Id).ToHashSet();
+            var anteriores = idsAnteriores.ToHashSet();
+            if (nuevos.SetEquals(anteriores)) return;
+            var fechas = LeerVigencias(VigenciaGustosJson);
+            foreach (var id in anteriores.Except(nuevos)) fechas.Remove(id);
+            foreach (var id in nuevos.Except(anteriores)) fechas[id] = NormalizarFechaUtc(fechaUtc);
+            VigenciaGustosJson = JsonSerializer.Serialize(fechas);
+            FechaRevisionOfertaUtc = null;
+            VersionOferta++;
+        }
+
+        public void RegistrarCambioRestricciones(IEnumerable<Guid> idsAnteriores, DateTime fechaUtc)
+        {
+            var nuevos = RestriccionesQueRespeta.Select(r => r.Id).ToHashSet();
+            var anteriores = idsAnteriores.ToHashSet();
+            if (nuevos.SetEquals(anteriores)) return;
+            var fechas = LeerVigencias(VigenciaRestriccionesJson);
+            foreach (var id in anteriores.Except(nuevos)) fechas.Remove(id);
+            foreach (var id in nuevos.Except(anteriores)) fechas[id] = NormalizarFechaUtc(fechaUtc);
+            VigenciaRestriccionesJson = JsonSerializer.Serialize(fechas);
+            FechaRevisionRestriccionesUtc = null;
+            VersionRestricciones++;
+        }
+
+        public void RegistrarCambioMenuPublicado()
+        {
+            FechaRevisionOfertaUtc = null;
+            VersionOferta++;
+        }
+
+        public void ConfirmarOfertaVigente(int versionEsperada, DateTime fechaUtc)
+        {
+            if (versionEsperada != VersionOferta)
+                throw new InvalidOperationException("La oferta cambió; recargá la ficha antes de confirmarla.");
+            var fecha = NormalizarFechaUtc(fechaUtc);
+            FechaRevisionOfertaUtc = fecha;
+            VigenciaGustosJson = JsonSerializer.Serialize(
+                GustosQueSirve.ToDictionary(g => g.Id, _ => fecha));
+            VersionOferta++;
+        }
+
+        public void ConfirmarRestriccionesDeclaradas(int versionEsperada, DateTime fechaUtc)
+        {
+            if (versionEsperada != VersionRestricciones)
+                throw new InvalidOperationException("Las declaraciones cambiaron; recargá la ficha antes de confirmarlas.");
+            var fecha = NormalizarFechaUtc(fechaUtc);
+            FechaRevisionRestriccionesUtc = fecha;
+            VigenciaRestriccionesJson = JsonSerializer.Serialize(
+                RestriccionesQueRespeta.ToDictionary(r => r.Id, _ => fecha));
+            VersionRestricciones++;
+        }
+
+        private static EstadoVigenciaInformacion EvaluarVigencia(DateTime? fechaRevisionUtc, DateTime ahoraUtc)
+        {
+            if (!fechaRevisionUtc.HasValue) return EstadoVigenciaInformacion.SinFecha;
+            var fecha = NormalizarFechaUtc(fechaRevisionUtc.Value);
+            return NormalizarFechaUtc(ahoraUtc) >= fecha.AddMonths(4)
+                ? EstadoVigenciaInformacion.Desactualizada
+                : EstadoVigenciaInformacion.Vigente;
+        }
+
+        private static Dictionary<Guid, DateTime> LeerVigencias(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new();
+            try { return JsonSerializer.Deserialize<Dictionary<Guid, DateTime>>(json) ?? new(); }
+            catch (JsonException) { return new(); }
+        }
 
         // Imágenes
      
         public string? LogoUrl { get; set; }
+        public OrigenImagenRestaurante OrigenLogo { get; set; } = OrigenImagenRestaurante.Desconocida;
         public ICollection<RestauranteImagen> Imagenes { get; set; } = new List<RestauranteImagen>();
 
         public void SetGustos(IEnumerable<Gusto> nuevosGustos)
@@ -212,7 +306,7 @@ namespace GustosApp.Domain.Model
             var fechaVerificacionUtc = NormalizarFechaUtc(
                 FechaUltimaVerificacionDatosCompatibilidadUtc.Value);
 
-            return fechaUtc - fechaVerificacionUtc > VigenciaDatosCompatibilidad
+            return fechaUtc >= fechaVerificacionUtc.AddMonths(4)
                 ? EstadoDatosCompatibilidadRestaurante.Desactualizado
                 : EstadoDatosCompatibilidadRestaurante.Verificado;
         }

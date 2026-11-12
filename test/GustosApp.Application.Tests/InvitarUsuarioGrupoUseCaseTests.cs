@@ -88,9 +88,9 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsAdministradorAsync(grupoId, usuarioInvitador.Id, ct))
                 .ReturnsAsync(true);
 
-            // Lo encuentra por UsuarioId
+            // Quien ya conoce el correo puede invitar sin que el servidor lo liste en respuestas.
             _usuarioRepoMock
-                .Setup(r => r.GetByIdAsync(usuarioInvitado.Id, ct))
+                .Setup(r => r.GetByEmailAsync(usuarioInvitado.Email, ct))
                 .ReturnsAsync(usuarioInvitado);
 
             // No es miembro activo
@@ -119,8 +119,8 @@ namespace GustosApp.Application.Tests
             var resultado = await sut.HandleAsync(
                 firebaseInvitador,
                 grupoId,
-                EmailUsuario: null,
-                UsuarioId: usuarioInvitado.Id,
+                EmailUsuario: usuarioInvitado.Email,
+                UsuarioId: null,
                 UsuarioUsername: null,
                 MensajePersonalizado: "Te invito al grupo",
                 ct: ct);

@@ -17,7 +17,7 @@ namespace GustosApp.API.Controllers
     {
 
         private readonly CrearOpinionRestauranteUseCase _crearValoracionUsuarioUseCase;
-        private readonly IOpinionRestauranteRepository _opinionRestauranteRepository;
+        private readonly ObtenerHistorialOpinionesUsuarioUseCase _obtenerHistorialUsuario;
         private readonly ActualizarValoracionRestauranteUseCase _actualizarValoracionRestauranteUseCase;
         private readonly IMapper _mapper;
         private readonly IServicioRestaurantes _servicioRestaurantes;
@@ -26,10 +26,10 @@ namespace GustosApp.API.Controllers
         private readonly ActualizarOpinionRestauranteUseCase _actualizarOpinionUseCase;
         private readonly EliminarOpinionRestauranteUseCase _eliminarOpinionUseCase;
 
-        public OpinionRestauranteController(CrearOpinionRestauranteUseCase crearValoracionUsuarioUseCase, IOpinionRestauranteRepository valoracionUsuarioRepository,IMapper mapper, ActualizarValoracionRestauranteUseCase actualizarValoracionRestauranteUseCase, IServicioRestaurantes servicioRestaurantes,ObtenerValoracionUseCase obtenerValoracionUseCase, ObtenerMiOpinionRestauranteUseCase obtenerMiOpinionUseCase, ActualizarOpinionRestauranteUseCase actualizarOpinionUseCase, EliminarOpinionRestauranteUseCase eliminarOpinionUseCase)
+        public OpinionRestauranteController(CrearOpinionRestauranteUseCase crearValoracionUsuarioUseCase, IMapper mapper, ActualizarValoracionRestauranteUseCase actualizarValoracionRestauranteUseCase, IServicioRestaurantes servicioRestaurantes,ObtenerValoracionUseCase obtenerValoracionUseCase, ObtenerMiOpinionRestauranteUseCase obtenerMiOpinionUseCase, ActualizarOpinionRestauranteUseCase actualizarOpinionUseCase, EliminarOpinionRestauranteUseCase eliminarOpinionUseCase, ObtenerHistorialOpinionesUsuarioUseCase obtenerHistorialUsuario)
         {
             _crearValoracionUsuarioUseCase = crearValoracionUsuarioUseCase;
-            _opinionRestauranteRepository = valoracionUsuarioRepository;
+            _obtenerHistorialUsuario = obtenerHistorialUsuario;
             _mapper = mapper;
             _actualizarValoracionRestauranteUseCase = actualizarValoracionRestauranteUseCase;
             _servicioRestaurantes = servicioRestaurantes;
@@ -40,6 +40,7 @@ namespace GustosApp.API.Controllers
         }
 
         [HttpPost]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -81,6 +82,7 @@ namespace GustosApp.API.Controllers
         }
 
         [HttpPut("{opinionId:guid}")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> ActualizarOpinion(Guid opinionId, [FromForm] ActualizarOpinionRestauranteRequest request, CancellationToken ct)
         {
@@ -112,7 +114,7 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> ObtenerValoracionUsuario(Guid usuarioId, CancellationToken ct)
         {
-            var valoraciones = await _opinionRestauranteRepository.ObtenerPorUsuarioAsync(usuarioId, ct);
+            var valoraciones = await _obtenerHistorialUsuario.HandleAsync(GetFirebaseUid(), usuarioId, ct);
             var response = _mapper.Map<List<CrearOpinionRestauranteResponse>>(valoraciones);
             return Ok(response);
         }

@@ -270,7 +270,8 @@ namespace GustosApp.Application.Tests
             var usuario = new UsuarioPreferencias
             {
                 Gustos = new List<string> { "pizza" },
-                Restricciones = new List<string> { "Sin gluten" }
+                Restricciones = new List<string> { "Sin gluten" },
+                ReglasCompatibilidad = [new(Guid.Empty, true, ["gluten"])]
             };
 
             var incompatible = new Restaurante
@@ -312,7 +313,8 @@ namespace GustosApp.Application.Tests
             var usuario = new UsuarioPreferencias
             {
                 Gustos = new List<string> { "pizza" },
-                Restricciones = new List<string> { "Sin gluten" }
+                Restricciones = new List<string> { "Sin gluten" },
+                ReglasCompatibilidad = [new(Guid.Empty, true, ["gluten"])]
             };
 
             var desconocido = new Restaurante
@@ -331,6 +333,7 @@ namespace GustosApp.Application.Tests
                     new() { Nombre = "Sin gluten" }
                 }
             };
+            estimado.ConfirmarRestriccionesDeclaradas(0, DateTime.UtcNow);
 
             _embeddingMock.Setup(x => x.GetEmbedding(It.IsAny<string>()))
                 .Returns(FakeEmbedding("x"));
@@ -344,6 +347,43 @@ namespace GustosApp.Application.Tests
             Assert.Equal(desconocido.Id, resultado[1].Id);
             Assert.Equal(NivelCompatibilidadRestaurante.Estimada, resultado[0].NivelCompatibilidad);
             Assert.Equal(NivelCompatibilidadRestaurante.Desconocida, resultado[1].NivelCompatibilidad);
+        }
+
+        [Fact]
+        public async Task Handle_OfertaMixta_NoUsaOpcionConflictivaParaLaCoincidencia()
+        {
+            var usuario = new UsuarioPreferencias
+            {
+                Gustos = ["Hamburguesa"],
+                CondicionesMedicas = ["Vegetariano"],
+                ReglasCompatibilidad = [new(Guid.NewGuid(), false, ["carne roja"])]
+            };
+            var restaurante = new Restaurante
+            {
+                Id = Guid.NewGuid(),
+                GustosQueSirve =
+                [
+                    new Gusto { Nombre = "Hamburguesa", Tags = [new Tag { Nombre = "Carne roja" }] },
+                    new Gusto { Nombre = "Ensalada", Tags = [new Tag { Nombre = "Vegetal" }] }
+                ]
+            };
+            var textos = new List<string>();
+            _embeddingMock.Setup(x => x.GetEmbedding(It.IsAny<string>()))
+                .Returns<string>(texto =>
+                {
+                    textos.Add(texto);
+                    return FakeEmbedding(texto);
+                });
+            _repoMock.Setup(x => x.obtenerRestauranteConResenias(It.IsAny<List<Guid>>()))
+                .ReturnsAsync(new List<Restaurante>());
+
+            var resultado = await _sut.Handle(usuario, [restaurante]);
+
+            Assert.Single(resultado);
+            Assert.Equal(NivelCompatibilidadRestaurante.Desconocida,
+                resultado[0].NivelCompatibilidad);
+            Assert.Contains("Ensalada", textos);
+            Assert.DoesNotContain(textos, texto => texto.Contains("Hamburguesa Ensalada"));
         }
 
     }

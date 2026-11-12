@@ -2,6 +2,7 @@
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,13 +19,15 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
         private readonly IRestauranteRepository _repoRestaurante;
         private readonly IApplicationTransaction _transaction;
         private readonly ActualizarValoracionRestauranteUseCase? _actualizarValoracion;
+        private readonly ILogger<CrearOpinionRestauranteUseCase>? _logger;
 
         public CrearOpinionRestauranteUseCase(IFileStorageService fileStorage,
             IOpinionRestauranteRepository repoOpinionRest,
             IUsuarioRepository repoUsuario,
             IRestauranteRepository repoRestaurante,
             IApplicationTransaction? transaction = null,
-            ActualizarValoracionRestauranteUseCase? actualizarValoracion = null)
+            ActualizarValoracionRestauranteUseCase? actualizarValoracion = null,
+            ILogger<CrearOpinionRestauranteUseCase>? logger = null)
         {
             _fileStorage = fileStorage;
             _repoOpinionRest = repoOpinionRest;
@@ -32,6 +35,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
             _repoRestaurante = repoRestaurante;
             _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
             _actualizarValoracion = actualizarValoracion;
+            _logger = logger;
         }
 
         public async Task HandleAsync(string firebaseUid, Guid restauranteId,
@@ -79,7 +83,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
                     var url = await _fileStorage.UploadFileAsync(
                         file.Content,
                         file.FileName,
-                        "opiniones"
+                        $"opiniones/{opinionRestaurante.Id:N}"
                     );
 
                     urlsSubidas.Add(url);
@@ -103,7 +107,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
             {
                 foreach (var url in urlsSubidas)
                 {
-                    try { await _fileStorage.DeleteFileAsync(url); } catch { }
+                    try { await _fileStorage.ScheduleCleanupAsync(url, $"opiniones/{opinionRestaurante.Id:N}"); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "Falló limpieza de foto de opinión {OpinionId}.", opinionRestaurante.Id); }
                 }
                 throw;
             }

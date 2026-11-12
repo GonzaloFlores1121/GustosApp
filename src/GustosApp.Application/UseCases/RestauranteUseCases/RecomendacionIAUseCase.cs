@@ -40,7 +40,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             {
                 Gustos = usuario.Gustos.Select(g => g.Nombre).ToList(),
                 Restricciones = usuario.Restricciones.Select(r => r.Nombre).ToList(),
-                CondicionesMedicas = usuario.CondicionesMedicas.Select(c => c.Nombre).ToList()
+                CondicionesMedicas = usuario.CondicionesMedicas.Select(c => c.Nombre).ToList(),
+                ReglasCompatibilidad = ReglasCompatibilidadPreferencias.DesdeUsuario(usuario)
             };
 
             if (!restaurante.GustosQueSirve.Any(gusto =>
@@ -57,13 +58,18 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             if (compatibilidad == NivelCompatibilidadRestaurante.Desconocida)
                 return MensajeCompatibilidadDesconocida;
 
+            var opcionesPotenciales = _evaluadorCompatibilidad
+                .ObtenerOpcionesSinConflictoConocido(preferencias, restaurante);
+            if (opcionesPotenciales.Count == 0)
+                return MensajeCompatibilidadDesconocida;
+
             cancellationToken.ThrowIfCancellationRequested();
 
             string explicacion;
             try
             {
                 explicacion = await _ia.GenerarRecomendacion(
-                    ConstruirPromptDeGustos(usuario, restaurante));
+                    ConstruirPromptDeGustos(usuario, restaurante, opcionesPotenciales));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -80,13 +86,14 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 : explicacion.Trim();
         }
 
-        private static string ConstruirPromptDeGustos(Usuario usuario, Restaurante restaurante)
+        private static string ConstruirPromptDeGustos(Usuario usuario, Restaurante restaurante,
+            IReadOnlyCollection<Gusto> opcionesPotenciales)
         {
             var gustosUsuario = usuario.Gustos
                 .Select(g => g.Nombre)
                 .Where(nombre => !string.IsNullOrWhiteSpace(nombre))
                 .ToList();
-            var gustosRestaurante = restaurante.GustosQueSirve
+            var gustosRestaurante = opcionesPotenciales
                 .Select(g => g.Nombre)
                 .Where(nombre => !string.IsNullOrWhiteSpace(nombre))
                 .ToList();

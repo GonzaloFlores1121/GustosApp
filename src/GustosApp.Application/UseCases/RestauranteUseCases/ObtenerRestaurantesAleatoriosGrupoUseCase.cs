@@ -65,7 +65,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 Rating = r.Rating,
                 CantidadResenas = r.CantidadResenas,
                 Categoria = r.Categoria,
-                ImagenUrl = r.ImagenUrl,
+                ImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(r.Id, r.ImagenUrl),
                 Valoracion = r.Valoracion,
                 WebUrl = r.WebUrl,
                 PlaceId = r.PlaceId,

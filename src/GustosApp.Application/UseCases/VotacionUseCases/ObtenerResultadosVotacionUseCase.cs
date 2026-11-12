@@ -7,6 +7,8 @@ using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Domain.Common;
+using GustosApp.Application.Services;
 
 namespace GustosApp.Application.UseCases.VotacionUseCases
 {
@@ -16,17 +18,23 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IGrupoRepository _grupoRepository;
         private readonly INotificacionesVotacionService _notificaciones;
+        private readonly EvaluadorCompatibilidadRestaurante _evaluadorCompatibilidad;
+        private readonly TimeProvider _reloj;
 
         public ObtenerResultadosVotacionUseCase(
             IVotacionRepository votacionRepository,
             IUsuarioRepository usuarioRepository,
             IGrupoRepository grupoRepository,
-            INotificacionesVotacionService notificaciones)
+            INotificacionesVotacionService notificaciones,
+            EvaluadorCompatibilidadRestaurante evaluadorCompatibilidad,
+            TimeProvider? reloj = null)
         {
             _votacionRepository = votacionRepository;
             _usuarioRepository = usuarioRepository;
             _grupoRepository = grupoRepository;
             _notificaciones = notificaciones;
+            _evaluadorCompatibilidad = evaluadorCompatibilidad;
+            _reloj = reloj ?? TimeProvider.System;
         }
 
         public async Task<ResultadoVotacion> HandleAsync(
@@ -57,15 +65,61 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             var miembrosActivos = votacion.Participantes.Count;
             var todosVotaron = votacion.TodosLosParticipantesVotaron();
 
+            var usuariosSeleccionados = votacion.Participantes
+                .Select(p => p.Usuario).Where(u => u is not null).ToList();
+            var preferenciasActuales = new UsuarioPreferencias
+            {
+                Restricciones = usuariosSeleccionados.SelectMany(u => u.Restricciones)
+                    .Select(r => r.Nombre).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                CondicionesMedicas = usuariosSeleccionados.SelectMany(u => u.CondicionesMedicas)
+                    .Select(c => c.Nombre).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                ReglasCompatibilidad = usuariosSeleccionados
+                    .SelectMany(ReglasCompatibilidadPreferencias.DesdeUsuario)
+                    .DistinctBy(regla => (regla.Id, regla.EsRestriccion)).ToList()
+            };
+
             var candidatos = votacion.RestaurantesCandidatos
             .Select(rc => new RestauranteCandidato
              {
                    RestauranteId = rc.RestauranteId,
                   Nombre = rc.Restaurante?.Nombre ?? "",
                   Direccion = rc.Restaurante?.Direccion ?? "",
-                      ImagenUrl = rc.Restaurante?.ImagenUrl ?? ""
+                  ImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(rc.RestauranteId, rc.Restaurante?.ImagenUrl) ?? "",
+                  NivelCompatibilidad = rc.Restaurante is null ||
+                      usuariosSeleccionados.Count != votacion.Participantes.Count
+                      ? NivelCompatibilidadRestaurante.Desconocida
+                      : _evaluadorCompatibilidad.Evaluar(preferenciasActuales, rc.Restaurante)
                       })
              .ToList();
+            foreach (var candidato in candidatos)
+            {
+                candidato.AdvertenciaCompatibilidad = candidato.NivelCompatibilidad switch
+                {
+                    NivelCompatibilidadRestaurante.Estimada when
+                        preferenciasActuales.Restricciones.Count + preferenciasActuales.CondicionesMedicas.Count == 0 =>
+                        "Evaluación actual de los participantes seleccionados: no registraron restricciones o condiciones. Verificá ingredientes y preparación antes de elegir.",
+                    NivelCompatibilidadRestaurante.Estimada =>
+                        "Evaluación actual de los participantes seleccionados: el restaurante declara opciones para sus restricciones registradas. Confirmá ingredientes, preparación y contaminación cruzada.",
+                    NivelCompatibilidadRestaurante.Incompatible =>
+                        "Evaluación actual de los participantes seleccionados: las opciones registradas presentan conflictos conocidos. Consultá al restaurante antes de votar.",
+                    _ =>
+                        "Evaluación actual de los participantes seleccionados: no hay datos suficientes para confirmar opciones para todos. Consultá al restaurante antes de votar."
+                };
+                var restaurante = votacion.RestaurantesCandidatos
+                    .First(rc => rc.RestauranteId == candidato.RestauranteId).Restaurante;
+                if (restaurante is not null)
+                {
+                    var estadoOferta = restaurante.ObtenerEstadoOferta(_reloj.GetUtcNow().UtcDateTime);
+                    candidato.EstadoOferta = estadoOferta.ToString();
+                    candidato.EstadoRestricciones = restaurante.ObtenerEstadoRestricciones(_reloj.GetUtcNow().UtcDateTime).ToString();
+                    candidato.FechaRevisionOfertaUtc = restaurante.FechaRevisionOfertaUtc;
+                    candidato.FechaRevisionRestriccionesUtc = restaurante.FechaRevisionRestriccionesUtc;
+                    if (estadoOferta == EstadoVigenciaInformacion.Desactualizada)
+                        candidato.AdvertenciaCompatibilidad += " Oferta sin confirmar recientemente.";
+                    else if (estadoOferta == EstadoVigenciaInformacion.SinFecha)
+                        candidato.AdvertenciaCompatibilidad += " Oferta sin fecha de revisión.";
+                }
+            }
 
 
             // Obtener información de los restaurantes votados
@@ -75,7 +129,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                     RestauranteId = v.RestauranteId,
                     RestauranteNombre = v.Restaurante?.Nombre ?? "",
                     RestauranteDireccion = v.Restaurante?.Direccion ?? "",
-                    RestauranteImagenUrl = v.Restaurante?.ImagenUrl ?? "",
+                    RestauranteImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(v.RestauranteId, v.Restaurante?.ImagenUrl) ?? "",
                     CantidadVotos = resultados.ContainsKey(v.RestauranteId) ? resultados[v.RestauranteId] : 0,
                     Votantes = votacion.Votos
                         .Where(vo => vo.RestauranteId == v.RestauranteId)
@@ -148,6 +202,13 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
         public string Nombre { get; set; } = "";
         public string Direccion { get; set; } = "";
         public string ImagenUrl { get; set; } = "";
+        public NivelCompatibilidadRestaurante NivelCompatibilidad { get; set; } =
+            NivelCompatibilidadRestaurante.Desconocida;
+        public string AdvertenciaCompatibilidad { get; set; } = "";
+        public string EstadoOferta { get; set; } = "SinFecha";
+        public string EstadoRestricciones { get; set; } = "SinFecha";
+        public DateTime? FechaRevisionOfertaUtc { get; set; }
+        public DateTime? FechaRevisionRestriccionesUtc { get; set; }
     }
 
     public class ResultadoVotacion

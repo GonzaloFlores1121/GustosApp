@@ -351,7 +351,13 @@ namespace GustosApp.API.Controllers
                         RestauranteId = rc.RestauranteId,
                         Nombre = rc.Nombre,
                         Direccion = rc.Direccion,
-                        ImagenUrl = rc.ImagenUrl
+                        ImagenUrl = rc.ImagenUrl,
+                        NivelCompatibilidad = rc.NivelCompatibilidad.ToString(),
+                        AdvertenciaCompatibilidad = rc.AdvertenciaCompatibilidad,
+                        EstadoOferta = rc.EstadoOferta,
+                        EstadoRestricciones = rc.EstadoRestricciones,
+                        FechaRevisionOfertaUtc = rc.FechaRevisionOfertaUtc,
+                        FechaRevisionRestriccionesUtc = rc.FechaRevisionRestriccionesUtc
                     })
                     .ToList(),
 

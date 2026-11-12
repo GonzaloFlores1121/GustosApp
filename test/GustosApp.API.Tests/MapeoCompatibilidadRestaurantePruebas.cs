@@ -12,7 +12,7 @@ namespace GustosApp.API.Tests
     {
         [Theory]
         [InlineData(NivelCompatibilidadRestaurante.Desconocida, "No hay datos suficientes")]
-        [InlineData(NivelCompatibilidadRestaurante.Estimada, "todavía no fueron verificados")]
+        [InlineData(NivelCompatibilidadRestaurante.Estimada, "orientativa")]
         public void Mapear_IncluyeNivelYAdvertenciaDeCompatibilidad(
             NivelCompatibilidadRestaurante nivel,
             string fragmentoAdvertencia)
@@ -55,7 +55,7 @@ namespace GustosApp.API.Tests
         }
 
         [Fact]
-        public void Mapear_DatosVerificadosHaceMasDeSeisMeses_LosInformaComoDesactualizados()
+        public void Mapear_OfertaRevisadaHaceCuatroMeses_LaInformaComoDesactualizada()
         {
             var configuracion = CrearConfiguracion();
             var mapper = configuracion.CreateMapper();
@@ -63,14 +63,12 @@ namespace GustosApp.API.Tests
             {
                 NivelCompatibilidad = NivelCompatibilidadRestaurante.Estimada
             };
-            restaurante.RegistrarVerificacionDatosCompatibilidad(
-                OrigenDatosCompatibilidadRestaurante.Restaurante,
-                DateTime.UtcNow.AddDays(-181));
+            restaurante.ConfirmarOfertaVigente(0, DateTime.UtcNow.AddMonths(-4).AddDays(-1));
 
             var resultado = mapper.Map<RestauranteDTO>(restaurante);
 
-            resultado.EstadoDatosCompatibilidad.Should().Be("Desactualizado");
-            resultado.AdvertenciaCompatibilidad.Should().Contain("desactualizados");
+            resultado.EstadoOferta.Should().Be("Desactualizada");
+            resultado.AdvertenciaCompatibilidad.Should().Contain("Oferta sin confirmar recientemente");
         }
 
         private static MapperConfiguration CrearConfiguracion()

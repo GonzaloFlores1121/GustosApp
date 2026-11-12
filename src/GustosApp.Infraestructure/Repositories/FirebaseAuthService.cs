@@ -23,17 +23,6 @@ namespace GustosApp.Infraestructure.Repositories
         }
 
         // Este metodo lo creo par testear el caso de uso AppLoginConFirebaseUseCaseTest
-        public async Task UpdateUserEmailAsync(string firebaseUid, string newEmail)
-        {
-            var args = new UserRecordArgs()
-            {
-                Uid = firebaseUid,
-                Email = newEmail
-            };
-
-            await FirebaseAuth.DefaultInstance.UpdateUserAsync(args);
-        }
-
         public async Task<DecodedToken> VerifyIdTokenAsync(
             string idToken,
             bool comprobarRevocacion = false,

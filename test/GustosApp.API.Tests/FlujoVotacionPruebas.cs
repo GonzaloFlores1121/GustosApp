@@ -59,6 +59,13 @@ public sealed class FlujoVotacionPruebas
         resultados.TodosVotaron.Should().BeTrue();
         resultados.GanadorId.Should().Be(datos.RestauranteId);
         resultados.Estado.Should().Be("Cerrada");
+        resultados.RestaurantesCandidatos.Should().HaveCount(2);
+        resultados.RestaurantesCandidatos.Should().OnlyContain(candidato =>
+            !string.IsNullOrWhiteSpace(candidato.NivelCompatibilidad) &&
+            candidato.AdvertenciaCompatibilidad.Contains("participantes seleccionados") &&
+            !candidato.AdvertenciaCompatibilidad.Contains("celíaca") &&
+            candidato.EstadoOferta == "SinFecha" &&
+            candidato.EstadoRestricciones == "SinFecha");
     }
 
     [Fact]

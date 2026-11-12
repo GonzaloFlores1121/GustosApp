@@ -82,7 +82,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                     UsuarioFoto = usuario.FotoPerfilUrl ?? "",
                     RestauranteId = restaurante.Id,
                     RestauranteNombre = restaurante.Nombre,
-                    RestauranteImagen = restaurante.ImagenUrl ?? "",
+                    RestauranteImagen = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(restaurante.Id, restaurante.ImagenUrl) ?? "",
                     EsActualizacion = true
                 };
 
@@ -105,7 +105,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 UsuarioFoto = usuario.FotoPerfilUrl ?? "",
                 RestauranteId = restaurante.Id,
                 RestauranteNombre = restaurante.Nombre,
-                RestauranteImagen = restaurante.ImagenUrl ?? "",
+                RestauranteImagen = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(restaurante.Id, restaurante.ImagenUrl) ?? "",
                 EsActualizacion = false
             };
 

@@ -16,19 +16,23 @@ namespace GustosApp.API.Controllers
         private readonly ActualizarPerfilUsuarioUseCase _actualizarUsuario;
         private readonly ObtenerRestaurantesFavoritosUseCase _obtenerFavoritos;
         private readonly IMapper _mapper;
+        private readonly SincronizarEmailUsuarioUseCase _sincronizarEmail;
 
 
         public PerfilUsuarioController(ActualizarPerfilUsuarioUseCase actualizarUsuario,
-            ObtenerRestaurantesFavoritosUseCase obtenerFavoritos, IMapper mapper)
+            ObtenerRestaurantesFavoritosUseCase obtenerFavoritos, IMapper mapper,
+            SincronizarEmailUsuarioUseCase sincronizarEmail)
         {
 
             _actualizarUsuario = actualizarUsuario;
             _obtenerFavoritos = obtenerFavoritos;
             _mapper = mapper;
+            _sincronizarEmail = sincronizarEmail;
         }
 
         
         [HttpPut]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -54,7 +58,7 @@ namespace GustosApp.API.Controllers
             }
 
             var usuario = await _actualizarUsuario.HandleAsync(
-                uid, dto.Email, dto.Nombre,dto.Apellido,
+                uid, dto.Nombre,dto.Apellido,
                 foto, dto.EsPrivado, ct
             );
 
@@ -71,6 +75,13 @@ namespace GustosApp.API.Controllers
                     usuario.EsPrivado
                 }
             });
+        }
+
+        [HttpPost("sincronizar-email")]
+        public async Task<IActionResult> SincronizarEmail(CancellationToken ct)
+        {
+            var usuario = await _sincronizarEmail.HandleAsync(GetFirebaseUid(), ct);
+            return Ok(new { email = usuario.Email });
         }
 
        

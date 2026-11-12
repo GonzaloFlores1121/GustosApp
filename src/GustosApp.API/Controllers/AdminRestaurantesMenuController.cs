@@ -1,4 +1,8 @@
 using GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
+using GustosApp.Application.UseCases.RestauranteUseCases;
+using GustosApp.API.DTO;
+using GustosApp.Application.Common.Exceptions;
+using Microsoft.EntityFrameworkCore;
 using GustosApp.Infraestructure.Files;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,7 +41,7 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
     }
 
     [HttpPost("{restauranteId:guid}/analizar")]
-    [RequestSizeLimit(15_000_000)]
+    [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> Analizar(
         Guid restauranteId,
         [FromForm] AnalizarMenuRestauranteRequest request,
@@ -100,6 +104,40 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
         catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+    }
+
+    [HttpPost("{restauranteId:guid}/confirmar-oferta")]
+    public async Task<IActionResult> ConfirmarOferta(
+        Guid restauranteId, [FromBody] ConfirmarVigenciaRestauranteRequest request,
+        [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
+    {
+        try
+        {
+            var restaurante = await useCase.ConfirmarOfertaAsync(
+                restauranteId, request.VersionEsperada, null, true, ct);
+            return Ok(new { restaurante.VersionOferta, restaurante.FechaRevisionOfertaUtc });
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (AccesoProhibidoException) { return Forbid(); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "La oferta cambió; recargá la ficha." }); }
+    }
+
+    [HttpPost("{restauranteId:guid}/confirmar-restricciones")]
+    public async Task<IActionResult> ConfirmarRestricciones(
+        Guid restauranteId, [FromBody] ConfirmarVigenciaRestauranteRequest request,
+        [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
+    {
+        try
+        {
+            var restaurante = await useCase.ConfirmarRestriccionesAsync(
+                restauranteId, request.VersionEsperada, null, true, ct);
+            return Ok(new { restaurante.VersionRestricciones, restaurante.FechaRevisionRestriccionesUtc });
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (AccesoProhibidoException) { return Forbid(); }
+        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "Las declaraciones cambiaron; recargá la ficha." }); }
     }
 }
 

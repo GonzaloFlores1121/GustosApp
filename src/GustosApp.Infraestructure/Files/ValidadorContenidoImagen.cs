@@ -1,4 +1,8 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.Processing;
 
 namespace GustosApp.Infraestructure.Files;
 
@@ -16,6 +20,45 @@ public static class ValidadorContenidoImagen
             [".png"] = ("PNG", "image/png"),
             [".webp"] = ("WEBP", "image/webp")
         };
+
+    public static async Task<(MemoryStream Contenido, string MimeType)> NormalizarAsync(
+        Stream contenido, string nombreArchivo, CancellationToken ct = default)
+    {
+        var mimeType = await ValidarAsync(contenido, nombreArchivo, ct: ct);
+        using var image = await Image.LoadAsync(contenido, ct);
+        image.Mutate(context => context.AutoOrient());
+        image.Metadata.ExifProfile = null;
+        image.Metadata.XmpProfile = null;
+        image.Metadata.IccProfile = null;
+        image.Metadata.IptcProfile = null;
+        image.Metadata.CicpProfile = null;
+        var normalized = new MemoryStream();
+        try
+        {
+            switch (Path.GetExtension(nombreArchivo).ToLowerInvariant())
+            {
+                case ".jpg":
+                case ".jpeg":
+                    await image.SaveAsync(normalized, new JpegEncoder { Quality = 88, SkipMetadata = true }, ct);
+                    break;
+                case ".png":
+                    await image.SaveAsync(normalized, new PngEncoder { SkipMetadata = true }, ct);
+                    break;
+                case ".webp":
+                    await image.SaveAsync(normalized, new WebpEncoder { Quality = 88, SkipMetadata = true }, ct);
+                    break;
+            }
+            if (normalized.Length > LimiteBytesPredeterminado)
+                throw new ArgumentException("La imagen procesada supera 5 MB. Elegí una imagen más pequeña.");
+            normalized.Position = 0;
+            return (normalized, mimeType);
+        }
+        catch
+        {
+            await normalized.DisposeAsync();
+            throw;
+        }
+    }
 
     public static async Task<string> ValidarAsync(
         Stream contenido,

@@ -32,15 +32,17 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly TimeProvider _timeProvider;
+    private readonly IComprobanteFotoGoogle? _fotosGoogle;
 
     public BuscadorRestaurantesGooglePlaces(
         HttpClient httpClient,
         IConfiguration configuration,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider, IComprobanteFotoGoogle? fotosGoogle = null)
     {
         _httpClient = httpClient;
         _configuration = configuration;
         _timeProvider = timeProvider;
+        _fotosGoogle = fotosGoogle;
     }
 
     public async Task<IReadOnlyCollection<RestauranteImportacionEntrada>> BuscarCercanosAsync(
@@ -85,11 +87,8 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
 
         if (!respuesta.IsSuccessStatusCode)
         {
-            var contenidoError = await respuesta.Content.ReadAsStringAsync(ct);
-
             throw new HttpRequestException(
-                $"Google Places respondió {(int)respuesta.StatusCode} " +
-                $"{respuesta.StatusCode}. Respuesta: {contenidoError}",
+                $"Google Places HTTP {(int)respuesta.StatusCode}.",
                 null,
                 respuesta.StatusCode);
         }
@@ -100,7 +99,7 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
         return (contenido?.Places ?? [])
             .Where(EsImportable)
             .DistinctBy(place => place.Id, StringComparer.Ordinal)
-            .Select(place => Convertir(place, fechaDatosUtc, apiKey))
+            .Select(place => Convertir(place, fechaDatosUtc))
             .ToArray();
     }
 
@@ -110,10 +109,9 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
         !string.IsNullOrWhiteSpace(place.FormattedAddress) &&
         place.Location is not null;
 
-    private static RestauranteImportacionEntrada Convertir(
+    private RestauranteImportacionEntrada Convertir(
         PlaceDetails place,
-        DateTime fechaDatosUtc,
-        string apiKey)
+        DateTime fechaDatosUtc)
     {
         var tipos = place.Types?
             .Where(tipo => !string.IsNullOrWhiteSpace(tipo))
@@ -135,19 +133,10 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
             FechaDatosUtc = fechaDatosUtc,
             PrimaryType = tipoPrincipal,
             TypesJson = JsonSerializer.Serialize(tipos),
-            ImagenUrl = CrearUrlFoto(place.Photos?.FirstOrDefault()?.Name, apiKey)
+            ComprobanteFotoGoogle = place.Photos?.Count > 0 ? _fotosGoogle?.Emitir(place.Id) : null
         };
     }
 
-    private static string? CrearUrlFoto(string? nombreFoto, string apiKey)
-    {
-        if (string.IsNullOrWhiteSpace(nombreFoto)) return null;
-        var recurso = string.Join(
-            "/",
-            nombreFoto.Split('/', StringSplitOptions.RemoveEmptyEntries)
-                .Select(Uri.EscapeDataString));
-        return $"https://places.googleapis.com/v1/{recurso}/media?maxWidthPx=800&key={Uri.EscapeDataString(apiKey)}";
-    }
 
     private sealed class RespuestaBusquedaCercana
     {

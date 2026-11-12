@@ -15,6 +15,8 @@ namespace GustosApp.Domain.Model
         public DateTime FechaActualizacionUtc { get; set; } = DateTime.UtcNow;
 
         public string? ImagenFuentePublicadaUrl { get; private set; }
+        public Common.OrigenImagenRestaurante OrigenImagenPublicada { get; private set; } = Common.OrigenImagenRestaurante.Desconocida;
+        public Common.OrigenImagenRestaurante OrigenImagenBorrador { get; private set; } = Common.OrigenImagenRestaurante.Desconocida;
         public Guid? BorradorToken { get; private set; }
         public string? BorradorJson { get; private set; }
         public string? BorradorImagenFuenteUrl { get; private set; }
@@ -22,11 +24,12 @@ namespace GustosApp.Domain.Model
         public string? BorradorError { get; private set; }
         public DateTime? FechaBorradorUtc { get; private set; }
 
-        public void IniciarBorrador(Guid token, string imagenFuenteUrl, DateTime fechaUtc)
+        public void IniciarBorrador(Guid token, string imagenFuenteUrl, DateTime fechaUtc, Common.OrigenImagenRestaurante origen = Common.OrigenImagenRestaurante.Desconocida)
         {
             BorradorToken = token;
             BorradorJson = null;
             BorradorImagenFuenteUrl = imagenFuenteUrl;
+            OrigenImagenBorrador = origen;
             EstadoBorrador = EstadoBorradorMenu.Procesando;
             BorradorError = null;
             FechaBorradorUtc = fechaUtc;
@@ -65,6 +68,7 @@ namespace GustosApp.Domain.Model
             Version = Math.Max(1, Version + 1);
             FechaActualizacionUtc = fechaUtc;
             ImagenFuentePublicadaUrl = BorradorImagenFuenteUrl;
+            OrigenImagenPublicada = OrigenImagenBorrador;
             LimpiarBorrador();
             return imagenAnterior;
         }
@@ -83,6 +87,7 @@ namespace GustosApp.Domain.Model
             BorradorToken = null;
             BorradorJson = null;
             BorradorImagenFuenteUrl = null;
+            OrigenImagenBorrador = Common.OrigenImagenRestaurante.Desconocida;
             EstadoBorrador = EstadoBorradorMenu.Ninguno;
             BorradorError = null;
             FechaBorradorUtc = null;

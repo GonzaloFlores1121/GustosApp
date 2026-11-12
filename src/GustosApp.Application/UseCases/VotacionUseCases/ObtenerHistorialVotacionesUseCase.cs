@@ -78,7 +78,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                             RestauranteId = v.RestauranteGanadorId.Value,
                             Nombre = v.RestauranteGanador?.Nombre ?? "Restaurante no disponible",
                             Direccion = v.RestauranteGanador?.Direccion ?? string.Empty,
-                            ImagenUrl = v.RestauranteGanador?.ImagenUrl
+                            ImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(v.RestauranteGanadorId ?? Guid.Empty, v.RestauranteGanador?.ImagenUrl)
                         }
                         : null
                 }).ToList()

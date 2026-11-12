@@ -78,6 +78,11 @@ namespace GustosApp.Infraestructure.Configurations
                 .HasDefaultValue(GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante.Estimado)
                 .HasSentinel((GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante)(-1));
 
+            b.Property(r => r.VigenciaGustosJson).HasColumnType("nvarchar(max)");
+            b.Property(r => r.VigenciaRestriccionesJson).HasColumnType("nvarchar(max)");
+            b.Property(r => r.VersionOferta).IsConcurrencyToken();
+            b.Property(r => r.VersionRestricciones).IsConcurrencyToken();
+
             b.HasIndex(r => r.NombreNormalizado)
                 .HasDatabaseName("IX_Restaurantes_NombreNormalizado")
                 .IsUnique(false);

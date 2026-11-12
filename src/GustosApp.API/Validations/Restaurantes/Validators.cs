@@ -39,12 +39,12 @@ namespace GustosApp.Application.Validations.Restaurantes
             // ===========================
             RuleFor(x => x.Lat)
                 .NotEmpty().WithMessage("La latitud es obligatoria.")
-                .Must(v => double.TryParse(v?.Replace(",", "."), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+                .Must(v => double.TryParse(v?.Replace(",", "."), NumberStyles.Any, CultureInfo.InvariantCulture, out var lat) && lat is >= -90 and <= 90)
                 .WithMessage("Latitud inválida.");
 
             RuleFor(x => x.Lng)
                 .NotEmpty().WithMessage("La longitud es obligatoria.")
-                .Must(v => double.TryParse(v?.Replace(",", "."), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+                .Must(v => double.TryParse(v?.Replace(",", "."), NumberStyles.Any, CultureInfo.InvariantCulture, out var lng) && lng is >= -180 and <= 180)
                 .WithMessage("Longitud inválida.");
 
             // ===========================

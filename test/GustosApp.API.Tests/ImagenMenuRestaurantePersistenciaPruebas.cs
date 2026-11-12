@@ -49,7 +49,7 @@ public sealed class ImagenMenuRestaurantePersistenciaPruebas
         almacenamiento.Setup(servicio => servicio.UploadFileAsync(
                 It.IsAny<Stream>(),
                 "menu.jpg",
-                "restaurantes"))
+                $"restaurantes/{restauranteId:N}"))
             .ReturnsAsync("https://imagenes.test/menu-persistido.jpg");
         var repositorio = new RestauranteRepositoryEF(contexto);
         var casoDeUso = new ActualizarImagenesRestauranteUseCase(repositorio, almacenamiento.Object);

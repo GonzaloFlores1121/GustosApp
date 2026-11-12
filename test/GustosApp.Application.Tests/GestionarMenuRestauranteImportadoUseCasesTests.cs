@@ -253,7 +253,8 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         restaurante.Categoria.Should().Be("Pizzería");
         restaurante.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(pizza);
         restaurante.RestriccionesQueRespeta.Should().ContainSingle().Which.Should().BeSameAs(restriccion);
-        restaurante.OrigenDatosCompatibilidad.Should().Be(OrigenDatosCompatibilidadRestaurante.Administracion);
+        restaurante.FechaRevisionOfertaUtc.Should().BeNull();
+        restaurante.VersionOferta.Should().BeGreaterThan(0);
         restaurante.EstadoDatosCompatibilidad.Should().Be(EstadoDatosCompatibilidadRestaurante.Estimado);
         restaurante.MenuProcesado.Should().BeTrue();
         menus.Verify(r => r.AddAsync(It.Is<RestauranteMenu>(m => m.RestauranteId == restaurante.Id), It.IsAny<CancellationToken>()));

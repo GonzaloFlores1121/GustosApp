@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using GustosApp.Application.Configuration;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
 using GustosApp.Domain.Common;
@@ -76,13 +77,13 @@ namespace GustosApp.Application.Tests
             _restriccionesRepo.Setup(r => r.GetRestriccionesByIdsAsync(It.IsAny<List<Guid>>(), default)).ReturnsAsync(new List<Restriccion>());
             using var contenido = new MemoryStream(new byte[] { 1 });
             var archivo = new GustosApp.Domain.Common.ArchivoEntrada(contenido, "menu.jpg");
-            _firebaseStorage.Setup(f => f.UploadFileAsync(contenido, "menu.jpg", "solicitudes")).ReturnsAsync("https://example.test/menu.jpg");
+            _firebaseStorage.Setup(f => f.UploadFileAsync(contenido, "menu.jpg", It.Is<string>(s => s.StartsWith("solicitudes/")))).ReturnsAsync("https://example.test/menu.jpg");
             _solicitudesRepo.Setup(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default)).ThrowsAsync(new InvalidOperationException("Error SQL"));
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync("uid", "Nombre", "Dirección", null, null, null,
                 new List<Guid>(), new List<Guid>(), null, null, null, archivo, null, "", default));
 
-            _firebaseStorage.Verify(f => f.DeleteFileAsync("https://example.test/menu.jpg"), Times.Once());
+            _firebaseStorage.Verify(f => f.ScheduleCleanupAsync("https://example.test/menu.jpg", It.Is<string>(s => s.StartsWith("solicitudes/"))), Times.Once());
         }
 
         private List<Guid> FakeGuids(int count)
@@ -164,6 +165,38 @@ namespace GustosApp.Application.Tests
 
             _solicitudesRepo.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), It.IsAny<CancellationToken>()), Times.Never);
             _usuariosRepo.Verify(r => r.UpdateAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ReclamoPendiente_NoSePresentaComoAltaExitosa()
+        {
+            var usuario = FakeUsuario(Guid.NewGuid());
+            _usuariosRepo.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(usuario);
+            _solicitudesRepo.Setup(r => r.BuscarPendientePorUsuarioAsync(usuario.Id, default)).ReturnsAsync(
+                new SolicitudRestaurante { RestauranteExistenteId = Guid.NewGuid(), Nombre = "Mi Resto", Direccion = "Calle 123" });
+
+            await Assert.ThrowsAsync<SolicitudRestaurantePendienteException>(() => _useCase.HandleAsync(
+                "uid", "Mi Resto", "Calle 123", null, null, null, [], [], null, null, null, null, null, ""));
+            _solicitudesRepo.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
+            _email.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task AltaConcurrenteConLosMismosDatos_ReutilizaElIdGuardado()
+        {
+            var usuario = FakeUsuario(Guid.NewGuid());
+            var pendiente = new SolicitudRestaurante { Id = Guid.NewGuid(), Nombre = "Mi Resto", Direccion = "Calle 123" };
+            _usuariosRepo.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(usuario);
+            _solicitudesRepo.SetupSequence(r => r.BuscarPendientePorUsuarioAsync(usuario.Id, default))
+                .ReturnsAsync((SolicitudRestaurante?)null).ReturnsAsync(pendiente);
+            _solicitudesRepo.Setup(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default))
+                .ThrowsAsync(new SolicitudRestauranteConcurrenteException(new Exception()));
+
+            var id = await _useCase.HandleAsync(
+                "uid", "Mi Resto", "Calle 123", null, null, null, [], [], null, null, null, null, null, "");
+
+            id.Should().Be(pendiente.Id);
+            _email.VerifyNoOtherCalls();
         }
 
         [Fact]

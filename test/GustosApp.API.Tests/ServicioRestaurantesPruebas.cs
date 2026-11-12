@@ -101,7 +101,7 @@ public class ServicioRestaurantesPruebas
         guardado.Latitud.Should().Be(-31.42);
         guardado.Longitud.Should().Be(-64.18);
         guardado.Categoria.Should().Be("italian_restaurant");
-        guardado.ImagenUrl.Should().Contain("photos/foto-google");
+        guardado.ImagenUrl.Should().Be("https://imagenes.test/anterior.jpg", "una foto existente sin procedencia suficiente debe conservarse");
         guardado.Rating.Should().Be(4.9);
         guardado.CantidadResenas.Should().Be(250);
         guardado.EstadoUltimaActualizacionExterna.Should().Be(EstadoActualizacionExternaRestaurante.Exitosa);
@@ -143,6 +143,70 @@ public class ServicioRestaurantesPruebas
         guardado.FechaUltimoIntentoActualizacionExternaUtc.Should().NotBeNull();
         guardado.FechaUltimaActualizacionExternaExitosaUtc.Should().BeNull();
         guardado.ErrorUltimaActualizacionExterna.Should().Contain("503");
+    }
+
+    [Fact]
+    public async Task ConsultaLegacy_ConPropietario_SigueDisponibleYNoDuplicaResenas()
+    {
+        await using var contexto = DbContextEnMemoria.Crear(Guid.NewGuid().ToString());
+        var ficha = new Restaurante { Id = Guid.NewGuid(), DuenoId = Guid.NewGuid(), PlaceId = "place-reclamado",
+            Nombre = "Nombre del propietario", NombreNormalizado = "nombre del propietario", Direccion = "Dirección local", Rating = 3 };
+        contexto.Add(ficha);
+        await contexto.SaveChangesAsync();
+        var servicio = CrearServicioConRespuestaGoogle(contexto, """
+            {"reviews":[{"authorAttribution":{"displayName":"Autor"},"text":{"text":"Buena"},"rating":5},
+                        {"authorAttribution":{"displayName":"AUTOR"},"text":{"text":"buena"},"rating":5}]}
+            """);
+        await servicio.ActualizarReviewsDesdeGoogleLegacyAsync(ficha.Id, ficha.PlaceId, default);
+        await servicio.ActualizarReviewsDesdeGoogleLegacyAsync(ficha.Id, ficha.PlaceId, default);
+        contexto.ChangeTracker.Clear();
+        var final = await contexto.Restaurantes.Include(r => r.Reviews).SingleAsync();
+        final.Nombre.Should().Be("Nombre del propietario");
+        final.Rating.Should().Be(3);
+        final.FechaUltimoIntentoActualizacionExternaUtc.Should().BeNull();
+        final.Reviews.Should().ContainSingle(r => r.EsImportada && r.FuenteExterna == "GooglePlaces");
+    }
+
+    [Fact]
+    public async Task ObtenerResenas_EnviaMascaraSinCamposVacios()
+    {
+        await using var contexto = DbContextEnMemoria.Crear(Guid.NewGuid().ToString());
+        var handler = new MascaraHttpHandler();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["GooglePlaces:ApiKey"] = "clave-ficticia" }).Build();
+        var servicio = new ServicioRestaurantes(contexto, config, new HttpClient(handler), new RestauranteRepositoryEF(contexto));
+        await servicio.ObtenerResenasDesdeGooglePlaces("place-mascara", default);
+        handler.Mascara!.Split(',').Should().OnlyContain(campo => !string.IsNullOrWhiteSpace(campo));
+    }
+
+    private sealed class MascaraHttpHandler : HttpMessageHandler
+    {
+        public string? Mascara { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Mascara = request.Headers.GetValues("X-Goog-FieldMask").Single();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") });
+        }
+    }
+
+    [Theory]
+    [InlineData(OrigenImagenRestaurante.Google, false, true)]
+    [InlineData(OrigenImagenRestaurante.Google, true, false)]
+    [InlineData(OrigenImagenRestaurante.Administracion, false, false)]
+    [InlineData(OrigenImagenRestaurante.Propietario, false, false)]
+    [InlineData(OrigenImagenRestaurante.Desconocida, false, false)]
+    public async Task ActualizacionExterna_SoloRenuevaFotoConOrigenGoogleSinPropietario(OrigenImagenRestaurante origen, bool tieneDueno, bool renueva)
+    {
+        await using var db = DbContextEnMemoria.Crear(Guid.NewGuid().ToString());
+        var restaurante = new Restaurante { Id = Guid.NewGuid(), PlaceId = "place-importado", Nombre = "Prueba", ImagenUrl = "https://foto.test/original", OrigenImagen = origen, DuenoId = tieneDueno ? Guid.NewGuid() : null };
+        db.Add(restaurante); await db.SaveChangesAsync();
+        var respuesta = RespuestaGoogleActualizada().Replace("\"id\": \"place-importado\",", "\"id\": \"place-importado\", \"photos\": [{\"name\":\"places/place-importado/photos/actual\"}],");
+
+        await CrearServicioConRespuestaGoogle(db, respuesta).ObtenerResenasDesdeGooglePlaces("place-importado", default);
+
+        db.ChangeTracker.Clear();
+        var guardado = await db.Restaurantes.FindAsync(restaurante.Id);
+        guardado!.ImagenUrl.Should().Be(renueva ? ImagenRestaurantePublica.GoogleActual : "https://foto.test/original");
+        guardado.OrigenImagen.Should().Be(origen);
     }
 
     private static ServicioRestaurantes CrearServicioConRespuestaGoogle(

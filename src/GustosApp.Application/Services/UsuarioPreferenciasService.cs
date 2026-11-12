@@ -30,7 +30,8 @@ namespace GustosApp.Application.Services
             {
                 Gustos = gustos,
                 Restricciones = usuario.Restricciones.Select(r => r.Nombre).ToList(),
-                CondicionesMedicas = usuario.CondicionesMedicas.Select(c => c.Nombre).ToList()
+                CondicionesMedicas = usuario.CondicionesMedicas.Select(c => c.Nombre).ToList(),
+                ReglasCompatibilidad = ReglasCompatibilidadPreferencias.DesdeUsuario(usuario)
             };
         }
     }

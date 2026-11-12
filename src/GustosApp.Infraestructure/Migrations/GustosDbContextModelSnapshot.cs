@@ -114,6 +114,11 @@ namespace GustosApp.Infraestructure.Migrations
                         },
                         new
                         {
+                            CondicionesMedicasId = new Guid("44444444-0001-0001-0001-000000000013"),
+                            TagsId = new Guid("11111111-1111-1111-1111-111111111115")
+                        },
+                        new
+                        {
                             CondicionesMedicasId = new Guid("44444444-0001-0001-0001-000000000014"),
                             TagsId = new Guid("11111111-1111-1111-1111-111111111116")
                         },
@@ -126,6 +131,11 @@ namespace GustosApp.Infraestructure.Migrations
                         {
                             CondicionesMedicasId = new Guid("44444444-0001-0001-0001-000000000014"),
                             TagsId = new Guid("11111111-1111-1111-1111-111111111123")
+                        },
+                        new
+                        {
+                            CondicionesMedicasId = new Guid("44444444-0001-0001-0001-000000000014"),
+                            TagsId = new Guid("11111111-1111-1111-1111-111111111115")
                         },
                         new
                         {
@@ -1923,6 +1933,12 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<DateTime?>("FechaObtencionDatosCompatibilidadUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("FechaRevisionOfertaUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaRevisionRestriccionesUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("FechaUltimaActualizacionExternaExitosaUtc")
                         .HasColumnType("datetime2");
 
@@ -1972,6 +1988,12 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasColumnType("nvarchar(32)")
                         .HasDefaultValue("Estimacion");
 
+                    b.Property<int>("OrigenImagen")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrigenLogo")
+                        .HasColumnType("int");
+
                     b.Property<string>("PlaceId")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
@@ -2004,6 +2026,22 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<decimal?>("Valoracion")
                         .HasPrecision(3, 2)
                         .HasColumnType("decimal(3,2)");
+
+                    b.Property<int>("VersionOferta")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.Property<int>("VersionRestricciones")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.Property<string>("VigenciaGustosJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VigenciaRestriccionesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("WebUrl")
                         .HasMaxLength(2048)
@@ -2086,6 +2124,9 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<int?>("Orden")
                         .HasColumnType("int");
 
+                    b.Property<int>("Origen")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("RestauranteId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2123,6 +2164,7 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid?>("BorradorToken")
+                        .IsConcurrencyToken()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("EstadoBorrador")
@@ -2151,10 +2193,17 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
 
+                    b.Property<int>("OrigenImagenBorrador")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrigenImagenPublicada")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("RestauranteId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Version")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -2311,7 +2360,14 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<bool>("CorreoRechazoEnviado")
                         .HasColumnType("bit");
 
+                    b.Property<int>("CorreoResolucion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
                     b.Property<bool>("DeclaraAutorizacion")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("DeclaroOtroLocal")
                         .HasColumnType("bit");
 
                     b.Property<string>("Direccion")
@@ -2338,6 +2394,9 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<decimal?>("Longitud")
                         .HasColumnType("decimal(10,7)");
 
+                    b.Property<int>("MenuResolucion")
+                        .HasColumnType("int");
+
                     b.Property<string>("MotivoRechazo")
                         .HasColumnType("nvarchar(max)");
 
@@ -2348,6 +2407,9 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.Property<string>("NombreSolicitante")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("NotificacionResolucionPublicada")
+                        .HasColumnType("bit");
 
                     b.Property<string>("RelacionRestaurante")
                         .HasColumnType("nvarchar(max)");
@@ -2370,6 +2432,10 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.Property<string>("TipoComprobante")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("TokenMenuResolucion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("UsuarioId")
                         .HasColumnType("uniqueidentifier");
@@ -2805,6 +2871,45 @@ namespace GustosApp.Infraestructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Votos", (string)null);
+                });
+
+            modelBuilder.Entity("GustosApp.Infraestructure.Files.EliminacionArchivoPendiente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CarpetaEsperada")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime>("CreadaUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Intentos")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ProximoIntentoUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UltimoError")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProximoIntentoUtc");
+
+                    b.HasIndex("Url", "CarpetaEsperada")
+                        .IsUnique();
+
+                    b.ToTable("EliminacionesArchivoPendientes", (string)null);
                 });
 
             modelBuilder.Entity("RestauranteRestriccion", b =>

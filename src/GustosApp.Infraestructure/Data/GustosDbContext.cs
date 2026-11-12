@@ -53,6 +53,7 @@ public class GustosDbContext : DbContext
 
     public DbSet<OpinionRestaurante> OpinionesRestaurantes { get; set; }
     public DbSet<OpinionFoto> OpinionesFotos { get; set; }
+    public DbSet<GustosApp.Infraestructure.Files.EliminacionArchivoPendiente> EliminacionesArchivoPendientes { get; set; }
 
     
     public DbSet<VotacionGrupo> Votaciones { get; set; }
@@ -74,6 +75,17 @@ public class GustosDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        modelBuilder.Entity<GustosApp.Infraestructure.Files.EliminacionArchivoPendiente>(entity =>
+        {
+            entity.ToTable("EliminacionesArchivoPendientes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Url).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.CarpetaEsperada).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.UltimoError).HasMaxLength(500);
+            entity.HasIndex(x => new { x.Url, x.CarpetaEsperada }).IsUnique();
+            entity.HasIndex(x => x.ProximoIntentoUtc);
+        });
+
         modelBuilder.ApplyConfiguration(new Configurations.UsuarioRestauranteVisitadoConfiguration());
 
         modelBuilder.ApplyConfiguration(new Configurations.RestauranteImagenConfiguration());
@@ -87,6 +99,8 @@ public class GustosDbContext : DbContext
 
 
         modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.Estado).IsConcurrencyToken();
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.CorreoResolucion).IsConcurrencyToken();
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.TokenMenuResolucion).IsConcurrencyToken();
         modelBuilder.Entity<Restaurante>().Property(r => r.DuenoId).IsConcurrencyToken();
         modelBuilder.Entity<Restaurante>().Property(r => r.PropietarioUid).IsConcurrencyToken();
         modelBuilder.Entity<Usuario>().Property(u => u.Rol).IsConcurrencyToken();
@@ -840,8 +854,8 @@ public class GustosDbContext : DbContext
         CT(1, "Azúcar"); CT(2, "Sal"); CT(3, "Grasa"); CT(4, "Picante");
         CT(5, "Gluten"); CT(6, "Lácteo"); CT(7, "Mariscos"); CT(8, "Frutos secos");
         CT(9, "Huevos"); CT(10, "Frito"); CT(11, "Carne roja"); CT(12, "Cafeína");
-        CT(13, "Carne roja"); CT(13, "Carne blanca"); CT(13, "Pescado");
-        CT(14, "Carne roja"); CT(14, "Carne blanca"); CT(14, "Pescado"); CT(14, "Huevos"); CT(14, "Lácteo");
+        CT(13, "Carne roja"); CT(13, "Carne blanca"); CT(13, "Pescado"); CT(13, "Mariscos");
+        CT(14, "Carne roja"); CT(14, "Carne blanca"); CT(14, "Pescado"); CT(14, "Mariscos"); CT(14, "Huevos"); CT(14, "Lácteo");
         modelBuilder.Entity("CondicionMedicaTags").HasData(ct);
     }
 }

@@ -113,6 +113,40 @@ namespace GustosApp.Infraestructure.Repositories
             return Task.CompletedTask;
         }
 
+        public Task<List<LocalCercano>> BuscarLocalesEnVentanaAsync(
+            double latitud, double longitud, double amplitudLatitud, double amplitudLongitud, CancellationToken ct)
+        {
+            var minLatitud = Math.Max(-90, latitud - amplitudLatitud);
+            var maxLatitud = Math.Min(90, latitud + amplitudLatitud);
+            var minLongitud = longitud - amplitudLongitud;
+            var maxLongitud = longitud + amplitudLongitud;
+            var query = _db.Restaurantes.AsNoTracking()
+                .Where(r => r.Latitud >= minLatitud && r.Latitud <= maxLatitud
+                    && r.Longitud >= -180 && r.Longitud <= 180 && (r.Latitud != 0 || r.Longitud != 0));
+
+            if (amplitudLongitud < 180)
+            {
+                if (minLongitud < -180)
+                    query = query.Where(r => r.Longitud <= maxLongitud || r.Longitud >= minLongitud + 360);
+                else if (maxLongitud > 180)
+                    query = query.Where(r => r.Longitud >= minLongitud || r.Longitud <= maxLongitud - 360);
+                else
+                    query = query.Where(r => r.Longitud >= minLongitud && r.Longitud <= maxLongitud);
+            }
+
+            var escalaLongitud = Math.Cos(latitud * Math.PI / 180);
+            return query
+                .Select(r => new { Local = r, DeltaLongitud = Math.Abs(r.Longitud - longitud) })
+                .OrderBy(r => Math.Abs(r.Local.Latitud - latitud) +
+                    (r.DeltaLongitud > 180 ? 360 - r.DeltaLongitud : r.DeltaLongitud) * escalaLongitud)
+                .ThenBy(r => r.Local.Id)
+                .Take(400)
+                .Select(r => new LocalCercano(r.Local.Id, r.Local.Nombre, r.Local.Direccion,
+                    r.Local.Latitud, r.Local.Longitud,
+                    r.Local.DuenoId != null || (r.Local.PropietarioUid != null && r.Local.PropietarioUid.Trim() != "")))
+                .ToListAsync(ct);
+        }
+
         public async Task<List<Restaurante>> GetNearbyAsync(
     double lat,
     double lng,

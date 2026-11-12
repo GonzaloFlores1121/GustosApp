@@ -387,13 +387,9 @@ namespace GustosApp.Application.Tests
                 Times.Never);
 
             Assert.Empty(restaurante.RestriccionesQueRespeta);
-            Assert.Equal(
-                OrigenDatosCompatibilidadRestaurante.Restaurante,
-                restaurante.OrigenDatosCompatibilidad);
-            Assert.Equal(
-                EstadoDatosCompatibilidadRestaurante.Verificado,
-                restaurante.EstadoDatosCompatibilidad);
-            Assert.NotNull(restaurante.FechaUltimaVerificacionDatosCompatibilidadUtc);
+            Assert.Equal(EstadoVigenciaInformacion.SinFecha,
+                restaurante.ObtenerEstadoRestricciones(DateTime.UtcNow));
+            Assert.Null(restaurante.FechaRevisionRestriccionesUtc);
         }
 
         [Fact]
@@ -428,6 +424,57 @@ namespace GustosApp.Application.Tests
             _restauranteRepositoryMock.Verify(
                 r => r.SaveChangesAsync(It.IsAny<CancellationToken>()),
                 Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_CambioDeDireccionYListasSinCambios_NoRenuevaVigencia()
+        {
+            var restaurante = CreateRestaurante();
+            var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+            var restriccion = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin gluten" };
+            restaurante.GustosQueSirve.Add(gusto);
+            restaurante.RestriccionesQueRespeta.Add(restriccion);
+            var revision = DateTime.UtcNow.AddMonths(-3);
+            restaurante.ConfirmarOfertaVigente(0, revision);
+            restaurante.ConfirmarRestriccionesDeclaradas(0, revision);
+            _restauranteRepositoryMock.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(restaurante);
+            _gustoRepositoryMock.Setup(r => r.GetByIdsAsync(It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync([gusto]);
+            _restriccionRepositoryMock.Setup(r => r.GetRestriccionesByIdsAsync(It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync([restriccion]);
+
+            await _sut.HandleAsync(restaurante.Id, _usuarioId, "Nueva dirección", null, null, null, null,
+                [gusto.Id], [restriccion.Id]);
+
+            Assert.Equal(revision, restaurante.FechaRevisionOfertaUtc);
+            Assert.Equal(revision, restaurante.FechaRevisionRestriccionesUtc);
+            Assert.Equal(1, restaurante.VersionOferta);
+            Assert.Equal(1, restaurante.VersionRestricciones);
+        }
+
+        [Fact]
+        public async Task HandleAsync_AgregarRestriccion_NoRenuevaLaDeclaracionAnterior()
+        {
+            var restaurante = CreateRestaurante();
+            var anterior = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin gluten" };
+            var nueva = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin lactosa" };
+            restaurante.RestriccionesQueRespeta.Add(anterior);
+            var revision = DateTime.UtcNow.AddMonths(-5);
+            restaurante.ConfirmarRestriccionesDeclaradas(0, revision);
+            _restauranteRepositoryMock.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(restaurante);
+            _restriccionRepositoryMock.Setup(r => r.GetRestriccionesByIdsAsync(It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync([anterior, nueva]);
+
+            await _sut.HandleAsync(restaurante.Id, _usuarioId, null, null, null, null, null,
+                null, [anterior.Id, nueva.Id]);
+
+            Assert.Equal(EstadoVigenciaInformacion.Desactualizada,
+                restaurante.ObtenerEstadoDeclaracion(anterior.Id, DateTime.UtcNow));
+            Assert.Equal(EstadoVigenciaInformacion.Vigente,
+                restaurante.ObtenerEstadoDeclaracion(nueva.Id, DateTime.UtcNow));
+            Assert.Null(restaurante.FechaRevisionRestriccionesUtc);
         }
     }
 }

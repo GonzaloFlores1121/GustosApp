@@ -1,0 +1,37 @@
+using GustosApp.Application.Interfaces;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+
+namespace GustosApp.Infraestructure.Services;
+
+public sealed class BloqueoResolucionSolicitudSql(GustosDbContext db) : IBloqueoResolucionSolicitud
+{
+    public async Task<bool> IntentarAsync(Guid solicitudId, Func<CancellationToken, Task> trabajo, CancellationToken ct)
+    {
+        // El contexto de escritura queda separado de la transacción que sólo posee el bloqueo.
+        if (!db.Database.IsRelational())
+        {
+            await trabajo(ct);
+            return true;
+        }
+
+        await using var conexion = new SqlConnection(db.Database.GetConnectionString());
+        await conexion.OpenAsync(ct);
+        await using var transaccion = (SqlTransaction)await conexion.BeginTransactionAsync(ct);
+        await using var comando = conexion.CreateCommand();
+        comando.Transaction = transaccion;
+        comando.CommandText = """
+            DECLARE @resultado int;
+            EXEC @resultado = sys.sp_getapplock @Resource=@recurso, @LockMode='Exclusive',
+                @LockOwner='Transaction', @LockTimeout=0, @DbPrincipal='public';
+            SELECT @resultado;
+            """;
+        comando.Parameters.AddWithValue("@recurso", $"gustos:resolucion-solicitud:{solicitudId:N}");
+        var resultado = (int)(await comando.ExecuteScalarAsync(ct))!;
+        if (resultado == -1) return false;
+        if (resultado < 0) throw new InvalidOperationException("No se pudo obtener el bloqueo de la solicitud.");
+        await trabajo(ct);
+        await transaccion.CommitAsync(ct);
+        return true;
+    }
+}

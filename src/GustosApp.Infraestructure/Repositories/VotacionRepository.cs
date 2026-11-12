@@ -56,8 +56,20 @@ namespace GustosApp.Infraestructure.Repositories
         {
             return await _context.Votaciones
                 .Include(v => v.Participantes)
+                    .ThenInclude(p => p.Usuario)
+                        .ThenInclude(u => u.Restricciones)
+                            .ThenInclude(r => r.TagsProhibidos)
+                .Include(v => v.Participantes)
+                    .ThenInclude(p => p.Usuario)
+                        .ThenInclude(u => u.CondicionesMedicas)
+                            .ThenInclude(c => c.TagsCriticos)
                 .Include(v => v.RestaurantesCandidatos)
                     .ThenInclude(rc => rc.Restaurante)
+                        .ThenInclude(r => r.GustosQueSirve)
+                            .ThenInclude(g => g.Tags)
+                .Include(v => v.RestaurantesCandidatos)
+                    .ThenInclude(rc => rc.Restaurante)
+                        .ThenInclude(r => r.RestriccionesQueRespeta)
                 .Include(v => v.Votos)
                     .ThenInclude(vo => vo.Usuario)
                 .Include(v => v.Votos)
@@ -65,6 +77,7 @@ namespace GustosApp.Infraestructure.Repositories
                 .Include(v => v.Grupo)
                     .ThenInclude(g => g.Miembros)
                         .ThenInclude(m => m.Usuario)
+                .AsSplitQuery()
                 .Where(v => v.GrupoId == grupoId && v.Estado == EstadoVotacion.Activa)
                 .OrderByDescending(v => v.FechaInicio)
                 .FirstOrDefaultAsync(ct);

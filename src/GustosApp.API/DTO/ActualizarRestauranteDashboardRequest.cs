@@ -42,6 +42,11 @@ namespace GustosApp.API.DTO
         public List<Guid>? RestriccionesQueRespetaIds { get; set; }
     }
 
+    public sealed class ConfirmarVigenciaRestauranteRequest
+    {
+        public int VersionEsperada { get; set; }
+    }
+
     public sealed class PublicarBorradorMenuRequest
     {
         [JsonPropertyName("token")]

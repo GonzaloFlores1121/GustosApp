@@ -35,7 +35,9 @@ namespace GustosApp.Infraestructure.Repositories
      => _db.Usuarios
          .Include(u => u.Gustos)
          .Include(u => u.Restricciones)
+            .ThenInclude(r => r.TagsProhibidos)
          .Include(u => u.CondicionesMedicas)
+            .ThenInclude(c => c.TagsCriticos)
          .Include(u => u.Visitados)
          .FirstOrDefaultAsync(u => u.IdUsuario == username, ct);
 
@@ -100,7 +102,7 @@ namespace GustosApp.Infraestructure.Repositories
             return await _db.Usuarios
                 .Where(u => u.Id != excludeId &&
                             u.Activo &&
-                            u.Rol == RolUsuario.Usuario && 
+                            u.Rol != RolUsuario.Admin &&
                             u.IdUsuario.ToLower().Contains(normalized))
                 .OrderBy(u => u.IdUsuario)
                 .Take(50)

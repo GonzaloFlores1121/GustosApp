@@ -44,6 +44,8 @@ namespace GustosApp.Domain.Interfaces
         Task <List<Restaurante>> BuscarPorPrefijo(string prefijo, CancellationToken ct = default);
    
         Task<List<Restaurante>> BuscarPorTextoAsync(string texto, CancellationToken ct = default);
+        Task<List<LocalCercano>> BuscarLocalesEnVentanaAsync(
+            double latitud, double longitud, double amplitudLatitud, double amplitudLongitud, CancellationToken ct);
         Task<List<Restaurante>> obtenerRestauranteConResenias(List<Guid> ids);
     }
 }

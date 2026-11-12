@@ -4,6 +4,13 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
 using Moq;
+using System.Text;
+using UglyToad.PdfPig.Writer;
+using UglyToad.PdfPig;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Jpeg;
 
 namespace GustosApp.Application.Tests;
 
@@ -16,8 +23,44 @@ public class ReclamarRestaurantePruebas
     private readonly Usuario usuario = new() { Id = Guid.NewGuid(), FirebaseUid = "solicitante", Rol = RolUsuario.Usuario };
     private readonly Restaurante restaurante = new() { Id = Guid.NewGuid(), Nombre = "Importado", PlaceId = "google-id" };
 
-    private static readonly byte[] PdfValido = "%PDF-1.4\ncomprobante\n%%EOF"u8.ToArray();
+    private static readonly byte[] PdfValido = CrearPdfValido();
+    private static byte[] CrearPdfValido()
+    {
+        var builder = new PdfDocumentBuilder();
+        builder.AddPage(UglyToad.PdfPig.Content.PageSize.A4);
+        return builder.Build();
+    }
     private static DatosReclamo DatosValidos() => new("Ana Pérez", "Propietaria", "1122334455", true, PdfValido, "prueba.pdf");
+
+    [Theory]
+    [InlineData("prueba.png", "\u0089PNG\r\n\u001a\ntextoIEND")]
+    [InlineData("prueba.jpg", "\u00ff\u00d8\u00fftexto\u00ff\u00d9")]
+    public void ComprobanteConFirmaFalsaNoSeAcepta(string nombre, string contenido)
+    {
+        var datos = DatosValidos() with { NombreComprobante = nombre, Comprobante = Encoding.Latin1.GetBytes(contenido) };
+        Assert.Throws<ArgumentException>(() => datos.Validar());
+    }
+
+    [Theory]
+    [InlineData("prueba.png", "image/png")]
+    [InlineData("prueba.jpg", "image/jpeg")]
+    public void ComprobanteImagenRealSeAcepta(string nombre, string esperado)
+    {
+        using var imagen = new Image<Rgba32>(2, 2);
+        using var contenido = new MemoryStream();
+        if (esperado == "image/png") imagen.Save(contenido, new PngEncoder());
+        else imagen.Save(contenido, new JpegEncoder());
+        var datos = DatosValidos() with { NombreComprobante = nombre, Comprobante = contenido.ToArray() };
+        Assert.Equal(esperado, datos.Validar());
+    }
+
+    [Fact]
+    public void PdfConAccionEscapadaNoSeAcepta()
+    {
+        var malicioso = PdfValido.Concat("\n/J#61vaScript\n%%EOF"u8.ToArray()).ToArray();
+        var datos = DatosValidos() with { Comprobante = malicioso };
+        Assert.Throws<ArgumentException>(() => datos.Validar());
+    }
 
     [Theory]
     [InlineData("nombre")]
@@ -124,6 +167,21 @@ public class ReclamarRestaurantePruebas
         var pendiente = new SolicitudRestaurante { Id = Guid.NewGuid() };
         solicitudes.Setup(r => r.BuscarReclamoPendienteAsync(usuario.Id, restaurante.Id, default)).ReturnsAsync(pendiente);
         Assert.Equal(pendiente.Id, await caso.HandleAsync(usuario.FirebaseUid, restaurante.Id, default, DatosValidos()));
+        solicitudes.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
+        firebase.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Reclamar_PreseleccionObsoletaConDueño_NoReutilizaNiCreaSolicitud()
+    {
+        var caso = CrearCaso();
+        restaurante.PropietarioUid = "dueno-asignado-despues-de-buscar";
+        solicitudes.Setup(r => r.BuscarReclamoPendienteAsync(usuario.Id, restaurante.Id, default))
+            .ReturnsAsync(new SolicitudRestaurante { Id = Guid.NewGuid() });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            caso.HandleAsync(usuario.FirebaseUid, restaurante.Id, default, DatosValidos()));
+
         solicitudes.Verify(r => r.AddAsync(It.IsAny<SolicitudRestaurante>(), default), Times.Never);
         firebase.VerifyNoOtherCalls();
     }

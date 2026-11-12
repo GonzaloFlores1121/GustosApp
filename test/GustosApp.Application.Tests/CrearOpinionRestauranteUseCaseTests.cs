@@ -168,7 +168,7 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(false);
 
             _fileStorage.Setup(f =>
-                    f.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), "opiniones"))
+                    f.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.Is<string>(s => s.StartsWith("opiniones/"))))
                 .ReturnsAsync("url_subida");
 
             OpinionRestaurante? guardada = null;
@@ -205,7 +205,7 @@ namespace GustosApp.Application.Tests
             guardada.Fotos[0].Url.Should().Be("url_subida");
 
             _fileStorage.Verify(f =>
-                f.UploadFileAsync(It.IsAny<Stream>(), "foto1", "opiniones"),
+                f.UploadFileAsync(It.IsAny<Stream>(), "foto1", $"opiniones/{guardada.Id:N}"),
                 Times.Once);
 
             _repoOpinionRest.Verify(r =>
@@ -223,7 +223,7 @@ namespace GustosApp.Application.Tests
             var restId = Guid.NewGuid();
             _repoUsuario.Setup(r => r.GetByFirebaseUidAsync("uid", default)).ReturnsAsync(user);
             _repoOpinionRest.Setup(r => r.ExisteValoracionAsync(user.Id, restId, default)).ReturnsAsync(false);
-            _fileStorage.Setup(f => f.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), "opiniones"))
+            _fileStorage.Setup(f => f.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.Is<string>(s => s.StartsWith("opiniones/"))))
                 .ReturnsAsync("url_subida");
             _repoUsuario.Setup(r => r.MarcarRestauranteComoVisitadoAsync(user.Id, restId, default))
                 .ThrowsAsync(new InvalidOperationException("fallo persistiendo visita"));
@@ -232,7 +232,7 @@ namespace GustosApp.Application.Tests
                 "uid", restId, 5, "Muy bueno", "Cena", new List<FileUpload> { FakeFile("foto") },
                 null, DateTime.UtcNow, default));
 
-            _fileStorage.Verify(f => f.DeleteFileAsync("url_subida"), Times.Once);
+            _fileStorage.Verify(f => f.ScheduleCleanupAsync("url_subida", It.Is<string>(s => s.StartsWith("opiniones/"))), Times.Once);
         }
 
         [Fact]

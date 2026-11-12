@@ -100,10 +100,11 @@ namespace GustosApp.Application.Tests
             var usuario = CrearUsuario(
                 gustos: ["Picante"],
                 restricciones: ["Sin gluten"],
-                condiciones: ["Enfermedad celíaca"]);
+                condiciones: []);
             var restaurante = CrearRestaurante(
                 gustos: ["Picante"],
                 restricciones: ["Sin gluten"]);
+            restaurante.ConfirmarRestriccionesDeclaradas(0, DateTime.UtcNow);
             var casoDeUso = CrearCasoDeUso();
 
             var resultado = await casoDeUso.Handle(
@@ -172,10 +173,19 @@ namespace GustosApp.Application.Tests
             {
                 Gustos = (gustos ?? []).Select(nombre => new Gusto { Nombre = nombre }).ToList(),
                 Restricciones = (restricciones ?? [])
-                    .Select(nombre => new Restriccion { Nombre = nombre })
+                    .Select(nombre => new Restriccion
+                    {
+                        Nombre = nombre,
+                        TagsProhibidos = nombre == "Sin gluten" ? [new Tag { Nombre = "Gluten" }] : []
+                    })
                     .ToList(),
                 CondicionesMedicas = (condiciones ?? [])
-                    .Select(nombre => new CondicionMedica { Nombre = nombre })
+                    .Select(nombre => new CondicionMedica
+                    {
+                        Nombre = nombre,
+                        TagsCriticos = nombre == "Enfermedad celíaca" ? [new Tag { Nombre = "Gluten" }] :
+                            nombre == "Alergia al huevo" ? [new Tag { Nombre = "Huevos" }] : []
+                    })
                     .ToList()
             };
         }

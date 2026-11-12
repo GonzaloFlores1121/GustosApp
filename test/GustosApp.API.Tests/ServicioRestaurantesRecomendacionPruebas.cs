@@ -183,8 +183,8 @@ namespace GustosApp.API.Tests.Servicios
             recomendado.Id.Should().Be(restaurante.Id);
             recomendado.MenuProcesado.Should().BeFalse();
             recomendado.GustosQueSirve.Should().ContainSingle(gusto => gusto.Id == pizza.Id);
-            recomendado.OrigenDatosCompatibilidad.Should().Be(
-                OrigenDatosCompatibilidadRestaurante.Administracion);
+            recomendado.FechaRevisionOfertaUtc.Should().BeNull();
+            recomendado.ObtenerEstadoOferta(DateTime.UtcNow).Should().Be(EstadoVigenciaInformacion.SinFecha);
         }
 
         [Fact]
@@ -238,7 +238,8 @@ namespace GustosApp.API.Tests.Servicios
                 new UsuarioPreferencias
                 {
                     Gustos = ["Pizza"],
-                    Restricciones = ["Sin gluten"]
+                    Restricciones = ["Sin gluten"],
+                    ReglasCompatibilidad = [new(Guid.Empty, true, ["gluten"])]
                 },
                 candidatos);
 

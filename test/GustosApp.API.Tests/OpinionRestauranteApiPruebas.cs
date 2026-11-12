@@ -19,7 +19,7 @@ public class OpinionRestauranteApiPruebas
     {
         var almacenamiento = new Mock<IFileStorageService>();
         almacenamiento
-            .Setup(a => a.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), "opiniones"))
+            .Setup(a => a.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.Is<string>(s => s.StartsWith("opiniones/"))))
             .ReturnsAsync((Stream _, string nombre, string? _) => $"https://archivos.test/{nombre}");
 
         await using var baseFabrica = new FabricaApiGustosAppVotacion();

@@ -57,6 +57,12 @@ namespace GustosApp.API.DTO
         public string EstadoDatosCompatibilidad { get; set; } = "Estimado";
         public DateTime? FechaObtencionDatosCompatibilidadUtc { get; set; }
         public DateTime? FechaUltimaVerificacionDatosCompatibilidadUtc { get; set; }
+        public string EstadoOferta { get; set; } = "SinFecha";
+        public string EstadoRestricciones { get; set; } = "SinFecha";
+        public DateTime? FechaRevisionOfertaUtc { get; set; }
+        public DateTime? FechaRevisionRestriccionesUtc { get; set; }
+        public int VersionOferta { get; set; }
+        public int VersionRestricciones { get; set; }
         public string? Tipo { get; set; }
 
 
@@ -153,6 +159,7 @@ namespace GustosApp.API.DTO
     }
     public class CrearRestauranteDto
     {
+        public bool DeclaroOtroLocal { get; set; }
         public string? Nombre { get; set; } = default!;
         public string Direccion { get; set; } = default!;
 
@@ -209,6 +216,12 @@ namespace GustosApp.API.DTO
         public double Longitud { get; set; }
 
         public string? WebUrl { get; set; }
+        public string EstadoOferta { get; set; } = "SinFecha";
+        public string EstadoRestricciones { get; set; } = "SinFecha";
+        public DateTime? FechaRevisionOfertaUtc { get; set; }
+        public DateTime? FechaRevisionRestriccionesUtc { get; set; }
+        public int VersionOferta { get; set; }
+        public int VersionRestricciones { get; set; }
 
         public double? Rating { get; set; }
         public double? RatingCalculado { get; set; }
@@ -226,9 +239,12 @@ namespace GustosApp.API.DTO
         // IMÁGENES
         // ==================
         public string? LogoUrl { get; set; }          // Tipo 4
+        public string OrigenLogo { get; set; } = "Desconocida";
+        public string OrigenImagen { get; set; } = "Desconocida";
         public string? ImagenDestacada { get; set; }  // Tipo 0
         public List<string> ImagenesInterior { get; set; } = new();
         public List<string> ImagenesComida { get; set; } = new();
+        public List<ImagenGaleriaDto> ImagenesGaleria { get; set; } = new();
         public string? ImagenMenu { get; set; }
 
         // ==================
@@ -252,6 +268,15 @@ namespace GustosApp.API.DTO
         public bool esFavorito { get; set; }
 
     }
+    public sealed class ImagenGaleriaDto
+    {
+        public string Origen { get; set; } = "Desconocida";
+        public Guid Id { get; set; }
+        public string Url { get; set; } = "";
+        public int Tipo { get; set; }
+        public int? Orden { get; set; }
+    }
+
     public class RestauranteMenuDto
     {
         [JsonPropertyName("nombreMenu")]

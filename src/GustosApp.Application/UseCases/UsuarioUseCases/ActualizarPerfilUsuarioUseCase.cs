@@ -7,6 +7,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using Microsoft.Extensions.Logging;
 
 namespace GustosApp.Application.UseCases.UsuarioUseCases
 {
@@ -14,32 +15,26 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
     {
         private readonly IUsuarioRepository _usuarios;
         private readonly IFileStorageService _files;
-        private readonly IFirebaseAuthService _firebase;
+        private readonly ILogger<ActualizarPerfilUsuarioUseCase>? _logger;
 
         public ActualizarPerfilUsuarioUseCase(
             IUsuarioRepository usuarios,
             IFileStorageService files,
-            IFirebaseAuthService firebase)
+            ILogger<ActualizarPerfilUsuarioUseCase>? logger = null)
         {
             _usuarios = usuarios;
             _files = files;
-            _firebase = firebase;
+            _logger = logger;
         }
 
         public async Task<Usuario> HandleAsync(
-            string firebaseUid, string? email, string? nombre, string? apellido,
+            string firebaseUid, string? nombre, string? apellido,
             FileUpload? fotoPerfil, bool? esPrivado,
             CancellationToken ct = default)
         {
             var usuario = await _usuarios.GetByFirebaseUidAsync(firebaseUid, ct);
             if (usuario == null)
                 throw new Exception("Usuario no encontrado");
-
-            if (!string.IsNullOrWhiteSpace(email) && email != usuario.Email)
-            {
-                await _firebase.UpdateUserEmailAsync(firebaseUid, email);
-                usuario.Email = email;
-            }
 
             if (!string.IsNullOrWhiteSpace(nombre))
                 usuario.Nombre = nombre;
@@ -51,6 +46,7 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 usuario.EsPrivado = esPrivado.Value;
 
             var fotoAnterior = usuario.FotoPerfilUrl;
+            var carpeta = $"perfil/{usuario.Id:N}";
             string? fotoNueva = null;
             try
             {
@@ -59,7 +55,7 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                     fotoNueva = await _files.UploadFileAsync(
                         fotoPerfil.Content,
                         fotoPerfil.FileName,
-                        "perfil"
+                        carpeta
                     );
 
                     usuario.FotoPerfilUrl = fotoNueva;
@@ -72,7 +68,13 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 usuario.FotoPerfilUrl = fotoAnterior;
                 if (!string.IsNullOrWhiteSpace(fotoNueva))
                 {
-                    try { await _files.DeleteFileAsync(fotoNueva); } catch { }
+                    // El almacenamiento sólo elimina si la URL no quedó referenciada,
+                    // incluso cuando el commit fue exitoso pero la respuesta falló.
+                    try { await _files.ScheduleCleanupAsync(fotoNueva, carpeta); }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "No se pudo programar la limpieza de la foto nueva de {UsuarioId}.", usuario.Id);
+                    }
                 }
                 throw;
             }
@@ -81,7 +83,11 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 !string.IsNullOrWhiteSpace(fotoAnterior) &&
                 !string.Equals(fotoNueva, fotoAnterior, StringComparison.Ordinal))
             {
-                try { await _files.DeleteFileAsync(fotoAnterior); } catch { }
+                try { await _files.DeleteFileAsync(fotoAnterior, carpeta); }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Falló la eliminación de la foto anterior del usuario {UsuarioId}.", usuario.Id);
+                }
             }
 
             return usuario;

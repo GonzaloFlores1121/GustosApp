@@ -3,6 +3,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using Microsoft.Extensions.Logging;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurantes;
 
@@ -32,17 +33,20 @@ public sealed class ActualizarOpinionRestauranteUseCase
     private readonly IOpinionRestauranteRepository _opiniones;
     private readonly IUsuarioRepository _usuarios;
     private readonly ActualizarValoracionRestauranteUseCase? _actualizarValoracion;
+    private readonly ILogger<ActualizarOpinionRestauranteUseCase>? _logger;
 
     public ActualizarOpinionRestauranteUseCase(
         IFileStorageService archivos,
         IOpinionRestauranteRepository opiniones,
         IUsuarioRepository usuarios,
-        ActualizarValoracionRestauranteUseCase? actualizarValoracion = null)
+        ActualizarValoracionRestauranteUseCase? actualizarValoracion = null,
+        ILogger<ActualizarOpinionRestauranteUseCase>? logger = null)
     {
         _archivos = archivos;
         _opiniones = opiniones;
         _usuarios = usuarios;
         _actualizarValoracion = actualizarValoracion;
+        _logger = logger;
     }
 
     public async Task HandleAsync(
@@ -80,11 +84,12 @@ public sealed class ActualizarOpinionRestauranteUseCase
 
         var fotosQuitadas = existente.Fotos.Where(f => !conservar.Contains(f.Id)).ToList();
         var urlsNuevas = new List<string>();
+        var persistenciaIntentada = false;
         try
         {
             foreach (var archivo in nuevas)
             {
-                var url = await _archivos.UploadFileAsync(archivo.Content, archivo.FileName, "opiniones");
+                var url = await _archivos.UploadFileAsync(archivo.Content, archivo.FileName, $"opiniones/{opinionId:N}");
                 urlsNuevas.Add(url);
                 existente.Fotos.Add(new OpinionFoto { Id = Guid.NewGuid(), Url = url });
             }
@@ -98,6 +103,7 @@ public sealed class ActualizarOpinionRestauranteUseCase
             existente.MotivoVisita = motivoVisita;
             existente.FechaVisita = fechaVisita;
 
+            persistenciaIntentada = true;
             await _opiniones.ActualizarAsync(existente, ct);
             if (_actualizarValoracion != null)
                 await _actualizarValoracion.HandleAsync(existente.RestauranteId, ct);
@@ -106,8 +112,15 @@ public sealed class ActualizarOpinionRestauranteUseCase
         {
             foreach (var url in urlsNuevas)
             {
-                try { await _archivos.DeleteFileAsync(url); } catch { }
+                try { await _archivos.ScheduleCleanupAsync(url, $"opiniones/{opinionId:N}"); }
+                catch (Exception ex) { _logger?.LogWarning(ex, "Falló limpieza de foto de opinión {OpinionId}.", opinionId); }
             }
+            if (persistenciaIntentada)
+                foreach (var foto in fotosQuitadas)
+                {
+                    try { await _archivos.ScheduleCleanupAsync(foto.Url, $"opiniones/{opinionId:N}"); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "Falló limpieza de foto reemplazada de opinión {OpinionId}.", opinionId); }
+                }
             throw;
         }
 
@@ -115,7 +128,7 @@ public sealed class ActualizarOpinionRestauranteUseCase
         {
             if (!await _opiniones.FotoEstaReferenciadaAsync(foto.Url, ct))
             {
-                try { await _archivos.DeleteFileAsync(foto.Url); } catch { }
+                await _archivos.DeleteFileAsync(foto.Url, $"opiniones/{opinionId:N}");
             }
         }
     }
@@ -127,17 +140,20 @@ public sealed class EliminarOpinionRestauranteUseCase
     private readonly IOpinionRestauranteRepository _opiniones;
     private readonly IUsuarioRepository _usuarios;
     private readonly ActualizarValoracionRestauranteUseCase? _actualizarValoracion;
+    private readonly ILogger<EliminarOpinionRestauranteUseCase>? _logger;
 
     public EliminarOpinionRestauranteUseCase(
         IFileStorageService archivos,
         IOpinionRestauranteRepository opiniones,
         IUsuarioRepository usuarios,
-        ActualizarValoracionRestauranteUseCase? actualizarValoracion = null)
+        ActualizarValoracionRestauranteUseCase? actualizarValoracion = null,
+        ILogger<EliminarOpinionRestauranteUseCase>? logger = null)
     {
         _archivos = archivos;
         _opiniones = opiniones;
         _usuarios = usuarios;
         _actualizarValoracion = actualizarValoracion;
+        _logger = logger;
     }
 
     public async Task HandleAsync(string firebaseUid, Guid opinionId, CancellationToken ct)
@@ -153,15 +169,27 @@ public sealed class EliminarOpinionRestauranteUseCase
             throw new AccesoProhibidoException("Sólo el autor puede eliminar esta reseña.");
 
         var urls = existente.Fotos.Select(f => f.Url).Distinct().ToList();
-        await _opiniones.EliminarAsync(existente, ct);
-        if (_actualizarValoracion != null)
-            await _actualizarValoracion.HandleAsync(existente.RestauranteId, ct);
+        try
+        {
+            await _opiniones.EliminarAsync(existente, ct);
+            if (_actualizarValoracion != null)
+                await _actualizarValoracion.HandleAsync(existente.RestauranteId, ct);
+        }
+        catch
+        {
+            foreach (var url in urls)
+            {
+                try { await _archivos.ScheduleCleanupAsync(url, $"opiniones/{opinionId:N}"); }
+                catch (Exception ex) { _logger?.LogWarning(ex, "Falló limpieza de foto eliminada de opinión {OpinionId}.", opinionId); }
+            }
+            throw;
+        }
 
         foreach (var url in urls)
         {
             if (!await _opiniones.FotoEstaReferenciadaAsync(url, ct))
             {
-                try { await _archivos.DeleteFileAsync(url); } catch { }
+                await _archivos.DeleteFileAsync(url, $"opiniones/{opinionId:N}");
             }
         }
     }

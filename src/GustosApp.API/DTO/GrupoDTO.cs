@@ -97,7 +97,6 @@ namespace GustosApp.API.DTO
         public Guid UsuarioId { get; set; }
         public string? UsuarioFirebaseUid { get; set; }
         public string UsuarioNombre { get; set; } = string.Empty;
-        public string UsuarioEmail { get; set; } = string.Empty;
         public string UsuarioUsername { get; set; } = string.Empty;
         public DateTime FechaUnion { get; set; }
         public bool EsAdministrador { get; set; }
@@ -111,7 +110,6 @@ namespace GustosApp.API.DTO
             Guid usuarioId,
             string? usuarioFirebaseUid,
             string usuarioNombre,
-            string usuarioEmail,
             string usuarioUsername,
             DateTime fechaUnion,
             bool esAdministrador,
@@ -122,7 +120,6 @@ namespace GustosApp.API.DTO
             UsuarioId = usuarioId;
             UsuarioFirebaseUid = usuarioFirebaseUid;
             UsuarioNombre = usuarioNombre;
-            UsuarioEmail = usuarioEmail;
             UsuarioUsername = usuarioUsername;
             FechaUnion = fechaUnion;
             EsAdministrador = esAdministrador;
@@ -165,7 +162,6 @@ namespace GustosApp.API.DTO
         public string GrupoNombre { get; set; } = string.Empty;
         public Guid UsuarioInvitadoId { get; set; }
         public string UsuarioInvitadoNombre { get; set; } = string.Empty;
-        public string UsuarioInvitadoEmail { get; set; } = string.Empty;
         public Guid UsuarioInvitadorId { get; set; }
         public string UsuarioInvitadorNombre { get; set; } = string.Empty;
         public DateTime FechaInvitacion { get; set; }
@@ -182,7 +178,6 @@ namespace GustosApp.API.DTO
             string grupoNombre,
             Guid usuarioInvitadoId,
             string usuarioInvitadoNombre,
-            string usuarioInvitadoEmail,
             Guid usuarioInvitadorId,
             string usuarioInvitadorNombre,
             DateTime fechaInvitacion,
@@ -196,7 +191,6 @@ namespace GustosApp.API.DTO
             GrupoNombre = grupoNombre;
             UsuarioInvitadoId = usuarioInvitadoId;
             UsuarioInvitadoNombre = usuarioInvitadoNombre;
-            UsuarioInvitadoEmail = usuarioInvitadoEmail;
             UsuarioInvitadorId = usuarioInvitadorId;
             UsuarioInvitadorNombre = usuarioInvitadorNombre;
             FechaInvitacion = fechaInvitacion;

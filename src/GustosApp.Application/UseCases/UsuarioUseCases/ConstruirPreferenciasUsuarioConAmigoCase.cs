@@ -63,6 +63,10 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 CondicionesMedicas = prefsUser.CondicionesMedicas
                     .Concat(prefsAmigo.CondicionesMedicas)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                ReglasCompatibilidad = prefsUser.ReglasCompatibilidad
+                    .Concat(prefsAmigo.ReglasCompatibilidad)
+                    .DistinctBy(regla => (regla.Id, regla.EsRestriccion))
                     .ToList()
             };
         }

@@ -5,6 +5,7 @@ using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Infraestructure;
 using GustosApp.Infraestructure.Repositories;
+using GustosApp.Infraestructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 
@@ -96,19 +97,12 @@ public sealed class AprobacionReclamoPersistenciaPruebas
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var casoDeUso = new AprobarSolicitudRestauranteUseCase(
-            solicitudes,
-            restaurantes,
-            Mock.Of<IUsuarioRepository>(),
-            Mock.Of<IOcrService>(),
-            Mock.Of<IMenuParser>(),
-            Mock.Of<IRestriccionRepository>(),
-            Mock.Of<IGustoRepository>(),
-            Mock.Of<IRestauranteMenuRepository>(),
-            firebase.Object,
-            email.Object,
-            plantillas.Object,
-            Mock.Of<IHttpDownloader>());
+        var procesar = new ProcesarResolucionSolicitudUseCase(solicitudes, restaurantes,
+            new RestauranteMenuRepositoryEF(contexto), new BloqueoResolucionSolicitudSql(contexto),
+            Mock.Of<IHttpDownloader>(), Mock.Of<IOcrService>(), Mock.Of<IMenuParser>(), firebase.Object,
+            email.Object, plantillas.Object);
+        var casoDeUso = new AprobarSolicitudRestauranteUseCase(solicitudes, restaurantes,
+            Mock.Of<IRestriccionRepository>(), Mock.Of<IGustoRepository>(), procesar);
 
         var resultado = await casoDeUso.HandleAsync(solicitud.Id, CancellationToken.None);
 

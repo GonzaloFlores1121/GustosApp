@@ -152,7 +152,7 @@ namespace GustosApp.API.Controllers
 
 
         [HttpPost]
-        [RequestSizeLimit(50 * 1024 * 1024)]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -174,14 +174,33 @@ namespace GustosApp.API.Controllers
                     uid, dto.Nombre, dto.Direccion, dto.Lat, dto.Lng, dto.HorariosJson,
                     dto.GustosQueSirveIds, dto.RestriccionesQueRespetaIds,
                     imagenDestacada, imagenesInterior, imagenesComidas, imagenMenu, logo,
-                    dto.WebsiteUrl, ct);
+                    dto.WebsiteUrl, ct, dto.DeclaroOtroLocal);
 
                 return Ok(response);
+            }
+            catch (SolicitudRestaurantePendienteException ex)
+            {
+                return Conflict(new { code = "SOLICITUD_PENDIENTE", message = ex.Message });
+            }
+            catch (DbUpdateException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 return BadRequest(new { error = ex.Message });
             }
+        }
+
+        [HttpGet("coincidencias-alta")]
+        [EnableRateLimiting("BusquedaRestaurantes")]
+        public async Task<IActionResult> CoincidenciasAlta(
+            [FromQuery] string? nombre, [FromQuery] string? direccion, [FromQuery] double? latitud,
+            [FromQuery] double? longitud, [FromServices] BuscarCoincidenciasAltaUseCase buscar, CancellationToken ct)
+        {
+            if (nombre?.Length > 160 || direccion?.Length > 300)
+                return BadRequest(new { message = "Revisá el nombre y la dirección." });
+            return Ok(await buscar.HandleAsync(nombre, direccion, latitud, longitud, ct));
         }
 
 
@@ -259,6 +278,59 @@ namespace GustosApp.API.Controllers
             return Ok(detalle);
         }
 
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPost("{id:guid}/restricciones/sugerencias")]
+        public async Task<IActionResult> SugerirRestricciones(
+            Guid id, [FromBody] SugerirRestriccionesOfertaRequest request,
+            [FromServices] SugerirRestriccionesOfertaUseCase useCase, CancellationToken ct)
+        {
+            try
+            {
+                var resultado = await useCase.HandleAsync(id, await ObtenerUsuarioIdActualAsync(ct),
+                    request.GustoIds ?? [], ct);
+                return Ok(resultado);
+            }
+            catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+            catch (AccesoProhibidoException) { return Forbid(); }
+            catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPost("{id:guid}/confirmar-oferta")]
+        public async Task<IActionResult> ConfirmarOferta(
+            Guid id, [FromBody] ConfirmarVigenciaRestauranteRequest request,
+            [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
+        {
+            try
+            {
+                var actualizado = await useCase.ConfirmarOfertaAsync(id, request.VersionEsperada,
+                    await ObtenerUsuarioIdActualAsync(ct), false, ct);
+                return Ok(_mapper.Map<RestauranteDetalleDto>(actualizado));
+            }
+            catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+            catch (AccesoProhibidoException) { return Forbid(); }
+            catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+            catch (DbUpdateConcurrencyException) { return Conflict(new { error = "La oferta cambió; recargá la ficha antes de confirmarla." }); }
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPost("{id:guid}/confirmar-restricciones")]
+        public async Task<IActionResult> ConfirmarRestricciones(
+            Guid id, [FromBody] ConfirmarVigenciaRestauranteRequest request,
+            [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
+        {
+            try
+            {
+                var actualizado = await useCase.ConfirmarRestriccionesAsync(id, request.VersionEsperada,
+                    await ObtenerUsuarioIdActualAsync(ct), false, ct);
+                return Ok(_mapper.Map<RestauranteDetalleDto>(actualizado));
+            }
+            catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+            catch (AccesoProhibidoException) { return Forbid(); }
+            catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
+            catch (DbUpdateConcurrencyException) { return Conflict(new { error = "Las declaraciones cambiaron; recargá la ficha antes de confirmarlas." }); }
+        }
+
 
 
 
@@ -279,6 +351,7 @@ namespace GustosApp.API.Controllers
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/destacada")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -313,6 +386,7 @@ namespace GustosApp.API.Controllers
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/logo")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -347,6 +421,8 @@ namespace GustosApp.API.Controllers
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/interior")]
+        [HttpPost("{id:guid}/imagenes/interior")]
+        [RequestSizeLimit(30 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -359,16 +435,18 @@ namespace GustosApp.API.Controllers
             CancellationToken ct = default)
         {
             var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            if (request.SoloBorrar) return BadRequest(new { error = "Elegí la foto que querés eliminar." });
             var archivos = request.Archivos?.Select(a => new ArchivoEntrada(a.OpenReadStream(), a.FileName)).ToList();
-            var urls = await _actualizarImagenesUseCase.ActualizarImagenesColeccionAsync(
-                id, usuarioId, TipoImagenRestaurante.Interior, archivos, request.SoloBorrar, ct);
-
-            return Ok(new { imagenesInterior = urls });
+            var imagenes = await _actualizarImagenesUseCase.AgregarImagenesAsync(
+                id, usuarioId, TipoImagenRestaurante.Interior, archivos ?? [], ct);
+            return Ok(RespuestaGaleria(imagenes));
         }
 
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/comidas")]
+        [HttpPost("{id:guid}/imagenes/comidas")]
+        [RequestSizeLimit(30 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -381,16 +459,56 @@ namespace GustosApp.API.Controllers
             CancellationToken ct = default)
         {
             var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            if (request.SoloBorrar) return BadRequest(new { error = "Elegí la foto que querés eliminar." });
             var archivos = request.Archivos?.Select(a => new ArchivoEntrada(a.OpenReadStream(), a.FileName)).ToList();
-            var urls = await _actualizarImagenesUseCase.ActualizarImagenesColeccionAsync(
-                id, usuarioId, TipoImagenRestaurante.Comida, archivos, request.SoloBorrar, ct);
-
-            return Ok(new { imagenesComida = urls });
+            var imagenes = await _actualizarImagenesUseCase.AgregarImagenesAsync(
+                id, usuarioId, TipoImagenRestaurante.Comida, archivos ?? [], ct);
+            return Ok(RespuestaGaleria(imagenes));
         }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPut("{id:guid}/imagenes/{categoria}/{imagenId:guid}")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ReemplazarFoto(Guid id, string categoria, Guid imagenId,
+            [FromForm] ActualizarImagenRestauranteRequest request, CancellationToken ct)
+        {
+            if (request.Archivo is null || request.SoloBorrar) return BadRequest(new { error = "Elegí una foto para reemplazar." });
+            var tipo = TipoGaleria(categoria);
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            var imagenes = await _actualizarImagenesUseCase.ModificarImagenAsync(id, usuarioId, tipo, imagenId,
+                new ArchivoEntrada(request.Archivo.OpenReadStream(), request.Archivo.FileName), ct);
+            return Ok(RespuestaGaleria(imagenes));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpDelete("{id:guid}/imagenes/{categoria}/{imagenId:guid}")]
+        public async Task<IActionResult> EliminarFoto(Guid id, string categoria, Guid imagenId, CancellationToken ct)
+        {
+            var tipo = TipoGaleria(categoria);
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            var imagenes = await _actualizarImagenesUseCase.ModificarImagenAsync(id, usuarioId, tipo, imagenId, null, ct);
+            return Ok(RespuestaGaleria(imagenes));
+        }
+
+        private static TipoImagenRestaurante TipoGaleria(string categoria) => categoria switch
+        {
+            "interior" => TipoImagenRestaurante.Interior,
+            "comidas" => TipoImagenRestaurante.Comida,
+            _ => throw new ArgumentException("La categoría de fotos no es válida.")
+        };
+
+        private static object RespuestaGaleria(IEnumerable<RestauranteImagen> imagenes) => new
+        {
+            imagenesInterior = imagenes.Where(i => i.Tipo == TipoImagenRestaurante.Interior).Select(i => i.Url).ToList(),
+            imagenesComida = imagenes.Where(i => i.Tipo == TipoImagenRestaurante.Comida).Select(i => i.Url).ToList(),
+            imagenesGaleria = imagenes.Select(i => new ImagenGaleriaDto { Id = i.Id, Url = i.Url, Tipo = (int)i.Tipo, Orden = i.Orden, Origen = i.Origen.ToString() }).ToList()
+        };
 
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/menu")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -488,7 +606,7 @@ namespace GustosApp.API.Controllers
                 Categoria = r.Categoria,
                 Rating = r.Rating,
                 Direccion = r.Direccion,
-                ImagenUrl = string.IsNullOrWhiteSpace(r.ImagenUrl) ? "https://firebasestorage.googleapis.com/v0/b/gustosapp-5c3c9.firebasestorage.app/o/restauranteicono.jpg?alt=media&token=cb818ad4-78b0-4fbb-a13d-46ce1aa66ac1" : r.ImagenUrl
+                ImagenUrl = ImagenRestaurantePublica.Url(r.Id, r.ImagenUrl)
             }).ToList();
 
             return Ok(dto);

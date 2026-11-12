@@ -134,12 +134,14 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 if (compatibilidad == NivelCompatibilidadRestaurante.Incompatible)
                     continue;
 
-                var embeddingRest = ObtenerEmbeddingRestaurante(rest);
+                var opcionesPotenciales = _evaluadorCompatibilidad
+                    .ObtenerOpcionesSinConflictoConocido(usuario, rest);
+                var embeddingRest = ObtenerEmbeddingRestaurante(rest, opcionesPotenciales);
                 if (embeddingRest == null) continue;
 
                 var similitud = CosineSimilarity.Coseno(embeddingUsuario, embeddingRest);
 
-                double penalizacion = CalcularPenalizacion(usuario, rest);
+                double penalizacion = CalcularPenalizacion(usuario, rest, opcionesPotenciales);
 
                 double puntuacionFinal = similitud * (1 - penalizacion);
 
@@ -168,10 +170,11 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 .ToList();
         }
 
-        private static double CalcularPenalizacion(UsuarioPreferencias usuario, Restaurante rest)
+        private static double CalcularPenalizacion(UsuarioPreferencias usuario, Restaurante rest,
+            IReadOnlyCollection<Gusto> opcionesPotenciales)
         {
             int gustosFaltantes = usuario.Gustos.Count(g =>
-                !rest.GustosQueSirve.Any(e =>
+                !opcionesPotenciales.Any(e =>
                     e.Nombre != null &&
                     e.Nombre.Contains(g, StringComparison.OrdinalIgnoreCase)));
 
@@ -188,10 +191,11 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             return penalizacion;
         }
 
-        private float[] ObtenerEmbeddingRestaurante(Restaurante rest)
+        private float[] ObtenerEmbeddingRestaurante(Restaurante rest,
+            IReadOnlyCollection<Gusto> opcionesPotenciales)
         {
             var textoRestaurante = string.Join(" ",
-                rest.GustosQueSirve.Select(g => g.Nombre)
+                opcionesPotenciales.Select(g => g.Nombre)
                 .Concat(rest.RestriccionesQueRespeta.Select(r => r.Nombre))
                 .Where(s => !string.IsNullOrWhiteSpace(s))
             );

@@ -47,34 +47,17 @@ public sealed class GestionarBorradorMenuRestauranteUseCase
         try
         {
             using var stream = archivo.Stream;
-            urlNueva = await _archivos.UploadFileAsync(stream, archivo.FileName, "restaurantes/menus-borrador");
+            urlNueva = await _archivos.UploadFileAsync(stream, archivo.FileName, $"restaurantes/menus-borrador/{restauranteId:N}");
             return await CrearYProcesarAsync(restaurante, urlNueva, eliminarFuenteReemplazada: true, ct);
         }
         catch
         {
             if (!string.IsNullOrWhiteSpace(urlNueva))
             {
-                // Si el borrador alcanzó a persistirse, la imagen ya quedó referenciada y
-                // no debe eliminarse aunque el procesamiento o la respuesta se cancelen.
-                var estaReferenciada = true;
-                try
-                {
-                    var menu = await _menus.GetByRestauranteIdAsync(restauranteId, CancellationToken.None);
-                    estaReferenciada = string.Equals(
-                        menu?.BorradorImagenFuenteUrl,
-                        urlNueva,
-                        StringComparison.Ordinal);
-                }
-                catch
-                {
-                    // Ante una falla de persistencia desconocida es más seguro conservar
-                    // el archivo que dejar un borrador válido apuntando a una URL borrada.
-                }
-
-                if (!estaReferenciada)
-                {
-                    try { await _archivos.DeleteFileAsync(urlNueva); } catch { }
-                }
+                // El reintento diferido vuelve a verificar todas las referencias. Si el
+                // borrador llegó a persistirse, conservará la imagen.
+                try { await _archivos.ScheduleCleanupAsync(urlNueva, $"restaurantes/menus-borrador/{restauranteId:N}"); }
+                catch (Exception ex) { _logger?.LogWarning(ex, "No se pudo programar limpieza de menú {RestauranteId}.", restauranteId); }
             }
             throw;
         }
@@ -117,6 +100,7 @@ public sealed class GestionarBorradorMenuRestauranteUseCase
         var imagenAnterior = menu.PublicarBorrador(token, jsonRevisado, DateTime.UtcNow);
         restaurante.MenuProcesado = true;
         restaurante.MenuError = null;
+        restaurante.RegistrarCambioMenuPublicado();
         restaurante.ActualizadoUtc = DateTime.UtcNow;
         await _menus.UpdateAsync(menu, ct);
         await _restaurantes.SaveChangesAsync(ct);
@@ -124,7 +108,7 @@ public sealed class GestionarBorradorMenuRestauranteUseCase
         if (!string.IsNullOrWhiteSpace(imagenAnterior) &&
             !string.Equals(imagenAnterior, menu.ImagenFuentePublicadaUrl, StringComparison.Ordinal))
         {
-            try { await _archivos.DeleteFileAsync(imagenAnterior); } catch { }
+            await _archivos.DeleteFileAsync(imagenAnterior, $"restaurantes/menus-borrador/{restauranteId:N}");
         }
 
         return menu.ImagenFuentePublicadaUrl;
@@ -145,7 +129,7 @@ public sealed class GestionarBorradorMenuRestauranteUseCase
         if (!string.IsNullOrWhiteSpace(url) &&
             !string.Equals(url, menu.ImagenFuentePublicadaUrl, StringComparison.Ordinal))
         {
-            try { await _archivos.DeleteFileAsync(url); } catch { }
+            await _archivos.DeleteFileAsync(url, $"restaurantes/menus-borrador/{restauranteId:N}");
         }
     }
 
@@ -170,14 +154,14 @@ public sealed class GestionarBorradorMenuRestauranteUseCase
 
         var fuenteBorradorAnterior = menu.BorradorImagenFuenteUrl;
         var token = Guid.NewGuid();
-        menu.IniciarBorrador(token, url, DateTime.UtcNow);
+        menu.IniciarBorrador(token, url, DateTime.UtcNow, OrigenImagenRestaurante.Propietario);
         await _menus.UpdateAsync(menu, ct);
 
         if (eliminarFuenteReemplazada && !string.IsNullOrWhiteSpace(fuenteBorradorAnterior) &&
             !string.Equals(fuenteBorradorAnterior, menu.ImagenFuentePublicadaUrl, StringComparison.Ordinal) &&
             !string.Equals(fuenteBorradorAnterior, url, StringComparison.Ordinal))
         {
-            try { await _archivos.DeleteFileAsync(fuenteBorradorAnterior); } catch { }
+            await _archivos.DeleteFileAsync(fuenteBorradorAnterior, $"restaurantes/menus-borrador/{restaurante.Id:N}");
         }
 
         try

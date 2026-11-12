@@ -8,24 +8,26 @@ namespace GustosApp.Infraestructure.Services;
 public sealed class ActualizacionExternaRestaurantesHostedService(
     IServiceScopeFactory scopeFactory,
     IOptionsMonitor<ActualizacionExternaRestaurantesOptions> options,
-    ILogger<ActualizacionExternaRestaurantesHostedService> logger) : BackgroundService
+    ILogger<ActualizacionExternaRestaurantesHostedService> logger,
+    TimeProvider? timeProvider = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!options.CurrentValue.Habilitada)
-        {
-            logger.LogInformation("La actualización externa periódica de restaurantes está deshabilitada.");
-            return;
-        }
-
+        var intervalo = TimeSpan.FromMinutes(new ActualizacionExternaRestaurantesOptions().IntervaloMinutos);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var actualizador = scope.ServiceProvider.GetRequiredService<IActualizadorExternoRestaurantes>();
-                var procesados = await actualizador.ActualizarPendientesAsync(stoppingToken);
-                logger.LogInformation("Actualización externa finalizada. Restaurantes procesados: {Cantidad}", procesados);
+                var configuracion = options.CurrentValue;
+                intervalo = TimeSpan.FromMinutes(configuracion.IntervaloMinutos);
+                if (configuracion.Habilitada)
+                {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var actualizador = scope.ServiceProvider.GetRequiredService<IActualizadorExternoRestaurantes>();
+                    var resultado = await actualizador.ActualizarPendientesAsync(stoppingToken);
+                    logger.LogInformation("Actualización externa finalizada. Intentados: {Intentados}; exitosos: {Exitosos}; fallidos: {Fallidos}; omitidos: {Omitidos}",
+                        resultado.Intentados, resultado.Exitosos, resultado.Fallidos, resultado.Omitidos);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -33,11 +35,12 @@ public sealed class ActualizacionExternaRestaurantesHostedService(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Falló la ejecución periódica de actualización externa.");
+                logger.LogError("Falló la ejecución periódica de actualización externa. Tipo: {TipoError}", ex.GetType().Name);
             }
 
-            var intervalo = TimeSpan.FromMinutes(options.CurrentValue.IntervaloMinutos);
-            await Task.Delay(intervalo, stoppingToken);
+            // Ante una recarga inválida, no ejecutar y reintentar con el último intervalo válido.
+            try { await Task.Delay(intervalo, timeProvider ?? TimeProvider.System, stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 }

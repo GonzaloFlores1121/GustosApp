@@ -49,7 +49,9 @@ public class FabricaApiGustosApp : WebApplicationFactory<Program>
                 ["ConnectionStrings:DefaultConnection"] = "Server=localhost;Database=GustosAppTests;User Id=sa;Password=NotARealPassword1!;TrustServerCertificate=True",
                 ["ConnectionStrings:Redis"] = "localhost:6379",
                 ["GeminiSettings:ApiKey"] = "clave-pruebas-integracion",
-                ["GeminiSettings:BaseUrl"] = "https://example.invalid"
+                ["GeminiSettings:BaseUrl"] = "https://example.invalid",
+                ["ActualizacionExternaRestaurantes:Habilitada"] = "false",
+                ["FileCleanup:IntervalMinutes"] = "1440"
             });
         });
         constructor.ConfigureTestServices(servicios =>

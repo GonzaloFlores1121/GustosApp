@@ -12,6 +12,7 @@ namespace GustosApp.Domain.Model
 
         public TipoImagenRestaurante Tipo { get; set; }
         public string Url { get; set; } = string.Empty;
+        public Common.OrigenImagenRestaurante Origen { get; set; } = Common.OrigenImagenRestaurante.Desconocida;
         public int? Orden { get; set; }
         public DateTime FechaCreacionUtc { get; set; } = DateTime.UtcNow;
     }

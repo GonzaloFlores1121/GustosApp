@@ -7,8 +7,10 @@ namespace GustosApp.Infraestructure.Services;
 
 public interface IActualizadorExternoRestaurantes
 {
-    Task<int> ActualizarPendientesAsync(CancellationToken ct);
+    Task<ResultadoLoteActualizacionExterna> ActualizarPendientesAsync(CancellationToken ct);
 }
+
+public sealed record ResultadoLoteActualizacionExterna(int Intentados, int Exitosos, int Fallidos, int Omitidos);
 
 public sealed class ActualizadorExternoRestaurantes(
     GustosDbContext db,
@@ -16,28 +18,42 @@ public sealed class ActualizadorExternoRestaurantes(
     IOptionsSnapshot<ActualizacionExternaRestaurantesOptions> options,
     ILogger<ActualizadorExternoRestaurantes> logger) : IActualizadorExternoRestaurantes
 {
-    public async Task<int> ActualizarPendientesAsync(CancellationToken ct)
+    public async Task<ResultadoLoteActualizacionExterna> ActualizarPendientesAsync(CancellationToken ct)
     {
         var configuracion = options.Value;
+        if (!configuracion.Habilitada) return new(0, 0, 0, 0);
         var limiteAntiguedad = DateTime.UtcNow.AddMinutes(-configuracion.IntervaloMinutos);
-        var placeIds = await db.Restaurantes
+        var ids = await db.Restaurantes
             .AsNoTracking()
-            .Where(r => !string.IsNullOrWhiteSpace(r.PlaceId) &&
+            .Where(r => !string.IsNullOrWhiteSpace(r.PlaceId) && !r.DuenoId.HasValue &&
+                string.IsNullOrWhiteSpace(r.PropietarioUid) &&
                 (!r.FechaUltimoIntentoActualizacionExternaUtc.HasValue ||
                  r.FechaUltimoIntentoActualizacionExternaUtc < limiteAntiguedad))
             .OrderBy(r => r.FechaUltimoIntentoActualizacionExternaUtc)
             .ThenBy(r => r.Id)
-            .Select(r => r.PlaceId)
+            .Select(r => r.Id)
             .Take(configuracion.TamanoLote)
             .ToListAsync(ct);
 
-        var procesados = 0;
-        foreach (var placeId in placeIds)
+        var intentados = 0;
+        var exitosos = 0;
+        var fallidos = 0;
+        var omitidos = 0;
+        foreach (var id in ids)
         {
+            ct.ThrowIfCancellationRequested();
+            if (!options.Value.Habilitada) break;
+            intentados++;
             try
             {
-                await servicioRestaurantes.ObtenerResenasDesdeGooglePlaces(placeId, ct);
-                procesados++;
+                var resultado = await servicioRestaurantes.ActualizarImportadoDesdeGooglePlacesAsync(id, ct);
+                switch (resultado)
+                {
+                    case ResultadoActualizacionExternaRestaurante.Exitosa: exitosos++; break;
+                    case ResultadoActualizacionExternaRestaurante.Fallida: fallidos++; break;
+                    case ResultadoActualizacionExternaRestaurante.Omitida: omitidos++; break;
+                    default: throw new InvalidOperationException("Resultado de actualización desconocido.");
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -45,10 +61,11 @@ public sealed class ActualizadorExternoRestaurantes(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Falló la actualización externa del restaurante {PlaceId}", placeId);
+                fallidos++;
+                logger.LogError("Falló la actualización externa de {RestauranteId}. Tipo: {TipoError}", id, ex.GetType().Name);
             }
         }
 
-        return procesados;
+        return new(intentados, exitosos, fallidos, omitidos);
     }
 }

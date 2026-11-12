@@ -325,7 +325,8 @@ namespace GustosApp.Application.Tests
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new UsuarioPreferencias
                 {
-                    Restricciones = new List<string> { "Sin gluten" }
+                    Restricciones = new List<string> { "Sin gluten" },
+                    ReglasCompatibilidad = [new(Guid.Empty, true, ["gluten"])]
                 });
             _mockRestauranteRepository
                 .Setup(repository => repository.ObtenerPorIdsAsync(
@@ -354,6 +355,40 @@ namespace GustosApp.Application.Tests
                     It.IsAny<VotacionGrupo>(),
                     It.IsAny<CancellationToken>()),
                 Times.Never);
+        }
+
+        [Fact]
+        public async Task HandleAsync_OfertaMixta_NoRechazaCandidatoPorUnaOpcionConflictiva()
+        {
+            var uid = "firebase123";
+            var grupoId = Guid.NewGuid();
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = uid };
+            var candidatos = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
+            ConfigurarInicioValido(uid, grupoId, usuario, CrearGrupoConParticipante(grupoId, usuario));
+            _mockPreferenciasGrupo.Setup(p => p.HandleAsync(uid, grupoId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UsuarioPreferencias
+                {
+                    Gustos = ["Pizza"], Restricciones = ["Sin gluten"],
+                    ReglasCompatibilidad = [new(Guid.Empty, true, ["gluten"])]
+                });
+            _mockRestauranteRepository.Setup(r => r.ObtenerPorIdsAsync(
+                    It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(candidatos.Select(id => new Restaurante
+                {
+                    Id = id,
+                    GustosQueSirve =
+                    [
+                        new Gusto { Nombre = "Pizza", Tags = [new Tag { Nombre = "Gluten" }] },
+                        new Gusto { Nombre = "Ensalada", Tags = [] }
+                    ]
+                }).ToList());
+
+            var resultado = await _useCase.HandleAsync(uid, grupoId, null, candidatos);
+
+            Assert.Equal(2, resultado.RestaurantesCandidatos.Count);
+            _mockVotacionRepository.Verify(r => r.CrearVotacionAsync(
+                It.IsAny<VotacionGrupo>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]

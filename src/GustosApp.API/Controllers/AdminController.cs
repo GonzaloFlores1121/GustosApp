@@ -47,12 +47,15 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(typeof(SolicitudRestauranteDetalleDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetDetalle(Guid id, CancellationToken ct)
+        public async Task<IActionResult> GetDetalle(Guid id, [FromServices] BuscarCoincidenciasAltaUseCase buscar, CancellationToken ct)
         {
             var result = await _getDetalle.HandleAsync(id, ct);
+            if (result is null) return NotFound();
             var response = _mapper.Map<SolicitudRestauranteDetalleDto>(result);
-
-            return result is null ? NotFound() : Ok(response);
+            if (!result.RestauranteExistenteId.HasValue)
+                response.CoincidenciasAlta = await buscar.HandleAsync(result.Nombre, result.Direccion,
+                    result.Latitud, result.Longitud, ct, result.RestauranteAprobadoId);
+            return Ok(response);
         }
 
         [HttpPost("solicitudes/aprobar/{id:guid}")]
@@ -60,8 +63,22 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 
-        public async Task<IActionResult> AprobarSolicitud(Guid id, CancellationToken ct)
+        public async Task<IActionResult> AprobarSolicitud(Guid id, [FromQuery] string? revision,
+            [FromServices] BuscarCoincidenciasAltaUseCase buscar, CancellationToken ct)
         {
+            var solicitud = await _getDetalle.HandleAsync(id, ct);
+            if (solicitud is { Estado: EstadoSolicitudRestaurante.Pendiente, RestauranteExistenteId: null })
+            {
+                var actuales = await buscar.HandleAsync(solicitud.Nombre, solicitud.Direccion,
+                    solicitud.Latitud, solicitud.Longitud, ct);
+                if ((revision != null || actuales.Candidatos.Count > 0) && revision != actuales.Revision)
+                    return Conflict(new
+                    {
+                        code = "COINCIDENCIAS_ACTUALIZADAS",
+                        message = "Revisá las coincidencias actuales antes de aprobar el alta.",
+                        coincidenciasAlta = actuales
+                    });
+            }
             var restaurante = await _aprobarSolicitud.HandleAsync(id, ct);
 
             return Ok(restaurante);
@@ -72,6 +89,19 @@ namespace GustosApp.API.Controllers
         {
             await _aprobarSolicitud.ReprocesarMenuAsync(id, ct);
             return NoContent();
+        }
+
+        [HttpPost("solicitudes/{id:guid}/completar-resolucion")]
+        public async Task<IActionResult> CompletarResolucion(Guid id,
+            [FromServices] ProcesarResolucionSolicitudUseCase procesar, CancellationToken ct)
+        {
+            var solicitud = await _getDetalle.HandleAsync(id, ct);
+            if (solicitud is null) return NotFound();
+            if (solicitud.Estado == EstadoSolicitudRestaurante.Pendiente)
+                return Conflict(new { message = "Primero resolvé la solicitud." });
+            if (!await procesar.CompletarAsync(id, ct))
+                return Conflict(new { message = "No se pudo completar ahora. Revisá el estado y reintentá si quedan pasos pendientes." });
+            return Ok(ResumenResolucionSolicitud.Desde(solicitud));
         }
 
         [HttpPost("restaurantes/importar")]

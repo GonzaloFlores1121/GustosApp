@@ -71,7 +71,7 @@ public class GestionarOpinionRestauranteUseCasesTests
         var foto = new OpinionFoto { Id = Guid.NewGuid(), Url = "foto-vieja" };
         var opinion = NuevaOpinion(_autor.Id, foto, DateTime.UtcNow);
         ConfigurarAutor(opinion);
-        _archivos.Setup(a => a.UploadFileAsync(It.IsAny<Stream>(), "nueva.jpg", "opiniones"))
+        _archivos.Setup(a => a.UploadFileAsync(It.IsAny<Stream>(), "nueva.jpg", $"opiniones/{opinion.Id:N}"))
             .ThrowsAsync(new IOException("falló storage"));
         var sut = new ActualizarOpinionRestauranteUseCase(_archivos.Object, _opiniones.Object, _usuarios.Object);
 
@@ -94,7 +94,7 @@ public class GestionarOpinionRestauranteUseCasesTests
         await sut.HandleAsync("autor", opinion.Id, default);
 
         _opiniones.Verify(r => r.EliminarAsync(opinion, default), Times.Once);
-        _archivos.Verify(a => a.DeleteFileAsync("foto"), Times.Once);
+        _archivos.Verify(a => a.DeleteFileAsync("foto", $"opiniones/{opinion.Id:N}"), Times.Once);
     }
 
     [Fact]
@@ -108,6 +108,41 @@ public class GestionarOpinionRestauranteUseCasesTests
         await sut.HandleAsync("autor", opinion.Id, default);
 
         _archivos.Verify(a => a.DeleteFileAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Actualizar_ResultadoDePersistenciaIncierto_ProgramaLimpiezaDeFotosNuevasYQuitadas()
+    {
+        var foto = new OpinionFoto { Id = Guid.NewGuid(), Url = "foto-vieja" };
+        var opinion = NuevaOpinion(_autor.Id, foto, DateTime.UtcNow);
+        ConfigurarAutor(opinion);
+        _archivos.Setup(a => a.UploadFileAsync(It.IsAny<Stream>(), "nueva.jpg", $"opiniones/{opinion.Id:N}"))
+            .ReturnsAsync("foto-nueva");
+        _opiniones.Setup(r => r.ActualizarAsync(opinion, default))
+            .ThrowsAsync(new IOException("respuesta de SQL incierta"));
+        var sut = new ActualizarOpinionRestauranteUseCase(_archivos.Object, _opiniones.Object, _usuarios.Object);
+
+        await Assert.ThrowsAsync<IOException>(() => sut.HandleAsync("autor", opinion.Id, 4,
+            "Texto", "Título", Array.Empty<Guid>(), new[] { Archivo("nueva.jpg") }, null, DateTime.UtcNow, default));
+
+        _archivos.Verify(a => a.ScheduleCleanupAsync("foto-nueva", $"opiniones/{opinion.Id:N}"), Times.Once);
+        _archivos.Verify(a => a.ScheduleCleanupAsync("foto-vieja", $"opiniones/{opinion.Id:N}"), Times.Once);
+        _archivos.Verify(a => a.DeleteFileAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Eliminar_ResultadoDePersistenciaIncierto_ProgramaLimpiezaSinBorrarDeInmediato()
+    {
+        var opinion = NuevaOpinion(_autor.Id, new OpinionFoto { Id = Guid.NewGuid(), Url = "foto" }, DateTime.UtcNow);
+        ConfigurarAutor(opinion);
+        _opiniones.Setup(r => r.EliminarAsync(opinion, default))
+            .ThrowsAsync(new IOException("respuesta de SQL incierta"));
+        var sut = new EliminarOpinionRestauranteUseCase(_archivos.Object, _opiniones.Object, _usuarios.Object);
+
+        await Assert.ThrowsAsync<IOException>(() => sut.HandleAsync("autor", opinion.Id, default));
+
+        _archivos.Verify(a => a.ScheduleCleanupAsync("foto", $"opiniones/{opinion.Id:N}"), Times.Once);
+        _archivos.Verify(a => a.DeleteFileAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     private void ConfigurarAutor(OpinionRestaurante opinion)
