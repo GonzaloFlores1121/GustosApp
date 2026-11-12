@@ -152,7 +152,7 @@ namespace GustosApp.API.Controllers
             if (string.IsNullOrEmpty(request.CodigoInvitacion))
                 throw new ArgumentException("El código de invitación es obligatorio");
 
-            if (request.CodigoInvitacion.Length == 8)
+            if (request.CodigoInvitacion.Length != 8)
             {
                 throw new ArgumentException("El código debe tener exactamente 8 caracteres");
             }
