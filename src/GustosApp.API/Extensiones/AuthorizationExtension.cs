@@ -10,17 +10,20 @@ namespace GustosApp.API.Extensiones
             {
                 options.AddPolicy("Admin", policy =>
                 {
-                    policy.RequireClaim("rol", "Admin");
+                    policy.RequireAuthenticatedUser();
+                    policy.AddRequirements(new RolVigenteRequirement(GustosApp.Domain.Model.@enum.RolUsuario.Admin));
                 });
 
                 options.AddPolicy("DuenoRestaurante", policy =>
                 {
-                    policy.RequireClaim("rol", "DuenoRestaurante");
+                    policy.RequireAuthenticatedUser();
+                    policy.AddRequirements(new RolVigenteRequirement(GustosApp.Domain.Model.@enum.RolUsuario.DuenoRestaurante));
                 });
 
                 options.AddPolicy("PendienteRestaurante", policy =>
                 {
-                    policy.RequireClaim("rol", "PendienteRestaurante");
+                    policy.RequireAuthenticatedUser();
+                    policy.AddRequirements(new RolVigenteRequirement(GustosApp.Domain.Model.@enum.RolUsuario.PendienteRestaurante));
                 });
             });
 

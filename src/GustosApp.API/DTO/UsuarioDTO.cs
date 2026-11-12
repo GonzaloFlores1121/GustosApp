@@ -40,6 +40,8 @@ namespace GustosApp.API.DTO
 
         public string Message { get; set; }
         public UsuarioResponse Usuario { get; set; }
+        public bool IsNewUser { get; set; }
+        public string Rol { get; set; } = string.Empty;
     }
 
 
@@ -106,7 +108,6 @@ namespace GustosApp.API.DTO
 
         [Required(ErrorMessage = "El email es obligatorio.")]
         [EmailAddress(ErrorMessage = "El formato del email no es válido.")] public string Email { get; set; }
-        public string? FotoPerfilUrl { get; set; }
         [Required(ErrorMessage = "El nombre de usuario es obligatorio.")] public string Username { get; set; }
 
 

@@ -59,7 +59,7 @@ namespace GustosApp.Application.Tests
             Assert.Equal(usuario.Nombre, resp.Nombre);
             Assert.Equal(usuario.Apellido, resp.Apellido);
             Assert.Equal(usuario.IdUsuario, resp.IdUsuario);
-            Assert.Equal(usuario.FotoPerfilUrl, resp.FotoPerfilUrl);
+            Assert.Null(resp.FotoPerfilUrl); // Una URL enviada por el cliente no se acepta como foto propia.
             Assert.NotNull(usuarioCreado);
             _mockRepo.Verify(r => r.AddAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()), Times.Once);
             _mockRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -95,6 +95,35 @@ namespace GustosApp.Application.Tests
             Assert.Equal(usuarioExistente.FotoPerfilUrl, resp.FotoPerfilUrl);
             _mockRepo.Verify(r => r.AddAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()), Times.Never);
             _mockRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ReintentoDespuesDeRespuestaPerdida_ConservaIdentidadYNoDuplica()
+        {
+            var usuario = new Usuario("uid", "correo@test.com", "Ana", "Prueba", "ana");
+            _mockRepo.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(usuario);
+
+            var resultado = await _useCase.HandleConEstadoAsync("uid",
+                new Usuario { Email = "correo@test.com", IdUsuario = "otro" });
+
+            Assert.False(resultado.EsNuevo);
+            Assert.Same(usuario, resultado.Usuario);
+            _mockRepo.Verify(r => r.AddAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task EmailDeOtroUid_NoAutorizaRegistro()
+        {
+            _mockRepo.Setup(r => r.GetByEmailAsync("correo@test.com", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Usuario { FirebaseUid = "otro" });
+
+            var accion = () => _useCase.HandleConEstadoAsync("uid",
+                new Usuario { Email = "correo@test.com", IdUsuario = "nuevo" });
+
+            var error = await Assert.ThrowsAsync<ConflictoRegistroUsuarioException>(accion);
+            Assert.Equal("EMAIL_TAKEN", error.Codigo);
+            _mockRepo.Verify(r => r.AddAsync(It.IsAny<Usuario>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 

@@ -8,6 +8,13 @@ using GustosApp.Domain.Model;
 
 namespace GustosApp.Application.UseCases.UsuarioUseCases
 {
+    public sealed record ResultadoRegistroUsuario(Usuario Usuario, bool EsNuevo);
+
+    public sealed class ConflictoRegistroUsuarioException(string codigo) : Exception(codigo)
+    {
+        public string Codigo { get; } = codigo;
+    }
+
     public class RegistrarUsuarioUseCase
     {
 
@@ -20,23 +27,35 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
 
         public async Task<Usuario> HandleAsync(string firebaseUid, Usuario request,
             CancellationToken ct = default)
+            => (await HandleConEstadoAsync(firebaseUid, request, ct)).Usuario;
+
+        public async Task<ResultadoRegistroUsuario> HandleConEstadoAsync(string firebaseUid, Usuario request,
+            CancellationToken ct = default)
         {
 
             var existente = await _repo.GetByFirebaseUidAsync(firebaseUid, ct);
 
             if (existente != null)
             {
-                return new Usuario(existente.FirebaseUid, existente.Email, existente.Nombre, existente.Apellido, existente.IdUsuario, existente.FotoPerfilUrl);
+                return new ResultadoRegistroUsuario(existente, false);
             }
 
-            var usuario = new Usuario(firebaseUid, request.Email, request.Nombre, request.Apellido, request.IdUsuario, request.FotoPerfilUrl);
+            var otroConEmail = await _repo.GetByEmailAsync(request.Email, ct);
+            if (otroConEmail != null)
+                throw new ConflictoRegistroUsuarioException("EMAIL_TAKEN");
+            var otroConUsername = await _repo.GetByUsernameAsync(request.IdUsuario, ct);
+            if (otroConUsername != null)
+                throw new ConflictoRegistroUsuarioException("USERNAME_TAKEN");
+
+            // Las fotos sólo se incorporan mediante una subida autenticada y validada.
+            var usuario = new Usuario(firebaseUid, request.Email, request.Nombre, request.Apellido, request.IdUsuario, null);
 
 
             await _repo.AddAsync(usuario, ct);
             await _repo.SaveChangesAsync(ct);
 
 
-            return new Usuario(usuario.FirebaseUid, usuario.Email, usuario.Nombre, usuario.Apellido, usuario.IdUsuario, usuario.FotoPerfilUrl);
+            return new ResultadoRegistroUsuario(usuario, true);
         }
 
     }

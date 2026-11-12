@@ -524,6 +524,7 @@ namespace GustosApp.API.Controllers
 
         }
 
+        [Authorize(Policy = "DuenoRestaurante")]
         [HttpGet("{id:guid}/metricas")]
         [ProducesResponseType(typeof(RestauranteMetricasDashboardResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

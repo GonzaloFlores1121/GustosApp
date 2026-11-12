@@ -14,13 +14,15 @@ namespace GustosApp.Infraestructure.Repositories
     {
         public async Task SetUserRoleAsync(string firebaseUid, string rol)
         {
+            using var limite = new CancellationTokenSource(TimeSpan.FromSeconds(25));
             await FirebaseAuth.DefaultInstance
                 .SetCustomUserClaimsAsync(firebaseUid, new Dictionary<string, object>
                 {
                 { "rol", rol }
-                });
+                }, limite.Token);
         }
 
+        // Este metodo lo creo par testear el caso de uso AppLoginConFirebaseUseCaseTest
         public async Task UpdateUserEmailAsync(string firebaseUid, string newEmail)
         {
             var args = new UserRecordArgs()
@@ -32,15 +34,20 @@ namespace GustosApp.Infraestructure.Repositories
             await FirebaseAuth.DefaultInstance.UpdateUserAsync(args);
         }
 
-        // Este metodo lo creo par testear el caso de uso AppLoginConFirebaseUseCaseTest
-        public async Task<DecodedToken> VerifyIdTokenAsync(string idToken)
+        public async Task<DecodedToken> VerifyIdTokenAsync(
+            string idToken,
+            bool comprobarRevocacion = false,
+            CancellationToken ct = default)
         {
-            var firebaseTokenReal = await FirebaseAdmin.Auth.FirebaseAuth.DefaultInstance.VerifyIdTokenAsync(idToken);
+            var firebaseTokenReal = await FirebaseAuth.DefaultInstance.VerifyIdTokenAsync(
+                idToken,
+                comprobarRevocacion,
+                ct);
 
             return new DecodedToken
             {
                 Uid = firebaseTokenReal.Uid,
-                Claims = (Dictionary<string, object>)firebaseTokenReal.Claims 
+                Claims = firebaseTokenReal.Claims.ToDictionary(claim => claim.Key, claim => claim.Value)
             };
         }
 

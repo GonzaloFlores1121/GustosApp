@@ -12,7 +12,10 @@ namespace GustosApp.Application.Interfaces
 
         Task UpdateUserEmailAsync(string firebaseUid, string Email);
 
-        Task<DecodedToken> VerifyIdTokenAsync(string idToken);
+        Task<DecodedToken> VerifyIdTokenAsync(
+            string idToken,
+            bool comprobarRevocacion = false,
+            CancellationToken ct = default);
 
         Task<FirebaseUserInfo?> GetUserByUidAsync(string firebaseUid);
     }
