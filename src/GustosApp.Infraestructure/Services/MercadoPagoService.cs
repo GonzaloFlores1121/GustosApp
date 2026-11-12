@@ -20,6 +20,7 @@ public sealed class MercadoPagoService(HttpClient http, GustosDbContext db, ICon
 {
     private const string Producto = "premium_unico";
     private const string Endpoint = "https://api.mercadopago.com/v1/orders";
+    private static readonly string[] ClavesRetorno = ["SuccessUrl", "FailureUrl", "PendingUrl"];
     private bool Produccion => config.GetValue<bool>("MercadoPago:Produccion");
     private string Entorno => Produccion ? "production" : "sandbox";
     private string? AccessToken => config[Produccion ? "MercadoPago:AccessToken" : "MercadoPago:AccessTokenPrueba"];
@@ -34,7 +35,7 @@ public sealed class MercadoPagoService(HttpClient http, GustosDbContext db, ICon
         var moneda = config["MercadoPago:Premium:Moneda"] ?? "ARS";
         var habilitado = config.GetValue<bool>("MercadoPago:Premium:HabilitarCobros") && precio.HasValue && moneda == "ARS"
             && ProveedorConfigurado() && (!Produccion || !string.IsNullOrWhiteSpace(Firma))
-            && new[] { "SuccessUrl", "FailureUrl", "PendingUrl" }.All(clave => EsRetornoValido(config[$"MercadoPago:{clave}"]));
+            && RetornosConfigurados();
         return new CatalogoPremium(Producto, precio, moneda, habilitado, ["Grupos sin límite", "Restaurantes favoritos sin límite"]);
     }
 
@@ -202,14 +203,7 @@ public sealed class MercadoPagoService(HttpClient http, GustosDbContext db, ICon
                 type = "online", processing_mode = "manual", total_amount = importe,
                 external_reference = compra.Id.ToString("D"), expiration_time = "P1D",
                 items = new[] { new { external_code = Producto, title = "GustosApp Plus — pago único", quantity = 1, unit_price = importe } },
-                config = new { online = new
-                {
-                    success_url = AgregarCompraId("SuccessUrl", compra.Id),
-                    failure_url = AgregarCompraId("FailureUrl", compra.Id),
-                    pending_url = AgregarCompraId("PendingUrl", compra.Id),
-                auto_return = "approved",
-                retries = new { allowed = false }
-                } }
+                config = new { online = ConfigurarCheckout(compra.Id) }
             });
             if (reutilizada && compra.ExpiraUtc <= DateTime.UtcNow)
             {
@@ -415,6 +409,24 @@ public sealed class MercadoPagoService(HttpClient http, GustosDbContext db, ICon
     }
 
     private bool ProveedorConfigurado() => !string.IsNullOrWhiteSpace(AccessToken) && Vendedor is { Length: > 0 and <= 100 } && Vendedor.All(char.IsAsciiDigit);
+    private bool RetornosConfigurados()
+    {
+        var urls = ClavesRetorno.Select(clave => config[$"MercadoPago:{clave}"]).ToArray();
+        return urls.All(EsRetornoValido) || (!Produccion && urls.All(string.IsNullOrWhiteSpace));
+    }
+
+    private Dictionary<string, object> ConfigurarCheckout(Guid compraId)
+    {
+        var online = new Dictionary<string, object> { ["retries"] = new { allowed = false } };
+        if (!string.IsNullOrWhiteSpace(config["MercadoPago:SuccessUrl"]))
+        {
+            online["success_url"] = AgregarCompraId("SuccessUrl", compraId);
+            online["failure_url"] = AgregarCompraId("FailureUrl", compraId);
+            online["pending_url"] = AgregarCompraId("PendingUrl", compraId);
+            online["auto_return"] = "approved";
+        }
+        return online;
+    }
     private static bool EsIdOrden(string? id) => id is { Length: > 3 and <= 100 } && id.StartsWith("ORD", StringComparison.OrdinalIgnoreCase) && id.All(char.IsAsciiLetterOrDigit);
     private static bool EsRetornoValido(string? url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https"
         && !uri.IsLoopback && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0;

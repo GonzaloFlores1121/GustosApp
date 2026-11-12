@@ -32,6 +32,7 @@ public class MercadoPagoServicePruebas
     [InlineData("AccessTokenPrueba", null)]
     [InlineData("CollectorIdPrueba", null)]
     [InlineData("SuccessUrl", "https://localhost/pago/exito")]
+    [InlineData("FailureUrl", null)]
     [InlineData("Premium:Moneda", "USD")]
     public void Catalogo_ConfiguracionIncompletaOInvalida_DeshabilitaCobros(string clave, string? valor)
     {
@@ -79,6 +80,34 @@ public class MercadoPagoServicePruebas
         Assert.True(segunda.Reutilizada);
         Assert.NotNull(segunda.UrlCheckout);
         Assert.Equal(1, posts);
+    }
+
+    [Fact]
+    public async Task PruebaLocalSinRetornos_EnviaOrdenSinRedireccionAutomatica()
+    {
+        await using var db = CrearDb();
+        var usuario = await SembrarUsuarioAsync(db);
+        using var handler = new Handler(async (request, ct) =>
+        {
+            var cuerpo = await request.Content!.ReadFromJsonAsync<JsonElement>(ct);
+            var online = cuerpo.GetProperty("config").GetProperty("online");
+            Assert.Equal("retries", Assert.Single(online.EnumerateObject()).Name);
+            return Orden(await db.ComprasPremium.Select(c => c.Id).SingleAsync(ct));
+        });
+        void SinRetornos(Dictionary<string, string?> configuracion)
+        {
+            configuracion["SuccessUrl"] = configuracion["FailureUrl"] = configuracion["PendingUrl"] = "";
+        }
+        var servicio = CrearServicio(db, handler, SinRetornos);
+        Assert.True(servicio.ObtenerCatalogo().CobrosHabilitados);
+        Assert.NotNull((await servicio.IniciarCompraAsync(usuario.FirebaseUid)).UrlCheckout);
+        var produccion = CrearServicio(db, Handler.SinPeticiones(), configuracion =>
+        {
+            SinRetornos(configuracion);
+            configuracion["Produccion"] = "true";
+            configuracion["WebhookSecret"] = "firma-sintetica-produccion";
+        });
+        Assert.False(produccion.ObtenerCatalogo().CobrosHabilitados);
     }
 
     [Theory]
