@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using UglyToad.PdfPig;
-using SixLabors.ImageSharp;
+using GustosApp.Application.Common.Imagenes;
 using System.Globalization;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
@@ -26,8 +26,8 @@ public sealed record DatosReclamo(string NombreSolicitante, string RelacionResta
             throw new ArgumentException("Adjuntá un comprobante de hasta 2 MB.");
         var extension = Path.GetExtension(NombreComprobante).ToLowerInvariant();
         if (extension == ".pdf" && EsPdfValido()) return "application/pdf";
-        if (extension == ".png" && EsImagenValida("PNG")) return "image/png";
-        if (extension is ".jpg" or ".jpeg" && EsImagenValida("JPEG")) return "image/jpeg";
+        if (extension == ".png" && EsImagenValida("image/png")) return "image/png";
+        if (extension is ".jpg" or ".jpeg" && EsImagenValida("image/jpeg")) return "image/jpeg";
         throw new ArgumentException("El comprobante debe ser un archivo PDF, PNG o JPEG válido.");
     }
 
@@ -72,14 +72,12 @@ public sealed record DatosReclamo(string NombreSolicitante, string RelacionResta
         }
     }
 
-    private bool EsImagenValida(string formatoEsperado)
+    private bool EsImagenValida(string mimeType)
     {
         try
         {
-            using var imagen = Image.Load(Comprobante);
-            return imagen.Metadata.DecodedImageFormat?.Name == formatoEsperado &&
-                   imagen.Frames.Count == 1 && imagen.Width <= 12_000 && imagen.Height <= 12_000 &&
-                   (long)imagen.Width * imagen.Height <= 40_000_000;
+            InspeccionImagen.ValidarComprobante(Comprobante, mimeType);
+            return true;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

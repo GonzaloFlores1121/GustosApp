@@ -55,6 +55,19 @@ public class ReclamarRestaurantePruebas
     }
 
     [Fact]
+    public void ComprobantePngAnimadoSeRechaza()
+    {
+        using var imagen = new Image<Rgba32>(2, 2, Color.Red);
+        using var segundoFrame = new Image<Rgba32>(2, 2, Color.Blue);
+        imagen.Frames.AddFrame(segundoFrame.Frames.RootFrame);
+        using var contenido = new MemoryStream();
+        imagen.SaveAsPng(contenido);
+        var datos = DatosValidos() with { NombreComprobante = "prueba.png", Comprobante = contenido.ToArray() };
+
+        Assert.Throws<ArgumentException>(() => datos.Validar());
+    }
+
+    [Fact]
     public void PdfConAccionEscapadaNoSeAcepta()
     {
         var malicioso = PdfValido.Concat("\n/J#61vaScript\n%%EOF"u8.ToArray()).ToArray();

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using GustosApp.Application.Common.Imagenes;
 using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Model.@enum;
@@ -9,7 +10,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using SixLabors.ImageSharp;
 
 namespace GustosApp.Infraestructure.Services;
 
@@ -72,10 +72,10 @@ public sealed class FotoGoogleService(GustosDbContext db, HttpClient http, IConf
             if (mime is not ("image/png" or "image/jpeg" or "image/webp" or "image/gif")) return null;
             var bytes = await LeerAcotadoAsync(imageResponse, options.Value.MaximoBytes, limite.Token);
             if (bytes == null || bytes.AsSpan().IndexOf(Encoding.UTF8.GetBytes(key)) >= 0) return null;
-            var info = Image.Identify(bytes);
-            if (info == null || info.Width > 4800 || info.Height > 4800 || (long)info.Width * info.Height > 24_000_000) return null;
-            var formato = info.Metadata.DecodedImageFormat?.DefaultMimeType;
-            if (formato != mime) return null;
+            using var contenido = new MemoryStream(bytes, writable: false);
+            var info = await InspeccionImagen.IdentificarFotoAsync(contenido, mime, limite.Token);
+            if (info == null || info.Width is <= 0 or > 4800 || info.Height is <= 0 or > 4800 ||
+                (long)info.Width * info.Height > 24_000_000) return null;
             var autores = new List<AutorFotoGoogle>();
             if (foto.Value.TryGetProperty("authorAttributions", out var attrs) && attrs.ValueKind == JsonValueKind.Array)
                 foreach (var autor in attrs.EnumerateArray().Take(20))
