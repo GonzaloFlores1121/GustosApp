@@ -9,7 +9,7 @@ COPY . .
 RUN dotnet restore "src/GustosApp.API/GustosApp.API.csproj"
 
 # Publicamos el proyecto principal
-RUN dotnet publish "src/GustosApp.API/GustosApp.API.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN --mount=type=secret,id=sixlabors_license,required=true dotnet publish "src/GustosApp.API/GustosApp.API.csproj" -c Release -o /app/publish /p:UseAppHost=false /p:SixLaborsLicenseFile=/run/secrets/sixlabors_license
 
 # ===========================
 # Etapa 2: Runtime
