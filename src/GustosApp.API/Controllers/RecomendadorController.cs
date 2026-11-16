@@ -3,7 +3,7 @@ using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace GustosApp.API.Controllers
 {
@@ -28,9 +28,11 @@ namespace GustosApp.API.Controllers
         }
       
         [HttpGet("{restauranteId}/recomendacion")]
+        [EnableRateLimiting("ExplicacionRestaurante")]
         [ProducesResponseType(typeof(RecomendacionResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> ObtenerRecomendacion(Guid restauranteId, CancellationToken ct)
         {
             // 1) Obtener UID del usuario autenticado
@@ -40,7 +42,7 @@ namespace GustosApp.API.Controllers
                 return BadRequest("No se pudo obtener el usuario autenticado.");
 
             // 2) Obtener datos del usuario y del restaurante desde 
-            var usuario = await _usuarioRepository.GetByFirebaseUidAsync(usuarioId);
+            var usuario = await _usuarioRepository.GetByFirebaseUidAsync(usuarioId, ct);
 
             var restaurante = await _restauranteRepository.GetByIdAsync(restauranteId,ct);
 

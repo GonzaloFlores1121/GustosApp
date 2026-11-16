@@ -27,7 +27,7 @@ namespace GustosApp.Application.Tests
 
             resultado.Should().Contain("incompatibilidad conocida");
             _ia.Verify(
-                servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
+                servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
 
@@ -47,7 +47,7 @@ namespace GustosApp.Application.Tests
             resultado.Should().Contain("No hay información suficiente");
             resultado.Should().Contain("consultá directamente al restaurante");
             _ia.Verify(
-                servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
+                servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
 
@@ -64,7 +64,7 @@ namespace GustosApp.Application.Tests
 
             resultado.Should().Contain("No hay información suficiente");
             _ia.Verify(
-                servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
+                servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
 
@@ -72,8 +72,8 @@ namespace GustosApp.Application.Tests
         public async Task Handle_RestauranteSinMenuConGustos_UsaLosGustosGuardados()
         {
             string? promptEnviado = null;
-            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>()))
-                .Callback<string>(prompt => promptEnviado = prompt)
+            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, CancellationToken>((prompt, _) => promptEnviado = prompt)
                 .ReturnsAsync("Coincide con tu gusto por la pizza.");
             var restaurante = CrearRestaurante(gustos: ["Pizza"]);
             restaurante.MenuProcesado = false;
@@ -86,7 +86,7 @@ namespace GustosApp.Application.Tests
             resultado.Should().Contain("pizza");
             promptEnviado.Should().Contain("Propuesta del restaurante: Pizza");
             _ia.Verify(
-                servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
+                servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
@@ -94,8 +94,8 @@ namespace GustosApp.Application.Tests
         public async Task Handle_CompatibilidadEstimada_UsaIASoloParaGustosYAgregaAdvertenciaPropia()
         {
             string? promptEnviado = null;
-            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>()))
-                .Callback<string>(prompt => promptEnviado = prompt)
+            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, CancellationToken>((prompt, _) => promptEnviado = prompt)
                 .ReturnsAsync("Coincide con tu preferencia por comida picante.");
             var usuario = CrearUsuario(
                 gustos: ["Picante"],
@@ -118,14 +118,14 @@ namespace GustosApp.Application.Tests
             promptEnviado.Should().NotContain("Sin gluten");
             promptEnviado.Should().NotContain("celíaca");
             _ia.Verify(
-                servicio => servicio.GenerarRecomendacion(It.IsAny<string>()),
+                servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
         [Fact]
         public async Task Handle_SinCuidadosDeSalud_DevuelveLaExplicacionDeGustosSinAdvertencia()
         {
-            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>()))
+            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync("  Coincide con tus gustos.  ");
             var usuario = CrearUsuario(gustos: ["Pizza"]);
             var restaurante = CrearRestaurante(gustos: ["Pizza"]);
@@ -142,7 +142,7 @@ namespace GustosApp.Application.Tests
         [Fact]
         public async Task Handle_FalloDeGemini_DevuelveMensajeComprensibleSinDetalleTecnico()
         {
-            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>()))
+            _ia.Setup(servicio => servicio.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("API key inválida: secreto-123"));
             var casoDeUso = CrearCasoDeUso();
 
@@ -151,7 +151,7 @@ namespace GustosApp.Application.Tests
                 CrearRestaurante(gustos: ["Pizza"]),
                 CancellationToken.None);
 
-            resultado.Should().Contain("No pudimos generar la explicación personalizada");
+            resultado.Should().Contain("coinciden con tus gustos: Pizza");
             resultado.Should().NotContain("API key");
             resultado.Should().NotContain("secreto-123");
         }

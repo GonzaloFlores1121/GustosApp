@@ -36,6 +36,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             Restaurante restaurante,
             CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var preferencias = new UsuarioPreferencias
             {
                 Gustos = usuario.Gustos.Select(g => g.Nombre).ToList(),
@@ -65,18 +66,26 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            string explicacion;
+            string? explicacion = null;
             try
             {
                 explicacion = await _ia.GenerarRecomendacion(
-                    ConstruirPromptDeGustos(usuario, restaurante, opcionesPotenciales));
+                    ConstruirPromptDeGustos(usuario, restaurante, opcionesPotenciales), cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex,
-                    "No se pudo generar la explicación del restaurante {RestauranteId}",
-                    restaurante.Id);
-                return "No pudimos generar la explicación personalizada en este momento. Podés seguir consultando la información del restaurante.";
+                _logger.LogWarning("No se pudo generar la explicación del restaurante {RestauranteId}. Tipo: {Tipo}",
+                    restaurante.Id, ex.GetType().Name);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(explicacion))
+            {
+                var coincidencias = usuario.Gustos.Select(g => g.Nombre)
+                    .Intersect(opcionesPotenciales.Select(g => g.Nombre), StringComparer.OrdinalIgnoreCase)
+                    .Where(nombre => !string.IsNullOrWhiteSpace(nombre)).ToArray();
+                explicacion = coincidencias.Length > 0
+                    ? $"Según la ficha, este restaurante ofrece opciones que coinciden con tus gustos: {string.Join(", ", coincidencias)}."
+                    : "No pudimos generar la explicación personalizada en este momento. Podés seguir consultando la información del restaurante.";
             }
             var tieneCuidadosDeSalud = preferencias.Restricciones.Count > 0 ||
                 preferencias.CondicionesMedicas.Count > 0;

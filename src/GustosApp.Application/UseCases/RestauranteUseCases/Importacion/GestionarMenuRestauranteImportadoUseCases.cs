@@ -117,8 +117,8 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
 
         try
         {
-            var respuesta = await _ia.GenerarRecomendacion(CrearPrompt(texto, catalogo));
-            if (IntentarLeerRespuesta(respuesta, catalogo, out var categoriaIa, out var gustosIa))
+            var respuesta = await _ia.GenerarRecomendacion(CrearPrompt(texto, catalogo), ct);
+            if (respuesta is not null && IntentarLeerRespuesta(respuesta, catalogo, out var categoriaIa, out var gustosIa))
             {
                 categoria = categoriaIa;
                 sugerenciasLocales.UnionWith(gustosIa);
@@ -130,11 +130,11 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex,
-                "Gemini no pudo complementar el análisis del menú del restaurante {RestauranteId}",
-                restauranteId);
+            _logger.LogWarning("Gemini no pudo complementar el análisis del menú del restaurante {RestauranteId}. Tipo: {Tipo}",
+                restauranteId, ex.GetType().Name);
         }
 
+        ct.ThrowIfCancellationRequested();
         return new ResultadoAnalisisMenuRestaurante(
             restaurante.Id,
             restaurante.Nombre,

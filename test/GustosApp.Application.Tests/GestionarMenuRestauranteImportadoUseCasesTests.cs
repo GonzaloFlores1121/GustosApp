@@ -22,7 +22,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         var gustos = new Mock<IGustoRepository>();
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([pizza]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"categoria\":\"Pizzería\",\"gustos\":[\"Pizza\",\"Inventado\"]}");
 
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
@@ -58,7 +58,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([cafeConLeche, pasteleria]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("Error de límite de uso");
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
             restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
@@ -86,7 +86,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         var gustos = new Mock<IGustoRepository>();
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([pizza]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("API key secreta inválida"));
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
             restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
@@ -115,7 +115,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([pizza, empanadas]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"categoria\":\"Restaurante\",\"gustos\":[\"Empanadas\"]}");
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
             restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,

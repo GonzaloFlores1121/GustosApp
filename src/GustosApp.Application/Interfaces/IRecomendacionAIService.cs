@@ -8,6 +8,6 @@ namespace GustosApp.Application.Interfaces
 {
     public interface  IRecomendacionAIService
     {
-        Task<string> GenerarRecomendacion(string prompt);
+        Task<string?> GenerarRecomendacion(string prompt, CancellationToken ct);
     }
 }

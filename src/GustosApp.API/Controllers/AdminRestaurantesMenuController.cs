@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using GustosApp.Infraestructure.Files;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace GustosApp.API.Controllers;
 
@@ -41,6 +42,7 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
     }
 
     [HttpPost("{restauranteId:guid}/analizar")]
+    [EnableRateLimiting("AnalisisMenu")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> Analizar(
         Guid restauranteId,

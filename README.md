@@ -50,6 +50,8 @@ Asegurate de que esté en el .gitignore.
 
 Para habilitar Mercado Pago en producción, configurá `MercadoPago__AccessToken` y `MercadoPago__WebhookSecret` en las variables privadas del servicio. `appsettings.Production.json` conserva estos campos vacíos en el repositorio.
 
+Para habilitar Gemini, configurá `GeminiSettings__ApiKey` en los secretos de la API o usá `GOOGLE_API_KEY`. El modelo se configura con `GeminiSettings__Model`. Si falta la clave o el modelo, la ficha y el análisis de menú usan coincidencias locales. Podés ajustar `GeminiSettings__TimeoutSegundos`, `GeminiSettings__RecomendacionesPorMinuto` y `GeminiSettings__AnalisisPorMinuto`.
+
 4. Ejecutar la API
 
 Seleccioná GustosApp.API como Startup Project.

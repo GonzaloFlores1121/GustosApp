@@ -54,6 +54,18 @@ builder.Services.AgregarAutorizacion();
 builder.Services.AddRateLimiter(opciones =>
 {
     opciones.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    var gemini = builder.Configuration.GetSection("GeminiSettings").Get<GeminiSettings>() ?? new();
+    opciones.AddPolicy("ExplicacionRestaurante", contexto =>
+        LimitarIA(contexto, gemini.RecomendacionesPorMinuto));
+    opciones.AddPolicy("AnalisisMenu", contexto =>
+        LimitarIA(contexto, gemini.AnalisisPorMinuto));
+    opciones.OnRejected = async (rechazo, ct) =>
+    {
+        var contexto = rechazo.HttpContext;
+        var politica = contexto.GetEndpoint()?.Metadata.GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()?.PolicyName;
+        if (politica is "ExplicacionRestaurante" or "AnalisisMenu")
+            await contexto.Response.WriteAsJsonAsync(new { error = "Se alcanzó el límite de solicitudes. Probá de nuevo en un minuto." }, ct);
+    };
     opciones.AddPolicy("FotosGoogle", contexto => RateLimitPartition.GetFixedWindowLimiter(
         ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
         { PermitLimit = 12, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
@@ -250,5 +262,16 @@ static string ObtenerClaveCliente(HttpContext contexto) =>
     ?? contexto.User.FindFirst("sub")?.Value
     ?? contexto.Connection.RemoteIpAddress?.ToString()
     ?? "anonimo";
+
+static RateLimitPartition<string> LimitarIA(HttpContext contexto, int solicitudes) =>
+    contexto.User.Identity?.IsAuthenticated != true
+        ? RateLimitPartition.GetNoLimiter("anonimo")
+        : RateLimitPartition.GetFixedWindowLimiter(ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Max(1, solicitudes),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
 
 public partial class Program;
