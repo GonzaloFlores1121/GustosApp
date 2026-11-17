@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Application.UseCases.AmistadUseCases;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 
@@ -42,7 +43,7 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 .GetAmistadEntreUsuariosAsync(usuarioActual.Id, amigo.Id, ct);
 
             if (amistad == null)
-                throw new UnauthorizedAccessException("No hay amistad entre los usuarios.");
+                throw new AccesoProhibidoException("Necesitás una amistad aceptada para combinar los gustos.");
 
          
             var prefsUser = await _preferenciasService.ObtenerPreferencias(firebaseUid, gustos, ct);
