@@ -52,6 +52,8 @@ Para habilitar Mercado Pago en producción, configurá `MercadoPago__AccessToken
 
 Para habilitar Gemini, configurá `GeminiSettings__ApiKey` en los secretos de la API o usá `GOOGLE_API_KEY`. El modelo se configura con `GeminiSettings__Model`. Si falta la clave o el modelo, la ficha y el análisis de menú usan coincidencias locales. Podés ajustar `GeminiSettings__TimeoutSegundos`, `GeminiSettings__RecomendacionesPorMinuto` y `GeminiSettings__AnalisisPorMinuto`.
 
+La ficha guarda las explicaciones exitosas por usuario y restaurante en el Redis configurado en `ConnectionStrings__Redis`. `GeminiSettings__CacheExplicacionesTtlSegundos` controla la duración, con un máximo de 86.400 segundos. Si Redis no responde, la ficha muestra coincidencias locales. Para ejecutar las pruebas de reservas y expiración contra un Redis desechable en localhost, indicá su puerto en `GUSTOS_REDIS_PRUEBAS_PUERTO`.
+
 ImageSharp requiere una licencia de Six Labors al compilar `GustosApp.Application` y `GustosApp.Infraestructure`. En desarrollo, guardá el archivo `sixlabors.lic` junto a `GustosApp.sln`. Git y Docker excluyen ese archivo. En GitHub Actions, configurá el secreto de repositorio `SIXLABORS_LICENSE_KEY` con el contenido completo del archivo antes de ejecutar CI o desplegar. La imagen de Docker recibe la licencia como secreto de BuildKit durante la compilación. Para construirla localmente con el archivo, usá `docker build --secret id=sixlabors_license,src=sixlabors.lic -t gustosapp:local .`. [Documentación de Six Labors](https://docs.sixlabors.com/articles/imagesharp/)
 
 4. Ejecutar la API

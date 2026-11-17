@@ -5,6 +5,7 @@ using GustosApp.Application.UseCases.RestauranteUseCases;
 using GustosApp.Domain.Model;
 using Moq;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace GustosApp.Application.Tests
 {
@@ -156,12 +157,197 @@ namespace GustosApp.Application.Tests
             resultado.Should().NotContain("secreto-123");
         }
 
-        private RecomendacionIAUseCase CrearCasoDeUso()
+        [Theory]
+        [InlineData(60, 60)]
+        [InlineData(999_999, 86_400)]
+        public async Task Handle_ReutilizaHastaElTtlConfiguradoSinSuperarUnDia(int configurado, int esperado)
         {
+            var reloj = new RelojExplicacionesPrueba(DateTimeOffset.UtcNow);
+            var almacen = new AlmacenExplicacionesPrueba(reloj);
+            var caso = CrearCasoDeUso(reloj, almacen, new GeminiSettings
+            {
+                ApiKey = "prueba", Model = "modelo", CacheExplicacionesTtlSegundos = configurado
+            });
+            var usuario = CrearUsuario(gustos: ["Pizza"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            _ia.SetupSequence(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("Primera explicación.").ReturnsAsync("Segunda explicación.");
+
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Primera explicación.");
+            reloj.Avanzar(TimeSpan.FromSeconds(esperado - 1));
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Primera explicación.");
+            reloj.Avanzar(TimeSpan.FromSeconds(1));
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Segunda explicación.");
+            _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task Handle_SeparaUsuariosYRestaurantesAunqueElPromptCoincida()
+        {
+            var reloj = TimeProvider.System;
+            var almacen = new AlmacenExplicacionesPrueba(reloj);
+            var caso = CrearCasoDeUso(reloj, almacen);
+            var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+            var usuario = new Usuario { Id = Guid.NewGuid(), Gustos = [gusto] };
+            var otroUsuario = new Usuario { Id = Guid.NewGuid(), Gustos = [gusto] };
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            var otroRestaurante = new Restaurante { Id = Guid.NewGuid(), Nombre = restaurante.Nombre, GustosQueSirve = restaurante.GustosQueSirve };
+            _ia.SetupSequence(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("Del primer usuario.").ReturnsAsync("Del segundo usuario.").ReturnsAsync("Del segundo lugar.");
+
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Del primer usuario.");
+            (await caso.Handle(otroUsuario, restaurante, default)).Should().Be("Del segundo usuario.");
+            (await caso.Handle(usuario, otroRestaurante, default)).Should().Be("Del segundo lugar.");
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Del primer usuario.");
+        }
+
+        [Theory]
+        [InlineData("gustos")]
+        [InlineData("reglas")]
+        [InlineData("restricciones")]
+        [InlineData("oferta")]
+        [InlineData("declaraciones")]
+        [InlineData("prompt")]
+        [InlineData("modelo")]
+        public async Task Handle_CambioRelevanteInvalidaSinExponerPreferenciasEnLaClave(string cambio)
+        {
+            var reloj = new RelojExplicacionesPrueba(DateTimeOffset.UtcNow);
+            var almacen = new AlmacenExplicacionesPrueba(reloj);
+            var configuracion = new GeminiSettings { ApiKey = "prueba", Model = "modelo-1" };
+            var usuario = CrearUsuario(gustos: ["Pizza"], restricciones: ["Sin gluten"]);
+            var restriccion = usuario.Restricciones.Single();
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            restaurante.RestriccionesQueRespeta.Add(new Restriccion { Id = restriccion.Id, Nombre = "Opciones sin gluten" });
+            restaurante.ConfirmarRestriccionesDeclaradas(0, reloj.GetUtcNow().UtcDateTime);
+            var caso = CrearCasoDeUso(reloj, almacen, configuracion);
+            _ia.SetupSequence(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("Original.").ReturnsAsync("Actualizada.");
+            (await caso.Handle(usuario, restaurante, default)).Should().StartWith("Original.");
+            var claveOriginal = almacen.ClavesLeidas[0];
+
+            switch (cambio)
+            {
+                case "gustos": usuario.Gustos.Add(new Gusto { Id = Guid.NewGuid(), Nombre = "Pasta" }); break;
+                case "reglas": restriccion.TagsProhibidos.Add(new Tag { Nombre = "Avena" }); break;
+                case "restricciones": usuario.Restricciones.Clear(); break;
+                case "oferta": restaurante.GustosQueSirve.Add(new Gusto { Id = Guid.NewGuid(), Nombre = "Pasta" }); break;
+                case "declaraciones":
+                    restaurante.ConfirmarRestriccionesDeclaradas(restaurante.VersionRestricciones, reloj.GetUtcNow().UtcDateTime);
+                    break;
+                case "prompt": restaurante.Nombre = "Nombre actualizado"; break;
+                case "modelo": configuracion.Model = "modelo-2"; break;
+            }
+
+            (await caso.Handle(usuario, restaurante, default)).Should().StartWith("Actualizada.");
+            almacen.ClavesLeidas.Last().Should().NotBe(claveOriginal);
+            almacen.ClavesLeidas.Should().OnlyContain(clave => clave.Length == 64 && clave.All(char.IsAsciiHexDigit));
+        }
+
+        [Fact]
+        public async Task Handle_ReordenarGustosYTagsMantieneLaEntrada()
+        {
+            var usuario = CrearUsuario(gustos: ["Pizza", "Pasta"], restricciones: ["Sin gluten"]);
+            var restriccion = usuario.Restricciones.Single();
+            restriccion.TagsProhibidos.Add(new Tag { Nombre = "Avena" });
+            var restaurante = CrearRestaurante(gustos: ["Pasta", "Pizza"]);
+            restaurante.RestriccionesQueRespeta = [restriccion];
+            restaurante.ConfirmarRestriccionesDeclaradas(0, DateTime.UtcNow);
+            var caso = CrearCasoDeUso();
+            _ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync("Coincidencias.");
+
+            await caso.Handle(usuario, restaurante, default);
+            usuario.Gustos = usuario.Gustos.Reverse().ToList();
+            restaurante.GustosQueSirve = restaurante.GustosQueSirve.Reverse().ToList();
+            restriccion.TagsProhibidos = restriccion.TagsProhibidos.Reverse().ToList();
+            (await caso.Handle(usuario, restaurante, default)).Should().StartWith("Coincidencias.");
+            _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_DeclaracionVenceSinCambios_ReevaluaAntesDeLeerYDeEntregar()
+        {
+            var fecha = new DateTimeOffset(2026, 1, 20, 12, 0, 0, TimeSpan.Zero);
+            var reloj = new RelojExplicacionesPrueba(fecha.AddMonths(4).AddMinutes(-1));
+            var almacen = new AlmacenExplicacionesPrueba(reloj);
+            var usuario = CrearUsuario(gustos: ["Pizza"], restricciones: ["Sin gluten"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            restaurante.RestriccionesQueRespeta = usuario.Restricciones.ToList();
+            restaurante.ConfirmarRestriccionesDeclaradas(0, fecha.UtcDateTime);
+            var caso = CrearCasoDeUso(reloj, almacen);
+            _ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(() =>
+            {
+                reloj.Avanzar(TimeSpan.FromMinutes(2));
+                return "No corresponde mostrar el texto.";
+            });
+
+            (await caso.Handle(usuario, restaurante, default)).Should().Contain("No hay información suficiente");
+            var lecturas = almacen.ClavesLeidas.Count;
+            (await caso.Handle(usuario, restaurante, default)).Should().Contain("No hay información suficiente");
+            almacen.ClavesLeidas.Should().HaveCount(lecturas);
+            _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_OfertaVenceSinCambios_RecalculaLaExplicacion()
+        {
+            var fecha = new DateTimeOffset(2026, 1, 20, 12, 0, 0, TimeSpan.Zero);
+            var reloj = new RelojExplicacionesPrueba(fecha.AddMonths(4).AddMinutes(-1));
+            var usuario = CrearUsuario(gustos: ["Pizza"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            restaurante.ConfirmarOfertaVigente(0, fecha.UtcDateTime);
+            var caso = CrearCasoDeUso(reloj);
+            _ia.SetupSequence(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("Oferta vigente.").ReturnsAsync("Oferta por revisar.");
+
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Oferta vigente.");
+            reloj.Avanzar(TimeSpan.FromMinutes(2));
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Oferta por revisar.");
+        }
+
+        [Fact]
+        public async Task Handle_NuevaCondicionIncompatible_NoDevuelveExplicacionPrevia()
+        {
+            var almacen = new AlmacenExplicacionesPrueba(TimeProvider.System);
+            var usuario = CrearUsuario(gustos: ["Pizza"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"], tags: ["Gluten"]);
+            var caso = CrearCasoDeUso(almacen: almacen);
+            _ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("Coincide con tu gusto por la pizza.");
+            (await caso.Handle(usuario, restaurante, default)).Should().Contain("tu gusto por la pizza");
+            var lecturas = almacen.ClavesLeidas.Count;
+            usuario.CondicionesMedicas.Add(new CondicionMedica
+            {
+                Id = Guid.NewGuid(), Nombre = "Enfermedad celíaca", TagsCriticos = [new Tag { Nombre = "Gluten" }]
+            });
+
+            (await caso.Handle(usuario, restaurante, default)).Should().Contain("incompatibilidad conocida");
+            almacen.ClavesLeidas.Should().HaveCount(lecturas);
+            _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_RedisNoDisponible_UsaCoincidenciasSinConsultarGemini()
+        {
+            var almacen = new AlmacenExplicacionesPrueba(TimeProvider.System) { Caido = true };
+            var caso = CrearCasoDeUso(almacen: almacen);
+            var resultado = await caso.Handle(CrearUsuario(gustos: ["Pizza"]), CrearRestaurante(gustos: ["Pizza"]), default);
+
+            resultado.Should().Contain("coinciden con tus gustos: Pizza");
+            resultado.Should().NotContain("Redis");
+            _ia.VerifyNoOtherCalls();
+        }
+
+        private RecomendacionIAUseCase CrearCasoDeUso(TimeProvider? reloj = null,
+            AlmacenExplicacionesPrueba? almacen = null, GeminiSettings? configuracion = null)
+        {
+            reloj ??= TimeProvider.System;
+            almacen ??= new AlmacenExplicacionesPrueba(reloj);
+            var opciones = Options.Create(configuracion ?? new GeminiSettings { ApiKey = "prueba", Model = "modelo-prueba" });
             return new RecomendacionIAUseCase(
                 _ia.Object,
-                new EvaluadorCompatibilidadRestaurante(),
-                NullLogger<RecomendacionIAUseCase>.Instance);
+                new EvaluadorCompatibilidadRestaurante(reloj),
+                new CacheExplicaciones(almacen, opciones, reloj, NullLogger<CacheExplicaciones>.Instance),
+                opciones, reloj);
         }
 
         private static Usuario CrearUsuario(
@@ -171,6 +357,7 @@ namespace GustosApp.Application.Tests
         {
             return new Usuario
             {
+                Id = Guid.NewGuid(),
                 Gustos = (gustos ?? []).Select(nombre => new Gusto { Nombre = nombre }).ToList(),
                 Restricciones = (restricciones ?? [])
                     .Select(nombre => new Restriccion
@@ -208,6 +395,7 @@ namespace GustosApp.Application.Tests
 
             return new Restaurante
             {
+                Id = Guid.NewGuid(),
                 Nombre = "Restaurante de prueba",
                 GustosQueSirve = gustosRestaurante,
                 RestriccionesQueRespeta = (restricciones ?? [])

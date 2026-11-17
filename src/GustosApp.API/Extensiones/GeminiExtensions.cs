@@ -26,7 +26,7 @@ namespace GustosApp.API.Extensiones
             .ConfigureHttpClient(http => http.Timeout = Timeout.InfiniteTimeSpan)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
             .RedactLoggedHeaders(["x-goog-api-key", "Authorization"]);
-        services.AddTransient<IRecomendacionAIService>(sp =>
+        services.AddSingleton<IRecomendacionAIService>(sp =>
         {
             var fabrica = sp.GetRequiredService<IHttpClientFactory>();
             return new RecomendacionAIService(sp.GetRequiredService<IOptions<GeminiSettings>>(),

@@ -31,13 +31,15 @@ public sealed class GeminiIntegracionPruebas
         var pizza = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
         var gustoGuardado = new Gusto { Id = Guid.NewGuid(), Nombre = "Pasta" };
         var restaurante = new Restaurante { Id = Guid.NewGuid(), Nombre = "Local", GustosQueSirve = [gustoGuardado] };
-        var usuario = new Usuario { Gustos = [gustoGuardado] };
+        var usuario = new Usuario { Id = Guid.NewGuid(), Gustos = [gustoGuardado] };
         var restaurantes = new Mock<IRestauranteRepository>();
         restaurantes.Setup(r => r.GetByIdAsync(restaurante.Id, It.IsAny<CancellationToken>())).ReturnsAsync(restaurante);
         var gustos = new Mock<IGustoRepository>();
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([pizza, gustoGuardado]);
         var transporte = new Transporte((_, _) => throw new InvalidOperationException("No debe llamar al proveedor."));
         await using var servicios = CrearServicios(clave, modelo, transporte)
+            .AgregarRedisCache(new ConfigurationBuilder().Build())
+            .AddSingleton(TimeProvider.System)
             .AddSingleton(restaurantes.Object).AddSingleton(gustos.Object).AddSingleton(Mock.Of<IOcrService>())
             .AddScoped<EvaluadorCompatibilidadRestaurante>().AddScoped<RecomendacionIAUseCase>()
             .AddScoped<AnalizarMenuRestauranteImportadoUseCase>().BuildServiceProvider();
@@ -76,6 +78,27 @@ public sealed class GeminiIntegracionPruebas
         (await ia.GenerarRecomendacion("texto de prueba", default)).Should().Be("Gustos compartidos.");
         (await ia.GenerarRecomendacion("texto de prueba", default)).Should().Be("Gustos compartidos.");
         transporte.Peticiones.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Explicacion_RedisInaccesible_DiResuelveYDevuelveCoincidenciasSinLlamarAGemini()
+    {
+        var configuracion = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["ConnectionStrings:Redis"] = "127.0.0.1:1" }).Build();
+        var transporte = new Transporte((_, _) => throw new InvalidOperationException("No debe llamar al proveedor."));
+        await using var servicios = CrearServicios(Clave, Modelo, transporte)
+            .AgregarRedisCache(configuracion).AddSingleton(TimeProvider.System)
+            .AddScoped<EvaluadorCompatibilidadRestaurante>().AddScoped<RecomendacionIAUseCase>().BuildServiceProvider();
+        await using var scope = servicios.CreateAsyncScope();
+        var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+        var usuario = new Usuario { Gustos = [gusto] };
+        var restaurante = new Restaurante { Id = Guid.NewGuid(), Nombre = "Restaurante", GustosQueSirve = [gusto] };
+
+        var explicacion = await scope.ServiceProvider.GetRequiredService<RecomendacionIAUseCase>()
+            .Handle(usuario, restaurante, default).WaitAsync(TimeSpan.FromSeconds(5));
+
+        explicacion.Should().Contain("coinciden con tus gustos: Pizza");
+        transporte.Peticiones.Should().Be(0);
     }
 
     [Theory]

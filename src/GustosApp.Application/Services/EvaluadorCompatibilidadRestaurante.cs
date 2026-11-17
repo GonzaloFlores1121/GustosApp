@@ -23,7 +23,10 @@ public class EvaluadorCompatibilidadRestaurante
             .ToList();
     }
 
-    public NivelCompatibilidadRestaurante Evaluar(UsuarioPreferencias preferencias, Restaurante restaurante)
+    public NivelCompatibilidadRestaurante Evaluar(UsuarioPreferencias preferencias, Restaurante restaurante) =>
+        Evaluar(preferencias, restaurante, _reloj.GetUtcNow().UtcDateTime);
+
+    internal NivelCompatibilidadRestaurante Evaluar(UsuarioPreferencias preferencias, Restaurante restaurante, DateTime ahoraUtc)
     {
         if (preferencias.Restricciones.Count == 0 && preferencias.CondicionesMedicas.Count == 0 &&
             preferencias.ReglasCompatibilidad.Count == 0)
@@ -37,7 +40,7 @@ public class EvaluadorCompatibilidadRestaurante
 
         var idsDeclarados = restaurante.RestriccionesQueRespeta.Select(r => r.Id).ToHashSet();
         var sinDeclaracion = reglas.Where(regla => !regla.EsRestriccion ||
-            restaurante.ObtenerEstadoDeclaracion(regla.Id, _reloj.GetUtcNow().UtcDateTime) !=
+            restaurante.ObtenerEstadoDeclaracion(regla.Id, ahoraUtc) !=
             EstadoVigenciaInformacion.Vigente).ToList();
 
         if (sinDeclaracion.Count == 0 && reglas.Count ==
