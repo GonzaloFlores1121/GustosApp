@@ -140,18 +140,23 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
             DateTime.UtcNow);
         var repositorio = new Mock<IRestauranteRepository>();
         repositorio.Setup(r => r.ObtenerPendientesClasificacionAsync(
-                ObtenerPendientesClasificacionRestauranteUseCase.CantidadMaxima,
+                It.IsAny<ConsultaPendientesClasificacion>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync([restaurante]);
+            .ReturnsAsync(new PaginaRestaurantesPendientes([restaurante], 121, 2, 20));
         var useCase = new ObtenerPendientesClasificacionRestauranteUseCase(repositorio.Object);
 
-        var resultado = await useCase.HandleAsync();
+        var consulta = new ConsultaPendientesClasificacion(2, 20, FiltroPendientesClasificacion.ErrorMenu);
+        var resultado = await useCase.HandleAsync(consulta);
 
-        resultado.Should().ContainSingle();
-        resultado.Single().Motivos.Should().Equal(
+        resultado.Total.Should().Be(121);
+        resultado.Pagina.Should().Be(2);
+        resultado.TotalPaginas.Should().Be(7);
+        resultado.Elementos.Should().ContainSingle();
+        resultado.Elementos.Single().Motivos.Should().Equal(
             "Error al procesar menú",
             "Sin gustos",
             "Clasificación automática");
+        repositorio.Verify(r => r.ObtenerPendientesClasificacionAsync(consulta, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

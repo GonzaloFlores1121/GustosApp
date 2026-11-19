@@ -7,6 +7,7 @@ using GustosApp.Infraestructure.Files;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using GustosApp.Domain.Common;
 
 namespace GustosApp.API.Controllers;
 
@@ -18,7 +19,14 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
     [HttpGet("pendientes")]
     public async Task<IActionResult> ObtenerPendientes(
         [FromServices] ObtenerPendientesClasificacionRestauranteUseCase useCase,
-        CancellationToken ct) => Ok(await useCase.HandleAsync(ct));
+        CancellationToken ct,
+        [FromQuery] int pagina = 1,
+        [FromQuery] int tamanoPagina = 20,
+        [FromQuery] FiltroPendientesClasificacion filtro = FiltroPendientesClasificacion.Todos)
+    {
+        try { return Ok(await useCase.HandleAsync(new(pagina, tamanoPagina, filtro), ct)); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+    }
 
     [HttpGet("buscar")]
     public async Task<IActionResult> Buscar(

@@ -75,7 +75,7 @@ public sealed class FiltrosMapaPruebas
     }
 }
 
-public sealed class FabricaFiltrosMapa(TimeProvider? reloj = null) : FabricaApiGustosApp
+public sealed class FabricaFiltrosMapa(TimeProvider? reloj = null, IFirebaseAuthService? firebase = null) : FabricaApiGustosApp
 {
     private readonly string _base = $"filtros-mapa-{Guid.NewGuid():N}";
     public const string Uid = "usuario-pruebas-integracion";
@@ -100,6 +100,11 @@ public sealed class FabricaFiltrosMapa(TimeProvider? reloj = null) : FabricaApiG
             servicios.RemoveAll<IEmbeddingService>();
             servicios.AddSingleton<IEmbeddingService, EmbeddingReal>();
             servicios.AddSingleton(reloj ?? TimeProvider.System);
+            if (firebase is not null)
+            {
+                servicios.RemoveAll<IFirebaseAuthService>();
+                servicios.AddSingleton(firebase);
+            }
         });
     }
 

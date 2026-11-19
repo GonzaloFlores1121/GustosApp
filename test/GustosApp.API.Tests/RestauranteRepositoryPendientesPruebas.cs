@@ -23,9 +23,10 @@ public sealed class RestauranteRepositoryPendientesPruebas
         await contexto.SaveChangesAsync();
         var repositorio = new RestauranteRepositoryEF(contexto);
 
-        var resultado = await repositorio.ObtenerPendientesClasificacionAsync(100);
+        var resultado = await repositorio.ObtenerPendientesClasificacionAsync(new());
 
-        resultado.Should().ContainSingle().Which.Id.Should().Be(pendiente.Id);
+        resultado.Elementos.Should().ContainSingle().Which.Id.Should().Be(pendiente.Id);
+        resultado.Total.Should().Be(1);
     }
 
     private static Restaurante CrearRestaurante(string nombre) => new()

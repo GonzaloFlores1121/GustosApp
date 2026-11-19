@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Domain.Model;
+using GustosApp.Domain.Common;
 
 namespace GustosApp.Domain.Interfaces
 {
@@ -15,8 +16,8 @@ namespace GustosApp.Domain.Interfaces
                 IReadOnlyCollection<string> placeIds,
                 CancellationToken ct = default);
 
-            Task<List<Restaurante>> ObtenerPendientesClasificacionAsync(
-                int cantidadMaxima,
+            Task<PaginaRestaurantesPendientes> ObtenerPendientesClasificacionAsync(
+                ConsultaPendientesClasificacion consulta,
                 CancellationToken ct = default);
 
             Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct);

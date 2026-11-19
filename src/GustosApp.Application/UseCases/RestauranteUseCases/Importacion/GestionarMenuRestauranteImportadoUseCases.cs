@@ -221,19 +221,25 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
     }
 }
 
+public sealed record PaginaPendientesClasificacion(
+    IReadOnlyCollection<RestaurantePendienteClasificacion> Elementos, int Total, int Pagina, int TamanoPagina)
+{
+    public int TotalPaginas => (int)Math.Ceiling((double)Total / TamanoPagina);
+}
+
 public sealed class ObtenerPendientesClasificacionRestauranteUseCase
 {
-    public const int CantidadMaxima = 100;
     private readonly IRestauranteRepository _restaurantes;
 
     public ObtenerPendientesClasificacionRestauranteUseCase(IRestauranteRepository restaurantes) =>
         _restaurantes = restaurantes;
 
-    public async Task<IReadOnlyCollection<RestaurantePendienteClasificacion>> HandleAsync(
+    public async Task<PaginaPendientesClasificacion> HandleAsync(
+        ConsultaPendientesClasificacion consulta,
         CancellationToken ct = default)
     {
-        var restaurantes = await _restaurantes.ObtenerPendientesClasificacionAsync(CantidadMaxima, ct);
-        return restaurantes.Select(restaurante => new RestaurantePendienteClasificacion(
+        var pagina = await _restaurantes.ObtenerPendientesClasificacionAsync(consulta, ct);
+        var elementos = pagina.Elementos.Select(restaurante => new RestaurantePendienteClasificacion(
                 restaurante.Id,
                 restaurante.Nombre,
                 restaurante.Direccion,
@@ -243,6 +249,7 @@ public sealed class ObtenerPendientesClasificacionRestauranteUseCase
                 restaurante.GustosQueSirve.OrderBy(gusto => gusto.Nombre)
                     .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray()))
             .ToArray();
+        return new PaginaPendientesClasificacion(elementos, pagina.Total, pagina.Pagina, pagina.TamanoPagina);
     }
 
     private static IReadOnlyCollection<string> ObtenerMotivos(Restaurante restaurante)

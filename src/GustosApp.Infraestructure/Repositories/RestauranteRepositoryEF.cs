@@ -50,26 +50,41 @@ namespace GustosApp.Infraestructure.Repositories
                 .ToListAsync(ct);
         }
 
-        public Task<List<Restaurante>> ObtenerPendientesClasificacionAsync(
-            int cantidadMaxima,
+        public async Task<PaginaRestaurantesPendientes> ObtenerPendientesClasificacionAsync(
+            ConsultaPendientesClasificacion consulta,
             CancellationToken ct = default)
         {
-            return _db.Restaurantes
+            var pendientes = _db.Restaurantes
                 .AsNoTracking()
-                .Include(restaurante => restaurante.GustosQueSirve)
                 .Where(restaurante =>
                     !restaurante.DuenoId.HasValue &&
                     string.IsNullOrEmpty(restaurante.PropietarioUid) &&
                     (restaurante.MenuProcesado != true ||
                      !restaurante.GustosQueSirve.Any() ||
                      restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces ||
-                     restaurante.MenuError != null))
-                .OrderByDescending(restaurante => restaurante.MenuError != null)
+                     !string.IsNullOrWhiteSpace(restaurante.MenuError)));
+            pendientes = consulta.Filtro switch
+            {
+                FiltroPendientesClasificacion.ErrorMenu => pendientes.Where(r => !string.IsNullOrWhiteSpace(r.MenuError)),
+                FiltroPendientesClasificacion.SinMenuProcesado => pendientes.Where(r =>
+                    r.MenuProcesado != true && string.IsNullOrWhiteSpace(r.MenuError)),
+                FiltroPendientesClasificacion.SinGustos => pendientes.Where(r => !r.GustosQueSirve.Any()),
+                FiltroPendientesClasificacion.ClasificacionAutomatica => pendientes.Where(r =>
+                    r.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces),
+                _ => pendientes
+            };
+            var total = await pendientes.CountAsync(ct);
+            var elementos = await pendientes
+                .Include(restaurante => restaurante.GustosQueSirve)
+                .OrderByDescending(restaurante => !string.IsNullOrWhiteSpace(restaurante.MenuError))
                 .ThenBy(restaurante => restaurante.MenuProcesado == true)
                 .ThenByDescending(restaurante => !restaurante.GustosQueSirve.Any())
                 .ThenBy(restaurante => restaurante.Nombre)
-                .Take(cantidadMaxima)
+                .ThenBy(restaurante => restaurante.Id)
+                .Skip(consulta.Desplazamiento)
+                .Take(consulta.TamanoPagina)
                 .ToListAsync(ct);
+            return new PaginaRestaurantesPendientes(elementos, total, consulta.Pagina, consulta.TamanoPagina);
         }
 
         public async Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct = default)
