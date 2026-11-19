@@ -296,45 +296,6 @@ namespace GustosApp.API.Controllers
         }
 
         [Authorize(Policy = "DuenoRestaurante")]
-        [HttpPost("{id:guid}/confirmar-oferta")]
-        public async Task<IActionResult> ConfirmarOferta(
-            Guid id, [FromBody] ConfirmarVigenciaRestauranteRequest request,
-            [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
-        {
-            try
-            {
-                var actualizado = await useCase.ConfirmarOfertaAsync(id, request.VersionEsperada,
-                    await ObtenerUsuarioIdActualAsync(ct), false, ct);
-                return Ok(_mapper.Map<RestauranteDetalleDto>(actualizado));
-            }
-            catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-            catch (AccesoProhibidoException) { return Forbid(); }
-            catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
-            catch (DbUpdateConcurrencyException) { return Conflict(new { error = "La oferta cambió; recargá la ficha antes de confirmarla." }); }
-        }
-
-        [Authorize(Policy = "DuenoRestaurante")]
-        [HttpPost("{id:guid}/confirmar-restricciones")]
-        public async Task<IActionResult> ConfirmarRestricciones(
-            Guid id, [FromBody] ConfirmarVigenciaRestauranteRequest request,
-            [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
-        {
-            try
-            {
-                var actualizado = await useCase.ConfirmarRestriccionesAsync(id, request.VersionEsperada,
-                    await ObtenerUsuarioIdActualAsync(ct), false, ct);
-                return Ok(_mapper.Map<RestauranteDetalleDto>(actualizado));
-            }
-            catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-            catch (AccesoProhibidoException) { return Forbid(); }
-            catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
-            catch (DbUpdateConcurrencyException) { return Conflict(new { error = "Las declaraciones cambiaron; recargá la ficha antes de confirmarlas." }); }
-        }
-
-
-
-
-        [Authorize(Policy = "DuenoRestaurante")]
         [HttpGet("mio")]
         [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

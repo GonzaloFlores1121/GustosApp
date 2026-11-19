@@ -24,7 +24,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
         private const string AdvertenciaCompatibilidadOrientativa =
             "La compatibilidad es orientativa. Ante una restricción o condición médica, confirmá la preparación y la posible contaminación cruzada con el restaurante.";
 
-        private const int VersionPrompt = 1;
+        private const int VersionPrompt = 2;
 
         public async Task<string> Handle(
             Usuario usuario,
@@ -67,19 +67,21 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             if (opcionesGemini.Habilitada && usuario.Id != Guid.Empty && restaurante.Id != Guid.Empty)
             {
                 var prompt = ConstruirPromptDeGustos(preferencias, restaurante, opcionesPotenciales);
-                var clave = CrearHuella(usuario, restaurante, preferencias, opcionesGemini.Model, prompt, ahoraUtc);
+                var clave = CrearHuella(usuario, restaurante, preferencias, opcionesGemini.Model, prompt);
                 explicacion = await cache.ObtenerAsync(clave, ct => ia.GenerarRecomendacion(prompt, ct), cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Una declaración puede vencerse mientras se espera a Redis o a Gemini.
+                // Reevaluar si la información cambió mientras se esperaba la explicación.
                 var ahoraEntrega = reloj.GetUtcNow().UtcDateTime;
                 compatibilidad = evaluadorCompatibilidad.Evaluar(preferencias, restaurante, ahoraEntrega);
                 if (compatibilidad == NivelCompatibilidadRestaurante.Incompatible)
                     return MensajeIncompatible;
                 if (compatibilidad == NivelCompatibilidadRestaurante.Desconocida)
                     return MensajeCompatibilidadDesconocida;
-                if (restaurante.ObtenerEstadoOferta(ahoraEntrega) != restaurante.ObtenerEstadoOferta(ahoraUtc) ||
-                    restaurante.ObtenerEstadoRestricciones(ahoraEntrega) != restaurante.ObtenerEstadoRestricciones(ahoraUtc))
+                opcionesPotenciales = evaluadorCompatibilidad.ObtenerOpcionesSinConflictoConocido(preferencias, restaurante);
+                if (opcionesPotenciales.Count == 0) return MensajeCompatibilidadDesconocida;
+                if (clave != CrearHuella(usuario, restaurante, preferencias, opcionesGemini.Model,
+                        ConstruirPromptDeGustos(preferencias, restaurante, opcionesPotenciales)))
                     explicacion = null;
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -101,7 +103,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
         }
 
         private static string CrearHuella(Usuario usuario, Restaurante restaurante,
-            UsuarioPreferencias preferencias, string modelo, string prompt, DateTime ahoraUtc)
+            UsuarioPreferencias preferencias, string modelo, string prompt)
         {
             var datos = new
             {
@@ -118,13 +120,9 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 Oferta = restaurante.GustosQueSirve.OrderBy(g => g.Id).ThenBy(g => g.Nombre, StringComparer.Ordinal)
                     .Select(g => new { g.Id, g.Nombre, Tags = OrdenarNombres(g.Tags.Select(t => t.NombreNormalizado)) }),
                 Declaraciones = restaurante.RestriccionesQueRespeta.OrderBy(r => r.Id)
-                    .Select(r => new { r.Id, r.Nombre, Vigencia = restaurante.ObtenerEstadoDeclaracion(r.Id, ahoraUtc) }),
-                restaurante.VersionOferta,
-                restaurante.VersionRestricciones,
-                restaurante.FechaRevisionOfertaUtc,
-                restaurante.FechaRevisionRestriccionesUtc,
-                EstadoOferta = restaurante.ObtenerEstadoOferta(ahoraUtc),
-                EstadoRestricciones = restaurante.ObtenerEstadoRestricciones(ahoraUtc)
+                    .Select(r => new { r.Id, r.Nombre }),
+                restaurante.OrigenDatosCompatibilidad,
+                restaurante.EstadoDatosCompatibilidad
             };
             return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(datos)));
         }

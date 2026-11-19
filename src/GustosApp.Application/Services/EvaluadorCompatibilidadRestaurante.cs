@@ -40,8 +40,7 @@ public class EvaluadorCompatibilidadRestaurante
 
         var idsDeclarados = restaurante.RestriccionesQueRespeta.Select(r => r.Id).ToHashSet();
         var sinDeclaracion = reglas.Where(regla => !regla.EsRestriccion ||
-            restaurante.ObtenerEstadoDeclaracion(regla.Id, ahoraUtc) !=
-            EstadoVigenciaInformacion.Vigente).ToList();
+            !idsDeclarados.Contains(regla.Id)).ToList();
 
         if (sinDeclaracion.Count == 0 && reglas.Count ==
             preferencias.Restricciones.Count + preferencias.CondicionesMedicas.Count)

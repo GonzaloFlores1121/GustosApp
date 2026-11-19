@@ -108,39 +108,6 @@ public sealed class AdminRestaurantesMenuController : ControllerBase
         catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
     }
 
-    [HttpPost("{restauranteId:guid}/confirmar-oferta")]
-    public async Task<IActionResult> ConfirmarOferta(
-        Guid restauranteId, [FromBody] ConfirmarVigenciaRestauranteRequest request,
-        [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
-    {
-        try
-        {
-            var restaurante = await useCase.ConfirmarOfertaAsync(
-                restauranteId, request.VersionEsperada, null, true, ct);
-            return Ok(new { restaurante.VersionOferta, restaurante.FechaRevisionOfertaUtc });
-        }
-        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-        catch (AccesoProhibidoException) { return Forbid(); }
-        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
-        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "La oferta cambió; recargá la ficha." }); }
-    }
-
-    [HttpPost("{restauranteId:guid}/confirmar-restricciones")]
-    public async Task<IActionResult> ConfirmarRestricciones(
-        Guid restauranteId, [FromBody] ConfirmarVigenciaRestauranteRequest request,
-        [FromServices] ConfirmarVigenciaRestauranteUseCase useCase, CancellationToken ct)
-    {
-        try
-        {
-            var restaurante = await useCase.ConfirmarRestriccionesAsync(
-                restauranteId, request.VersionEsperada, null, true, ct);
-            return Ok(new { restaurante.VersionRestricciones, restaurante.FechaRevisionRestriccionesUtc });
-        }
-        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-        catch (AccesoProhibidoException) { return Forbid(); }
-        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message }); }
-        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "Las declaraciones cambiaron; recargá la ficha." }); }
-    }
 }
 
 public sealed class AnalizarMenuRestauranteRequest

@@ -50,12 +50,11 @@ namespace GustosApp.API.Tests
 
             resultado.OrigenDatosCompatibilidad.Should().Be("Restaurante");
             resultado.EstadoDatosCompatibilidad.Should().Be("Verificado");
-            resultado.FechaUltimaVerificacionDatosCompatibilidadUtc.Should().Be(fecha);
             resultado.AdvertenciaCompatibilidad.Should().Contain("orientativa");
         }
 
         [Fact]
-        public void Mapear_OfertaRevisadaHaceCuatroMeses_LaInformaComoDesactualizada()
+        public void Mapear_OfertaRevisadaHaceCuatroMeses_NoGeneraAdvertenciaTemporal()
         {
             var configuracion = CrearConfiguracion();
             var mapper = configuracion.CreateMapper();
@@ -67,8 +66,7 @@ namespace GustosApp.API.Tests
 
             var resultado = mapper.Map<RestauranteDTO>(restaurante);
 
-            resultado.EstadoOferta.Should().Be("Desactualizada");
-            resultado.AdvertenciaCompatibilidad.Should().Contain("Oferta sin confirmar recientemente");
+            resultado.AdvertenciaCompatibilidad.Should().NotContain("recientemente").And.NotContain("fecha").And.NotContain("pendientes");
         }
 
         private static MapperConfiguration CrearConfiguracion()

@@ -18,10 +18,6 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                     .OrderBy(i => i.Orden).ThenBy(i => i.Id)
                     .Select(i => new ImagenGaleriaDto { Id = i.Id, Url = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, i.Url)!, Tipo = (int)i.Tipo, Orden = i.Orden, Origen = i.Origen.ToString() }).ToList()))
 
-                .ForMember(dest => dest.EstadoOferta,
-                    opt => opt.MapFrom(src => src.ObtenerEstadoOferta(DateTime.UtcNow).ToString()))
-                .ForMember(dest => dest.EstadoRestricciones,
-                    opt => opt.MapFrom(src => src.ObtenerEstadoRestricciones(DateTime.UtcNow).ToString()))
 
                 .ForMember(dest => dest.RatingCalculado, opt => opt.MapFrom(src => src.ObtenerPuntuacionPrincipal()))
                 .ForMember(dest => dest.PuntuacionPrincipal, opt => opt.MapFrom(src => src.ObtenerPuntuacionPrincipal()))

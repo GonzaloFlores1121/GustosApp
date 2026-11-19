@@ -470,7 +470,7 @@ namespace GustosApp.Application.Tests
             await _sut.HandleAsync(restaurante.Id, _usuarioId, null, null, null, null, null,
                 null, [anterior.Id, nueva.Id]);
 
-            Assert.Equal(EstadoVigenciaInformacion.Desactualizada,
+            Assert.Equal(EstadoVigenciaInformacion.Vigente,
                 restaurante.ObtenerEstadoDeclaracion(anterior.Id, DateTime.UtcNow));
             Assert.Equal(EstadoVigenciaInformacion.Vigente,
                 restaurante.ObtenerEstadoDeclaracion(nueva.Id, DateTime.UtcNow));

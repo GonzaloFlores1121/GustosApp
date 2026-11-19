@@ -116,14 +116,16 @@ namespace GustosApp.Domain.Model
 
 
         public EstadoVigenciaInformacion ObtenerEstadoOferta(DateTime ahoraUtc) =>
-            EvaluarVigencia(FechaRevisionOfertaUtc, ahoraUtc);
+            GustosQueSirve.Count > 0 || (MenuProcesado == true && !string.IsNullOrWhiteSpace(Menu?.Json))
+                ? EstadoVigenciaInformacion.Vigente : EstadoVigenciaInformacion.SinFecha;
 
         public EstadoVigenciaInformacion ObtenerEstadoRestricciones(DateTime ahoraUtc) =>
-            EvaluarVigencia(FechaRevisionRestriccionesUtc, ahoraUtc);
+            RestriccionesQueRespeta.Count > 0
+                ? EstadoVigenciaInformacion.Vigente : EstadoVigenciaInformacion.SinFecha;
 
         public EstadoVigenciaInformacion ObtenerEstadoDeclaracion(Guid restriccionId, DateTime ahoraUtc) =>
-            EvaluarVigencia(LeerVigencias(VigenciaRestriccionesJson)
-                .GetValueOrDefault(restriccionId), ahoraUtc);
+            RestriccionesQueRespeta.Any(r => r.Id == restriccionId)
+                ? EstadoVigenciaInformacion.Vigente : EstadoVigenciaInformacion.SinFecha;
 
         public DateTime? ObtenerFechaRevisionGusto(Guid gustoId) =>
             LeerVigencias(VigenciaGustosJson).GetValueOrDefault(gustoId);
@@ -183,15 +185,6 @@ namespace GustosApp.Domain.Model
             VigenciaRestriccionesJson = JsonSerializer.Serialize(
                 RestriccionesQueRespeta.ToDictionary(r => r.Id, _ => fecha));
             VersionRestricciones++;
-        }
-
-        private static EstadoVigenciaInformacion EvaluarVigencia(DateTime? fechaRevisionUtc, DateTime ahoraUtc)
-        {
-            if (!fechaRevisionUtc.HasValue) return EstadoVigenciaInformacion.SinFecha;
-            var fecha = NormalizarFechaUtc(fechaRevisionUtc.Value);
-            return NormalizarFechaUtc(ahoraUtc) >= fecha.AddMonths(4)
-                ? EstadoVigenciaInformacion.Desactualizada
-                : EstadoVigenciaInformacion.Vigente;
         }
 
         private static Dictionary<Guid, DateTime> LeerVigencias(string? json)
@@ -296,19 +289,7 @@ namespace GustosApp.Domain.Model
         public EstadoDatosCompatibilidadRestaurante ObtenerEstadoActualDatosCompatibilidad(
             DateTime fechaReferenciaUtc)
         {
-            if (EstadoDatosCompatibilidad != EstadoDatosCompatibilidadRestaurante.Verificado ||
-                !FechaUltimaVerificacionDatosCompatibilidadUtc.HasValue)
-            {
-                return EstadoDatosCompatibilidad;
-            }
-
-            var fechaUtc = NormalizarFechaUtc(fechaReferenciaUtc);
-            var fechaVerificacionUtc = NormalizarFechaUtc(
-                FechaUltimaVerificacionDatosCompatibilidadUtc.Value);
-
-            return fechaUtc >= fechaVerificacionUtc.AddMonths(4)
-                ? EstadoDatosCompatibilidadRestaurante.Desactualizado
-                : EstadoDatosCompatibilidadRestaurante.Verificado;
+            return EstadoDatosCompatibilidad;
         }
 
         private static DateTime NormalizarFechaUtc(DateTime fecha)

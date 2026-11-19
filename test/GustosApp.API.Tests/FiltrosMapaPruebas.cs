@@ -75,7 +75,7 @@ public sealed class FiltrosMapaPruebas
     }
 }
 
-public sealed class FabricaFiltrosMapa : FabricaApiGustosApp
+public sealed class FabricaFiltrosMapa(TimeProvider? reloj = null) : FabricaApiGustosApp
 {
     private readonly string _base = $"filtros-mapa-{Guid.NewGuid():N}";
     public const string Uid = "usuario-pruebas-integracion";
@@ -99,6 +99,7 @@ public sealed class FabricaFiltrosMapa : FabricaApiGustosApp
             servicios.AddScoped<IUsuarioRepository, UsuarioRepositoryEF>();
             servicios.RemoveAll<IEmbeddingService>();
             servicios.AddSingleton<IEmbeddingService, EmbeddingReal>();
+            servicios.AddSingleton(reloj ?? TimeProvider.System);
         });
     }
 

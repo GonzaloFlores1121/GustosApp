@@ -9,17 +9,17 @@ public class VigenciaOfertaYRestriccionesPruebas
     [InlineData(2024, 1, 31, 2024, 5, 31)]
     [InlineData(2023, 10, 31, 2024, 2, 29)]
     [InlineData(2024, 10, 31, 2025, 2, 28)]
-    public void CuatroMesesCalendario_VencenAlAlcanzarFechaLimite(
+    public void Oferta_NoCaducaAlPasarCuatroMesesCalendario(
         int anio, int mes, int dia, int anioLimite, int mesLimite, int diaLimite)
     {
-        var restaurante = new Restaurante();
+        var restaurante = new Restaurante { GustosQueSirve = [new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" }] };
         var revision = new DateTime(anio, mes, dia, 12, 0, 0, DateTimeKind.Utc);
         restaurante.ConfirmarOfertaVigente(0, revision);
         var limite = new DateTime(anioLimite, mesLimite, diaLimite, 12, 0, 0, DateTimeKind.Utc);
 
         Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoOferta(limite.AddTicks(-1)));
-        Assert.Equal(EstadoVigenciaInformacion.Desactualizada,
+        Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoOferta(limite));
     }
 
@@ -27,22 +27,24 @@ public class VigenciaOfertaYRestriccionesPruebas
     [InlineData(2024, 1, 31, 2024, 5, 31)]
     [InlineData(2023, 10, 31, 2024, 2, 29)]
     [InlineData(2024, 10, 31, 2025, 2, 28)]
-    public void Restricciones_CuatroMesesCalendario_VencenAlAlcanzarFechaLimite(
+    public void Restricciones_NoCaducanAlPasarCuatroMesesCalendario(
         int anio, int mes, int dia, int anioLimite, int mesLimite, int diaLimite)
     {
-        var restaurante = new Restaurante();
+        var restaurante = new Restaurante {
+            RestriccionesQueRespeta = [new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin gluten" }]
+        };
         var revision = new DateTime(anio, mes, dia, 12, 0, 0, DateTimeKind.Utc);
         restaurante.ConfirmarRestriccionesDeclaradas(0, revision);
         var limite = new DateTime(anioLimite, mesLimite, diaLimite, 12, 0, 0, DateTimeKind.Utc);
 
         Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoRestricciones(limite.AddTicks(-1)));
-        Assert.Equal(EstadoVigenciaInformacion.Desactualizada,
+        Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoRestricciones(limite));
     }
 
     [Fact]
-    public void DeclaracionIndividual_ConservaSuFechaYVenceAunqueSeAgregueOtra()
+    public void DeclaracionIndividual_ConservaSuFechaYSuDeclaracionAunqueSeAgregueOtra()
     {
         var original = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin gluten" };
         var nueva = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin lactosa" };
@@ -55,7 +57,7 @@ public class VigenciaOfertaYRestriccionesPruebas
 
         Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoDeclaracion(original.Id, limite.AddTicks(-1)));
-        Assert.Equal(EstadoVigenciaInformacion.Desactualizada,
+        Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoDeclaracion(original.Id, limite));
         Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoDeclaracion(nueva.Id, limite));
@@ -74,12 +76,12 @@ public class VigenciaOfertaYRestriccionesPruebas
 
         Assert.Equal(revision, restaurante.ObtenerFechaRevisionGusto(original.Id));
         Assert.Equal(revision.AddMonths(2), restaurante.ObtenerFechaRevisionGusto(nuevo.Id));
-        Assert.Equal(EstadoVigenciaInformacion.SinFecha,
+        Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoOferta(revision.AddMonths(2)));
     }
 
     [Fact]
-    public void Secciones_SeConfirmanPorSeparadoYSinFechaNoSeInventaVigencia()
+    public void FechasHistoricas_NoInventanOfertaNiDeclaraciones()
     {
         var restaurante = new Restaurante();
         var fecha = new DateTime(2026, 1, 31, 12, 0, 0, DateTimeKind.Utc);
@@ -89,7 +91,7 @@ public class VigenciaOfertaYRestriccionesPruebas
             restaurante.ObtenerEstadoRestricciones(fecha));
 
         restaurante.ConfirmarOfertaVigente(0, fecha);
-        Assert.Equal(EstadoVigenciaInformacion.Vigente,
+        Assert.Equal(EstadoVigenciaInformacion.SinFecha,
             restaurante.ObtenerEstadoOferta(fecha));
         Assert.Equal(EstadoVigenciaInformacion.SinFecha,
             restaurante.ObtenerEstadoRestricciones(fecha));
@@ -110,7 +112,7 @@ public class VigenciaOfertaYRestriccionesPruebas
         restaurante.RestriccionesQueRespeta.Add(nueva);
         restaurante.RegistrarCambioRestricciones([vieja.Id], revision.AddMonths(5));
 
-        Assert.Equal(EstadoVigenciaInformacion.Desactualizada,
+        Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoDeclaracion(vieja.Id, revision.AddMonths(5)));
         Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoDeclaracion(nueva.Id, revision.AddMonths(5)));
@@ -118,7 +120,7 @@ public class VigenciaOfertaYRestriccionesPruebas
     }
 
     [Fact]
-    public void CambioDeMenuInvalidaRevisionDeOfertaSinBorrarGustos()
+    public void CambioDeMenuConservaGustosYSuEvidencia()
     {
         var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
         var restaurante = new Restaurante { GustosQueSirve = [gusto] };
@@ -127,7 +129,7 @@ public class VigenciaOfertaYRestriccionesPruebas
 
         restaurante.RegistrarCambioMenuPublicado();
 
-        Assert.Equal(EstadoVigenciaInformacion.SinFecha,
+        Assert.Equal(EstadoVigenciaInformacion.Vigente,
             restaurante.ObtenerEstadoOferta(fecha.AddDays(1)));
         Assert.Contains(gusto, restaurante.GustosQueSirve);
         Assert.Equal(fecha, restaurante.ObtenerFechaRevisionGusto(gusto.Id));

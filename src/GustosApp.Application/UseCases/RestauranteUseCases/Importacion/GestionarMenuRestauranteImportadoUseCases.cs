@@ -39,10 +39,6 @@ public sealed record DetalleGestionRestaurante(
     IReadOnlyCollection<GustoSugeridoMenu> Gustos,
     IReadOnlyCollection<GustoSugeridoMenu> CatalogoGustos,
     IReadOnlyCollection<GustoSugeridoMenu> RestriccionesQueRespeta,
-    string EstadoOferta,
-    string EstadoRestricciones,
-    DateTime? FechaRevisionOfertaUtc,
-    DateTime? FechaRevisionRestriccionesUtc,
     int VersionOferta,
     int VersionRestricciones);
 
@@ -299,10 +295,6 @@ public sealed class ObtenerDetalleGestionRestauranteUseCase
                 .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray(),
             restaurante.RestriccionesQueRespeta.OrderBy(restriccion => restriccion.Nombre)
                 .Select(restriccion => new GustoSugeridoMenu(restriccion.Id, restriccion.Nombre)).ToArray(),
-            restaurante.ObtenerEstadoOferta(_reloj.GetUtcNow().UtcDateTime).ToString(),
-            restaurante.ObtenerEstadoRestricciones(_reloj.GetUtcNow().UtcDateTime).ToString(),
-            restaurante.FechaRevisionOfertaUtc,
-            restaurante.FechaRevisionRestriccionesUtc,
             restaurante.VersionOferta,
             restaurante.VersionRestricciones);
     }

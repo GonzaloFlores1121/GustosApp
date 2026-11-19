@@ -21,10 +21,6 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                 .ForMember(dest => dest.CantidadResenasGoogle, opt => opt.MapFrom(src => src.CantidadResenas))
                 .ForMember(dest => dest.NivelCompatibilidad,
                     opt => opt.MapFrom(src => src.NivelCompatibilidad.ToString()))
-                .ForMember(dest => dest.EstadoOferta,
-                    opt => opt.MapFrom(src => src.ObtenerEstadoOferta(DateTime.UtcNow).ToString()))
-                .ForMember(dest => dest.EstadoRestricciones,
-                    opt => opt.MapFrom(src => src.ObtenerEstadoRestricciones(DateTime.UtcNow).ToString()))
                 .ForMember(dest => dest.OrigenDatosCompatibilidad,
                     opt => opt.MapFrom(src => src.OrigenDatosCompatibilidad.ToString()))
                 .ForMember(dest => dest.EstadoDatosCompatibilidad,
@@ -49,15 +45,6 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                     "Las opciones registradas presentan conflictos conocidos para esta búsqueda.",
                 _ => "No hay datos suficientes para confirmar opciones para todas las preferencias de esta búsqueda."
             };
-            if (restaurante.ObtenerEstadoOferta(DateTime.UtcNow) ==
-                GustosApp.Domain.Common.EstadoVigenciaInformacion.Desactualizada)
-                advertencia += " Oferta sin confirmar recientemente.";
-            else if (!restaurante.FechaRevisionOfertaUtc.HasValue)
-                advertencia += " Oferta sin fecha de revisión.";
-            if (restaurante.RestriccionesQueRespeta.Any(r =>
-                    restaurante.ObtenerEstadoDeclaracion(r.Id, DateTime.UtcNow) !=
-                    GustosApp.Domain.Common.EstadoVigenciaInformacion.Vigente))
-                advertencia += " Hay declaraciones pendientes de confirmar.";
             return advertencia;
         }
     }

@@ -80,7 +80,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public void Evaluar_RestriccionVerificadaPeroDesactualizada_DevuelveDesconocida()
+        public void Evaluar_RestriccionDeclaradaHaceCuatroMeses_ConservaCompatibilidad()
         {
             var fechaActual = new DateTimeOffset(2026, 9, 19, 12, 0, 0, TimeSpan.Zero);
             var evaluador = new EvaluadorCompatibilidadRestaurante(
@@ -97,13 +97,13 @@ namespace GustosApp.Application.Tests
 
             var resultado = evaluador.Evaluar(preferencias, restaurante);
 
-            resultado.Should().Be(NivelCompatibilidadRestaurante.Desconocida);
+            resultado.Should().Be(NivelCompatibilidadRestaurante.Estimada);
         }
 
         [Theory]
         [InlineData(2024, 1, 31, 2024, 5, 31)]
         [InlineData(2024, 10, 31, 2025, 2, 28)]
-        public void Evaluar_DeclaracionVenceExactamenteALosCuatroMesesCalendario(
+        public void Evaluar_DeclaracionConservaCompatibilidadAlCumplirCuatroMeses(
             int anio, int mes, int dia, int anioLimite, int mesLimite, int diaLimite)
         {
             var revision = new DateTime(anio, mes, dia, 12, 0, 0, DateTimeKind.Utc);
@@ -124,7 +124,7 @@ namespace GustosApp.Application.Tests
                 .Should().Be(NivelCompatibilidadRestaurante.Estimada);
             new EvaluadorCompatibilidadRestaurante(new RelojFijo(
                 new DateTimeOffset(limite))).Evaluar(preferencias, restaurante)
-                .Should().Be(NivelCompatibilidadRestaurante.Desconocida);
+                .Should().Be(NivelCompatibilidadRestaurante.Estimada);
         }
 
         [Fact]
@@ -208,6 +208,37 @@ namespace GustosApp.Application.Tests
 
             _evaluador.Evaluar(preferencias, restaurante)
                 .Should().Be(NivelCompatibilidadRestaurante.Desconocida);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData(0)]
+        [InlineData(-6)]
+        [InlineData(-120)]
+        public void Evaluar_FechasYRelojNoAlteranDeclaracionesNiCreanEvidencia(int? meses)
+        {
+            var fecha = new DateTimeOffset(2026, 11, 19, 12, 0, 0, TimeSpan.Zero);
+            var id = Guid.NewGuid();
+            var preferencias = new UsuarioPreferencias {
+                Restricciones = ["Sin gluten"],
+                ReglasCompatibilidad = [new(id, true, ["gluten"])]
+            };
+            var restaurante = CrearRestauranteConTag("Gluten");
+            restaurante.RestriccionesQueRespeta.Add(new Restriccion { Id = id, Nombre = "Sin gluten" });
+            if (meses.HasValue) restaurante.ConfirmarRestriccionesDeclaradas(0, fecha.UtcDateTime.AddMonths(meses.Value));
+
+            foreach (var ahora in new[] { fecha, fecha.AddYears(10) })
+            {
+                var evaluador = new EvaluadorCompatibilidadRestaurante(new RelojFijo(ahora));
+                evaluador.Evaluar(preferencias, restaurante).Should().Be(NivelCompatibilidadRestaurante.Estimada);
+                restaurante.RestriccionesQueRespeta.Clear();
+                // La fecha histórica por sí sola nunca reemplaza una declaración eliminada.
+                evaluador.Evaluar(preferencias, restaurante).Should().Be(NivelCompatibilidadRestaurante.Incompatible);
+                restaurante.GustosQueSirve.Clear();
+                evaluador.Evaluar(preferencias, restaurante).Should().Be(NivelCompatibilidadRestaurante.Desconocida);
+                restaurante.GustosQueSirve = CrearRestauranteConTag("Gluten").GustosQueSirve;
+                restaurante.RestriccionesQueRespeta.Add(new Restriccion { Id = id, Nombre = "Sin gluten" });
+            }
         }
 
         private static Restaurante CrearRestauranteConTag(string nombreTag)

@@ -55,12 +55,6 @@ namespace GustosApp.API.DTO
         public string AdvertenciaCompatibilidad { get; set; } = string.Empty;
         public string OrigenDatosCompatibilidad { get; set; } = "Estimacion";
         public string EstadoDatosCompatibilidad { get; set; } = "Estimado";
-        public DateTime? FechaObtencionDatosCompatibilidadUtc { get; set; }
-        public DateTime? FechaUltimaVerificacionDatosCompatibilidadUtc { get; set; }
-        public string EstadoOferta { get; set; } = "SinFecha";
-        public string EstadoRestricciones { get; set; } = "SinFecha";
-        public DateTime? FechaRevisionOfertaUtc { get; set; }
-        public DateTime? FechaRevisionRestriccionesUtc { get; set; }
         public int VersionOferta { get; set; }
         public int VersionRestricciones { get; set; }
         public string? Tipo { get; set; }
@@ -216,10 +210,6 @@ namespace GustosApp.API.DTO
         public double Longitud { get; set; }
 
         public string? WebUrl { get; set; }
-        public string EstadoOferta { get; set; } = "SinFecha";
-        public string EstadoRestricciones { get; set; } = "SinFecha";
-        public DateTime? FechaRevisionOfertaUtc { get; set; }
-        public DateTime? FechaRevisionRestriccionesUtc { get; set; }
         public int VersionOferta { get; set; }
         public int VersionRestricciones { get; set; }
 

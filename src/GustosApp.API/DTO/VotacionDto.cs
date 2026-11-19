@@ -97,10 +97,6 @@ namespace GustosApp.API.DTO
         public string ImagenUrl { get; set; } = "";
         public string NivelCompatibilidad { get; set; } = "Desconocida";
         public string AdvertenciaCompatibilidad { get; set; } = "";
-        public string EstadoOferta { get; set; } = "SinFecha";
-        public string EstadoRestricciones { get; set; } = "SinFecha";
-        public DateTime? FechaRevisionOfertaUtc { get; set; }
-        public DateTime? FechaRevisionRestriccionesUtc { get; set; }
     }
 
 }

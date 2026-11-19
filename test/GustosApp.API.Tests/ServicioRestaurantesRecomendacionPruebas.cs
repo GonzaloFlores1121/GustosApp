@@ -184,7 +184,7 @@ namespace GustosApp.API.Tests.Servicios
             recomendado.MenuProcesado.Should().BeFalse();
             recomendado.GustosQueSirve.Should().ContainSingle(gusto => gusto.Id == pizza.Id);
             recomendado.FechaRevisionOfertaUtc.Should().BeNull();
-            recomendado.ObtenerEstadoOferta(DateTime.UtcNow).Should().Be(EstadoVigenciaInformacion.SinFecha);
+            recomendado.ObtenerEstadoOferta(DateTime.UtcNow).Should().Be(EstadoVigenciaInformacion.Vigente);
         }
 
         [Fact]

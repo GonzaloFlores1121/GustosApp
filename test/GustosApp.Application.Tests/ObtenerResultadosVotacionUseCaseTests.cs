@@ -174,8 +174,16 @@ namespace GustosApp.Application.Tests
             Assert.Empty(result.RestaurantesVotados);
         }
 
-        [Fact]
-        public async Task HandleAsync_ReevaluaCandidatosParaParticipantesCongeladosSinRevelarCondiciones()
+        [Theory]
+        [InlineData(null, false)]
+        [InlineData(0, false)]
+        [InlineData(-6, false)]
+        [InlineData(-120, false)]
+        [InlineData(null, true)]
+        [InlineData(0, true)]
+        [InlineData(-6, true)]
+        [InlineData(-120, true)]
+        public async Task HandleAsync_ReevaluaCandidatosParaParticipantesCongeladosSinRevelarCondiciones(int? meses, bool declarada)
         {
             var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "uid" };
             var participante = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "otro" };
@@ -184,7 +192,11 @@ namespace GustosApp.Application.Tests
                 Id = Guid.NewGuid(), Nombre = "Preferencia privada",
                 TagsCriticos = [new Tag { Nombre = "Carne roja" }]
             };
-            participante.CondicionesMedicas.Add(condicion);
+            var restriccion = new Restriccion {
+                Id = condicion.Id, Nombre = "Preferencia privada", TagsProhibidos = condicion.TagsCriticos
+            };
+            if (declarada) participante.Restricciones.Add(restriccion);
+            else participante.CondicionesMedicas.Add(condicion);
             var grupoId = Guid.NewGuid();
             var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
             grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id));
@@ -205,7 +217,12 @@ namespace GustosApp.Application.Tests
                     new Gusto { Id = Guid.NewGuid(), Nombre = "Vegetales", Tags = [] }
                 ]
             };
-            restaurante.ConfirmarOfertaVigente(0, DateTime.UtcNow.AddMonths(-5));
+            if (declarada) restaurante.RestriccionesQueRespeta.Add(restriccion);
+            if (meses.HasValue)
+            {
+                restaurante.ConfirmarOfertaVigente(0, DateTime.UtcNow.AddMonths(meses.Value));
+                restaurante.ConfirmarRestriccionesDeclaradas(0, DateTime.UtcNow.AddMonths(meses.Value));
+            }
             var candidato = new VotacionRestaurante(votacion.Id, restaurante.Id);
             typeof(VotacionRestaurante).GetProperty(nameof(VotacionRestaurante.Restaurante))!
                 .SetValue(candidato, restaurante);
@@ -220,13 +237,13 @@ namespace GustosApp.Application.Tests
             var resultado = await _useCase.HandleAsync("uid", votacion.Id);
 
             var evaluacion = Assert.Single(resultado.RestaurantesCandidatos);
-            Assert.Equal(GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Desconocida,
+            Assert.Equal(declarada ? GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Estimada
+                    : GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Desconocida,
                 evaluacion.NivelCompatibilidad);
             Assert.Contains("participantes seleccionados", evaluacion.AdvertenciaCompatibilidad);
             Assert.DoesNotContain("Preferencia privada", evaluacion.AdvertenciaCompatibilidad);
-            Assert.Equal("Desactualizada", evaluacion.EstadoOferta);
-            Assert.Equal("SinFecha", evaluacion.EstadoRestricciones);
-            Assert.Equal(restaurante.FechaRevisionOfertaUtc, evaluacion.FechaRevisionOfertaUtc);
+            Assert.DoesNotContain("fecha", evaluacion.AdvertenciaCompatibilidad);
+            Assert.DoesNotContain("recientemente", evaluacion.AdvertenciaCompatibilidad);
         }
 
 

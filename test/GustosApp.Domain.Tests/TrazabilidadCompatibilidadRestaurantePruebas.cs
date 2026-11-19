@@ -40,8 +40,9 @@ namespace GustosApp.Domain.Tests
 
         [Theory]
         [InlineData(3, EstadoDatosCompatibilidadRestaurante.Verificado)]
-        [InlineData(4, EstadoDatosCompatibilidadRestaurante.Desactualizado)]
-        public void ObtenerEstadoActual_CambiaAVencidoAlCumplirCuatroMeses(
+        [InlineData(4, EstadoDatosCompatibilidadRestaurante.Verificado)]
+        [InlineData(120, EstadoDatosCompatibilidadRestaurante.Verificado)]
+        public void ObtenerEstadoActual_ConservaLaVerificacionAlPasarElTiempo(
             int mesesTranscurridos,
             EstadoDatosCompatibilidadRestaurante estadoEsperado)
         {

@@ -209,6 +209,7 @@ namespace GustosApp.Application.Tests
         [InlineData("declaraciones")]
         [InlineData("prompt")]
         [InlineData("modelo")]
+        [InlineData("origen")]
         public async Task Handle_CambioRelevanteInvalidaSinExponerPreferenciasEnLaClave(string cambio)
         {
             var reloj = new RelojExplicacionesPrueba(DateTimeOffset.UtcNow);
@@ -232,10 +233,11 @@ namespace GustosApp.Application.Tests
                 case "restricciones": usuario.Restricciones.Clear(); break;
                 case "oferta": restaurante.GustosQueSirve.Add(new Gusto { Id = Guid.NewGuid(), Nombre = "Pasta" }); break;
                 case "declaraciones":
-                    restaurante.ConfirmarRestriccionesDeclaradas(restaurante.VersionRestricciones, reloj.GetUtcNow().UtcDateTime);
+                    restaurante.RestriccionesQueRespeta.Add(new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin lactosa" });
                     break;
                 case "prompt": restaurante.Nombre = "Nombre actualizado"; break;
                 case "modelo": configuracion.Model = "modelo-2"; break;
+                case "origen": restaurante.RegistrarVerificacionDatosCompatibilidad(GustosApp.Domain.Common.OrigenDatosCompatibilidadRestaurante.Restaurante, reloj.GetUtcNow().UtcDateTime); break;
             }
 
             (await caso.Handle(usuario, restaurante, default)).Should().StartWith("Actualizada.");
@@ -264,10 +266,10 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_DeclaracionVenceSinCambios_ReevaluaAntesDeLeerYDeEntregar()
+        public async Task Handle_DeclaracionAlCumplirCuatroMeses_ConservaExplicacionYCaché()
         {
             var fecha = new DateTimeOffset(2026, 1, 20, 12, 0, 0, TimeSpan.Zero);
-            var reloj = new RelojExplicacionesPrueba(fecha.AddMonths(4).AddMinutes(-1));
+            var reloj = new RelojExplicacionesPrueba(fecha.AddMonths(4).AddSeconds(-1));
             var almacen = new AlmacenExplicacionesPrueba(reloj);
             var usuario = CrearUsuario(gustos: ["Pizza"], restricciones: ["Sin gluten"]);
             var restaurante = CrearRestaurante(gustos: ["Pizza"]);
@@ -276,19 +278,19 @@ namespace GustosApp.Application.Tests
             var caso = CrearCasoDeUso(reloj, almacen);
             _ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(() =>
             {
-                reloj.Avanzar(TimeSpan.FromMinutes(2));
-                return "No corresponde mostrar el texto.";
+                reloj.Avanzar(TimeSpan.FromSeconds(2));
+                return "Coincide con tus gustos.";
             });
 
-            (await caso.Handle(usuario, restaurante, default)).Should().Contain("No hay información suficiente");
-            var lecturas = almacen.ClavesLeidas.Count;
-            (await caso.Handle(usuario, restaurante, default)).Should().Contain("No hay información suficiente");
-            almacen.ClavesLeidas.Should().HaveCount(lecturas);
+            (await caso.Handle(usuario, restaurante, default)).Should().StartWith("Coincide con tus gustos.");
+            var clave = almacen.ClavesLeidas.Distinct().Single();
+            (await caso.Handle(usuario, restaurante, default)).Should().StartWith("Coincide con tus gustos.");
+            almacen.ClavesLeidas.Should().OnlyContain(leida => leida == clave);
             _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
-        public async Task Handle_OfertaVenceSinCambios_RecalculaLaExplicacion()
+        public async Task Handle_OfertaAlCumplirCuatroMeses_ConservaExplicacion()
         {
             var fecha = new DateTimeOffset(2026, 1, 20, 12, 0, 0, TimeSpan.Zero);
             var reloj = new RelojExplicacionesPrueba(fecha.AddMonths(4).AddMinutes(-1));
@@ -301,7 +303,8 @@ namespace GustosApp.Application.Tests
 
             (await caso.Handle(usuario, restaurante, default)).Should().Be("Oferta vigente.");
             reloj.Avanzar(TimeSpan.FromMinutes(2));
-            (await caso.Handle(usuario, restaurante, default)).Should().Be("Oferta por revisar.");
+            (await caso.Handle(usuario, restaurante, default)).Should().Be("Oferta vigente.");
+            _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
@@ -335,6 +338,66 @@ namespace GustosApp.Application.Tests
             resultado.Should().Contain("coinciden con tus gustos: Pizza");
             resultado.Should().NotContain("Redis");
             _ia.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task Handle_FechasAusentesRecientesOAntiguas_NoAlteranLaClaveNiLaExplicacion()
+        {
+            var reloj = new RelojExplicacionesPrueba(DateTimeOffset.UtcNow);
+            var almacen = new AlmacenExplicacionesPrueba(reloj);
+            var usuario = CrearUsuario(gustos: ["Pizza"], restricciones: ["Sin gluten"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            restaurante.RestriccionesQueRespeta = usuario.Restricciones.ToList();
+            var caso = CrearCasoDeUso(reloj, almacen);
+            _ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("Coincide con tus gustos.");
+
+            foreach (int? meses in new int?[] { null, 0, -6, -120 })
+            {
+                DateTime? fecha = meses.HasValue ? reloj.GetUtcNow().UtcDateTime.AddMonths(meses.Value) : null;
+                foreach (var campo in new[] {
+                    nameof(Restaurante.FechaRevisionOfertaUtc), nameof(Restaurante.FechaRevisionRestriccionesUtc),
+                    nameof(Restaurante.FechaObtencionDatosCompatibilidadUtc),
+                    nameof(Restaurante.FechaUltimaVerificacionDatosCompatibilidadUtc) })
+                    typeof(Restaurante).GetProperty(campo)!.SetValue(restaurante, fecha);
+                (await caso.Handle(usuario, restaurante, default)).Should().StartWith("Coincide con tus gustos.");
+            }
+
+            almacen.ClavesLeidas.Distinct().Should().ContainSingle();
+            _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_CambiaOfertaDuranteGemini_DescartaTextoYUsaOfertaActual()
+        {
+            var usuario = CrearUsuario(gustos: ["Pizza", "Pasta"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            _ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => {
+                    restaurante.GustosQueSirve = [new Gusto { Nombre = "Pasta" }];
+                    return "La pizza coincide con tus gustos.";
+                });
+
+            var resultado = await CrearCasoDeUso().Handle(usuario, restaurante, default);
+
+            resultado.Should().Contain("Pasta").And.NotContain("pizza").And.NotContain("Pizza");
+        }
+
+        [Fact]
+        public async Task Handle_RetiranDeclaracionDuranteGemini_ConservaCompatibilidadDesconocida()
+        {
+            var usuario = CrearUsuario(gustos: ["Pizza"], restricciones: ["Sin gluten"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            restaurante.RestriccionesQueRespeta = usuario.Restricciones.ToList();
+            _ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => {
+                    restaurante.RestriccionesQueRespeta.Clear();
+                    return "Una explicación anterior.";
+                });
+
+            var resultado = await CrearCasoDeUso().Handle(usuario, restaurante, default);
+
+            resultado.Should().Contain("No hay información suficiente").And.NotContain("explicación anterior");
         }
 
         private RecomendacionIAUseCase CrearCasoDeUso(TimeProvider? reloj = null,

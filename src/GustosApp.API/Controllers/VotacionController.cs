@@ -353,11 +353,7 @@ namespace GustosApp.API.Controllers
                         Direccion = rc.Direccion,
                         ImagenUrl = rc.ImagenUrl,
                         NivelCompatibilidad = rc.NivelCompatibilidad.ToString(),
-                        AdvertenciaCompatibilidad = rc.AdvertenciaCompatibilidad,
-                        EstadoOferta = rc.EstadoOferta,
-                        EstadoRestricciones = rc.EstadoRestricciones,
-                        FechaRevisionOfertaUtc = rc.FechaRevisionOfertaUtc,
-                        FechaRevisionRestriccionesUtc = rc.FechaRevisionRestriccionesUtc
+                        AdvertenciaCompatibilidad = rc.AdvertenciaCompatibilidad
                     })
                     .ToList(),
 

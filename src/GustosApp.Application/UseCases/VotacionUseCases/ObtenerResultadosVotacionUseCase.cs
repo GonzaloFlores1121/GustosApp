@@ -105,20 +105,6 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                     _ =>
                         "Evaluación actual de los participantes seleccionados: no hay datos suficientes para confirmar opciones para todos. Consultá al restaurante antes de votar."
                 };
-                var restaurante = votacion.RestaurantesCandidatos
-                    .First(rc => rc.RestauranteId == candidato.RestauranteId).Restaurante;
-                if (restaurante is not null)
-                {
-                    var estadoOferta = restaurante.ObtenerEstadoOferta(_reloj.GetUtcNow().UtcDateTime);
-                    candidato.EstadoOferta = estadoOferta.ToString();
-                    candidato.EstadoRestricciones = restaurante.ObtenerEstadoRestricciones(_reloj.GetUtcNow().UtcDateTime).ToString();
-                    candidato.FechaRevisionOfertaUtc = restaurante.FechaRevisionOfertaUtc;
-                    candidato.FechaRevisionRestriccionesUtc = restaurante.FechaRevisionRestriccionesUtc;
-                    if (estadoOferta == EstadoVigenciaInformacion.Desactualizada)
-                        candidato.AdvertenciaCompatibilidad += " Oferta sin confirmar recientemente.";
-                    else if (estadoOferta == EstadoVigenciaInformacion.SinFecha)
-                        candidato.AdvertenciaCompatibilidad += " Oferta sin fecha de revisión.";
-                }
             }
 
 
@@ -205,10 +191,6 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
         public NivelCompatibilidadRestaurante NivelCompatibilidad { get; set; } =
             NivelCompatibilidadRestaurante.Desconocida;
         public string AdvertenciaCompatibilidad { get; set; } = "";
-        public string EstadoOferta { get; set; } = "SinFecha";
-        public string EstadoRestricciones { get; set; } = "SinFecha";
-        public DateTime? FechaRevisionOfertaUtc { get; set; }
-        public DateTime? FechaRevisionRestriccionesUtc { get; set; }
     }
 
     public class ResultadoVotacion

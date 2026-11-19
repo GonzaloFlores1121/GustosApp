@@ -64,8 +64,8 @@ public sealed class FlujoVotacionPruebas
             !string.IsNullOrWhiteSpace(candidato.NivelCompatibilidad) &&
             candidato.AdvertenciaCompatibilidad.Contains("participantes seleccionados") &&
             !candidato.AdvertenciaCompatibilidad.Contains("celíaca") &&
-            candidato.EstadoOferta == "SinFecha" &&
-            candidato.EstadoRestricciones == "SinFecha");
+            !candidato.AdvertenciaCompatibilidad.Contains("fecha") &&
+            !candidato.AdvertenciaCompatibilidad.Contains("recientemente"));
     }
 
     [Fact]
