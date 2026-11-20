@@ -17,6 +17,24 @@ namespace GustosApp.API.Controllers
 
     public class AdminController : BaseApiController
     {
+        [HttpGet("restaurantes")]
+        public async Task<IActionResult> BuscarRestaurantesAdministracion([FromServices] IAdministracionRestaurantes servicio,
+            CancellationToken ct, [FromQuery] string? texto = null, [FromQuery] bool? desactivado = null,
+            [FromQuery] int pagina = 1, [FromQuery] int tamanoPagina = 20)
+            => Ok(await servicio.BuscarAsync(texto, desactivado, pagina, tamanoPagina, ct));
+
+        [HttpPut("restaurantes/{id:guid}/disponibilidad")]
+        public async Task<IActionResult> CambiarDisponibilidad(Guid id, [FromBody] CambioDisponibilidadRestaurante cambio,
+            [FromServices] IAdministracionRestaurantes servicio, CancellationToken ct)
+            => Ok(await servicio.CambiarDisponibilidadAsync(id, cambio, GetFirebaseUid(), ct));
+
+        [HttpPut("solicitudes/{id:guid}/archivo")]
+        public async Task<IActionResult> CambiarArchivo(Guid id, [FromBody] CambioArchivoSolicitud cambio,
+            [FromServices] IAdministracionRestaurantes servicio, CancellationToken ct)
+        {
+            await servicio.CambiarArchivoAsync(id, cambio, GetFirebaseUid(), ct);
+            return NoContent();
+        }
         private readonly AprobarSolicitudRestauranteUseCase _aprobarSolicitud;
         private readonly ObtenerSolicitudRestaurantesPorIdUseCase _getDetalle;
         private readonly RechazarSolicitudRestauranteUseCase _rechazarSolicitud;
@@ -187,11 +205,11 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetPorTipo(
          [FromQuery] EstadoSolicitudRestaurante tipo = EstadoSolicitudRestaurante.Pendiente,
-         CancellationToken ct = default)
+         CancellationToken ct = default, [FromQuery] bool archivadas = false)
         {
             var result = await _getPorTipo.HandleAsync(tipo, ct);
 
-            var response = _mapper.Map<List<SolicitudRestaurantePendienteDto>>(result);
+            var response = _mapper.Map<List<SolicitudRestaurantePendienteDto>>(result.Where(s => s.Archivada == archivadas));
 
             return Ok(response);
         }

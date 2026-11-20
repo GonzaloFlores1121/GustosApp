@@ -220,6 +220,7 @@ namespace GustosApp.API.Controllers
                         : new RestauranteGanadorHistorialResponse
                         {
                             RestauranteId = v.Ganador.RestauranteId,
+                            Desactivado = v.Ganador.Desactivado,
                             Nombre = v.Ganador.Nombre,
                             Direccion = v.Ganador.Direccion,
                             ImagenUrl = v.Ganador.ImagenUrl
@@ -331,6 +332,7 @@ namespace GustosApp.API.Controllers
                 RestaurantesVotados = resultado.RestaurantesVotados.Select(r => new RestauranteVotadoDto
                 {
                     RestauranteId = r.RestauranteId,
+                    Desactivado = r.Desactivado,
                     RestauranteNombre = r.RestauranteNombre,
                     RestauranteDireccion = r.RestauranteDireccion,
                     RestauranteImagenUrl = r.RestauranteImagenUrl,
@@ -349,6 +351,7 @@ namespace GustosApp.API.Controllers
                     .Select(rc => new RestauranteCandidatoDto
                     {
                         RestauranteId = rc.RestauranteId,
+                        Desactivado = rc.Desactivado,
                         Nombre = rc.Nombre,
                         Direccion = rc.Direccion,
                         ImagenUrl = rc.ImagenUrl,

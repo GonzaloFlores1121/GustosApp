@@ -1881,6 +1881,45 @@ namespace GustosApp.Infraestructure.Migrations
                     b.ToTable("PagosPremiumProveedor");
                 });
 
+            modelBuilder.Entity("GustosApp.Domain.Model.RegistroAdministracionRestaurante", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Accion")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("ActorUid")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("FechaUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Motivo")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid?>("RestauranteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SolicitudId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RestauranteId", "FechaUtc");
+
+                    b.HasIndex("SolicitudId", "FechaUtc");
+
+                    b.ToTable("RegistrosAdministracionRestaurantes");
+                });
+
             modelBuilder.Entity("GustosApp.Domain.Model.Restaurante", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1899,6 +1938,11 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.Property<DateTime>("CreadoUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("Desactivado")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("Direccion")
                         .IsRequired()
@@ -1929,6 +1973,9 @@ namespace GustosApp.Infraestructure.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)")
                         .HasDefaultValue("Nunca");
+
+                    b.Property<DateTime?>("FechaCambioDisponibilidadUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("FechaObtencionDatosCompatibilidadUtc")
                         .HasColumnType("datetime2");
@@ -1970,6 +2017,10 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.Property<bool?>("MenuProcesado")
                         .HasColumnType("bit");
+
+                    b.Property<string>("MotivoDisponibilidad")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
@@ -2026,6 +2077,10 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<decimal?>("Valoracion")
                         .HasPrecision(3, 2)
                         .HasColumnType("decimal(3,2)");
+
+                    b.Property<int>("VersionDisponibilidad")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
 
                     b.Property<int>("VersionOferta")
                         .IsConcurrencyToken()
@@ -2345,6 +2400,11 @@ namespace GustosApp.Infraestructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("Archivada")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("ArchivosRechazoEliminados")
                         .HasColumnType("bit");
 
@@ -2377,6 +2437,9 @@ namespace GustosApp.Infraestructure.Migrations
                     b.Property<int>("Estado")
                         .IsConcurrencyToken()
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("FechaCambioArchivoUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("datetime2");
@@ -2439,6 +2502,10 @@ namespace GustosApp.Infraestructure.Migrations
 
                     b.Property<Guid>("UsuarioId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("VersionArchivo")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
 
                     b.Property<string>("WebsiteUrl")
                         .IsRequired()
@@ -3294,6 +3361,19 @@ namespace GustosApp.Infraestructure.Migrations
                         .IsRequired();
 
                     b.Navigation("CompraPremium");
+                });
+
+            modelBuilder.Entity("GustosApp.Domain.Model.RegistroAdministracionRestaurante", b =>
+                {
+                    b.HasOne("GustosApp.Domain.Model.Restaurante", null)
+                        .WithMany()
+                        .HasForeignKey("RestauranteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GustosApp.Domain.Model.SolicitudRestaurante", null)
+                        .WithMany()
+                        .HasForeignKey("SolicitudId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("GustosApp.Domain.Model.Restaurante", b =>

@@ -14,22 +14,10 @@ namespace GustosApp.Infraestructure.Repositories
     public class RestauranteRepositoryEF : IRestauranteRepository
     {
         private readonly GustosDbContext _db;
-        private readonly Dictionary<string, List<Restaurante>> _index = new();
 
         public RestauranteRepositoryEF(GustosDbContext db)
         {
             _db = db;
-            ConstruirIndice();
-        }
-        private void ConstruirIndice()
-        {
-            // El índice es sólo de lectura. Evitar dejar todas las fichas seguidas por el
-            // DbContext previene conflictos al adjuntar luego una entidad consultada sin tracking.
-            var restaurantes = _db.Restaurantes.AsNoTracking().ToList();
-            foreach (var restaurante in restaurantes)
-            {
-                Indexar(restaurante);
-            }
         }
 
         public async Task<Restaurante?> GetByPlaceIdAsync(string placeId, CancellationToken ct = default)
@@ -135,6 +123,7 @@ namespace GustosApp.Infraestructure.Repositories
             var maxLatitud = Math.Min(90, latitud + amplitudLatitud);
             var minLongitud = longitud - amplitudLongitud;
             var maxLongitud = longitud + amplitudLongitud;
+            // La detección de fichas duplicadas también debe ver las desactivadas.
             var query = _db.Restaurantes.AsNoTracking()
                 .Where(r => r.Latitud >= minLatitud && r.Latitud <= maxLatitud
                     && r.Longitud >= -180 && r.Longitud <= 180 && (r.Latitud != 0 || r.Longitud != 0));
@@ -170,7 +159,7 @@ namespace GustosApp.Infraestructure.Repositories
     CancellationToken ct = default)
         {
             // Traer todos los restaurantes con gustos y restricciones
-            var restaurantes = await _db.Restaurantes
+            var restaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .AsNoTracking()
                 .Include(r => r.GustosQueSirve)
                 .Include(r => r.RestriccionesQueRespeta)
@@ -206,7 +195,7 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task<List<Restaurante>> GetAllAsync(CancellationToken ct= default)
         {
-            return await _db.Restaurantes 
+            return await _db.Restaurantes.Where(r => !r.Desactivado)
                            .Include(r => r.GustosQueSirve)
                            .ToListAsync(ct);
         }
@@ -221,7 +210,7 @@ namespace GustosApp.Infraestructure.Repositories
 
             // 1. CARGA COMPLETA Y MATERIALIZACIÓN TEMPRANA (¡Aquí forzamos el ToList!)
             // Esto trae TODOS los restaurantes y sus colecciones a la memoria del servidor.
-            var todosLosRestaurantes = await _db.Restaurantes
+            var todosLosRestaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .Include(r => r.Reviews)
                 .Include(r => r.RestriccionesQueRespeta)
                 .Include(r => r.Platos)
@@ -272,7 +261,7 @@ namespace GustosApp.Infraestructure.Repositories
             }
 
             // Obtener restaurantes que sirvan al menos uno de los gustos del grupo
-            var restaurantes = await _db.Restaurantes
+            var restaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .Include(r => r.GustosQueSirve)
                 .Include(r => r.RestriccionesQueRespeta)
                 .Include(r => r.Reviews)
@@ -287,7 +276,7 @@ namespace GustosApp.Infraestructure.Repositories
         {
             texto = texto.ToLower();
 
-            var restaurantes = await _db.Restaurantes
+            var restaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .AsNoTracking()
                 .Where(r =>
                     r.Nombre.ToLower().Contains(texto) ||
@@ -337,26 +326,11 @@ namespace GustosApp.Infraestructure.Repositories
 
             prefijo = prefijo.ToLower();
 
-            if(_index.TryGetValue(prefijo, out var lista))
-                return Task.FromResult(lista);
-              
-           return Task.FromResult(new List<Restaurante>());
+            // Consultar el estado vigente en lugar de un índice desconectado construido al abrir el scope.
+            return _db.Restaurantes.AsNoTracking().Where(r => !r.Desactivado && r.Nombre.ToLower().StartsWith(prefijo))
+                .OrderBy(r => r.Nombre).ThenBy(r => r.Id).ToListAsync(ct);
         }
 
-        private void Indexar(Restaurante r)
-        {
-            var nombre = r.Nombre.ToLower();
-
-            for (int i = 1; i <= nombre.Length; i++)
-            {
-                var prefijo = nombre.Substring(0, i);
-
-                if (!_index.ContainsKey(prefijo))
-                    _index[prefijo] = new List<Restaurante>();
-
-                _index[prefijo].Add(r);
-            }
-        }
 
       
         /* public async Task<Restaurante?> GetByIdAsync(Guid id, CancellationToken ct)

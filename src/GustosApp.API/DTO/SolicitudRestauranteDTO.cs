@@ -18,6 +18,9 @@ namespace GustosApp.API.DTO
 
     public class SolicitudRestaurantePendienteDto
     {
+        public bool Archivada { get; set; }
+        public int VersionArchivo { get; set; }
+        public string? MotivoRechazo { get; set; }
         public ResumenResolucionSolicitud? Resolucion { get; set; }
         public Guid? RestauranteExistenteId { get; set; }
         public Guid? RestauranteAprobadoId { get; set; }

@@ -90,6 +90,8 @@ namespace GustosApp.Application.Services
             if (candidatos == null || !candidatos.Any())
                 return new List<Restaurante>();
 
+            candidatos = candidatos.Where(r => !r.Desactivado).ToList();
+
             if (abiertoAhora)
             {
                 var ahora = _reloj.GetUtcNow();

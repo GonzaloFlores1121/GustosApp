@@ -69,6 +69,7 @@ namespace GustosApp.API.DTO
 
     public class RestauranteVotadoDto
     {
+        public bool Desactivado { get; set; }
         public Guid RestauranteId { get; set; }
         public string RestauranteNombre { get; set; } = "";
         public string RestauranteDireccion { get; set; } = "";
@@ -91,6 +92,7 @@ namespace GustosApp.API.DTO
 
     public class RestauranteCandidatoDto
     {
+        public bool Desactivado { get; set; }
         public Guid RestauranteId { get; set; }
         public string Nombre { get; set; } = "";
         public string Direccion { get; set; } = "";

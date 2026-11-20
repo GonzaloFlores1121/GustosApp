@@ -7,6 +7,8 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Infraestructure;
 using Microsoft.EntityFrameworkCore;
+using GustosApp.Infraestructure.Services;
+using Microsoft.Data.SqlClient;
 
 namespace GustosApp.Infraestructure.Repositories
 {
@@ -21,10 +23,13 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task<VotacionGrupo> CrearVotacionAsync(VotacionGrupo votacion, CancellationToken ct = default)
         {
-            _context.Votaciones.Add(votacion);
             try
             {
-                await _context.SaveChangesAsync(ct);
+                await GuardarDisponiblesAsync(votacion.RestaurantesCandidatos.Select(c => c.RestauranteId), async () =>
+                {
+                    _context.Votaciones.Add(votacion);
+                    await _context.SaveChangesAsync(ct);
+                }, ct);
             }
             catch (DbUpdateException ex) when (
                 ex.InnerException?.Message.Contains(
@@ -111,8 +116,12 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task<VotoRestaurante> RegistrarVotoAsync(VotoRestaurante voto, CancellationToken ct = default)
         {
-            _context.Votos.Add(voto);
-            await _context.SaveChangesAsync(ct);
+            await GuardarDisponiblesAsync([voto.RestauranteId], async () =>
+            {
+                await ExigirVotacionActivaAsync(voto.VotacionId, ct);
+                _context.Votos.Add(voto);
+                await _context.SaveChangesAsync(ct);
+            }, ct);
             return voto;
         }
 
@@ -125,8 +134,12 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task ActualizarVotacionAsync(VotacionGrupo votacion, CancellationToken ct = default)
         {
-            _context.Votaciones.Update(votacion);
-            await _context.SaveChangesAsync(ct);
+            await GuardarDisponiblesAsync(votacion.RestauranteGanadorId.HasValue ? [votacion.RestauranteGanadorId.Value] : [], async () =>
+            {
+                await ExigirVotacionActivaAsync(votacion.Id, ct);
+                _context.Entry(votacion).State = EntityState.Modified;
+                await _context.SaveChangesAsync(ct);
+            }, ct);
         }
 
         public async Task<Dictionary<Guid, int>> ObtenerResultadosAsync(Guid votacionId, CancellationToken ct = default)
@@ -165,8 +178,34 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task ActualizarVotoAsync(VotoRestaurante voto, CancellationToken ct = default)
         {
-            _context.Votos.Update(voto);
-            await _context.SaveChangesAsync(ct);
+            await GuardarDisponiblesAsync([voto.RestauranteId], async () =>
+            {
+                await ExigirVotacionActivaAsync(voto.VotacionId, ct);
+                _context.Entry(voto).State = EntityState.Modified;
+                await _context.SaveChangesAsync(ct);
+            }, ct);
+        }
+
+        private async Task ExigirVotacionActivaAsync(Guid id, CancellationToken ct)
+        {
+            if (!await _context.Votaciones.AsNoTracking().AnyAsync(v => v.Id == id && v.Estado == EstadoVotacion.Activa, ct))
+                throw new InvalidOperationException("La votación ya no está activa. Recargá sus resultados.");
+        }
+
+        private async Task<bool> GuardarDisponiblesAsync(IEnumerable<Guid> ids, Func<Task> guardar, CancellationToken ct)
+        {
+            try { return await new EfApplicationTransaction(_context).ExecuteAsync(async token =>
+            {
+                var unicos = ids.Distinct().ToArray();
+                // La lectura y la escritura comparten la transacción serializable con la baja.
+                // AsNoTracking evita aceptar la copia antigua de una ficha ya cargada en el scope.
+                if (await _context.Restaurantes.AsNoTracking().CountAsync(r => unicos.Contains(r.Id) && !r.Desactivado, token) != unicos.Length)
+                    throw new InvalidOperationException("Un restaurante ya no está disponible. Recargá la votación; podés cancelarla e iniciar otra conservando su historial.");
+                await guardar();
+                return true;
+            }, ct); }
+            catch (Exception ex) when (ex is SqlException { Number: 1205 } || ex.InnerException is SqlException { Number: 1205 })
+            { throw new InvalidOperationException("La votación o la disponibilidad cambiaron. Recargá los resultados antes de continuar."); }
         }
 
         public async Task RecargarVotacionAsync(VotacionGrupo votacion, CancellationToken ct = default)

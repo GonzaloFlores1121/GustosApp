@@ -53,6 +53,11 @@ namespace GustosApp.API.Controllers
             // 3) Armar prompt
             var explicacion = await _recomendacionIAUseCase.Handle(usuario, restaurante,ct);
 
+            // También descartar explicaciones cacheadas o generadas mientras se desactivaba la ficha.
+            var estadoActual = await _restauranteRepository.GetRestauranteByIdAsync(restauranteId, ct);
+            if (estadoActual == null || estadoActual.Desactivado)
+                return Conflict(new { message = "Este restaurante no está disponible para recomendaciones." });
+
             return Ok(new RecomendacionResponse
             {
                 RestauranteId = restauranteId,

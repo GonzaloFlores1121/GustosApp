@@ -20,6 +20,7 @@ namespace GustosApp.API.DTO
 
     public class RestauranteDTO
     {
+        public bool Desactivado { get; set; }
        
 
 
@@ -202,6 +203,7 @@ namespace GustosApp.API.DTO
 
     public class RestauranteDetalleDto
     {
+        public bool Desactivado { get; set; }
         public Guid Id { get; set; }
 
         public bool EsDeLaApp { get; set; }
@@ -412,6 +414,7 @@ namespace GustosApp.API.DTO
 
     public class RestauranteFavoritoDto
     {
+        public bool Desactivado { get; set; }
         public string HorariosJson { get; set; } = "{}";
         public Guid RestauranteId { get; set; }
         public string Nombre { get; set; } = "";

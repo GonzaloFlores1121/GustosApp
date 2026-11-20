@@ -541,12 +541,9 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var uid = GetFirebaseUid();
-
-            var esAdmin = User.IsInRole("admin") || User.Claims.Any(c => c.Type == "role" && c.Value == "admin");
-
-            var ok = await _eliminarRestaurante.HandleAsync(id, uid, esAdmin);
-            return ok ? NoContent() : NotFound();
+            await Task.CompletedTask;
+            return StatusCode(StatusCodes.Status410Gone, new { message =
+                "El borrado de restaurantes está deshabilitado. Un administrador puede desactivar la ficha indicando un motivo." });
         }
 
 

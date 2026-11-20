@@ -79,7 +79,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 throw new InvalidOperationException("Debe seleccionar al menos dos miembros activos para participar de la votación.");
 
             var restaurantes = await _restauranteRepository.ObtenerPorIdsAsync(candidatosUnicos, ct);
-            if (restaurantes.Count != candidatosUnicos.Count)
+            if (restaurantes.Count != candidatosUnicos.Count || restaurantes.Any(r => r.Desactivado))
                 throw new InvalidOperationException("Uno o más restaurantes candidatos ya no están disponibles.");
 
             var preferencias = await _construirPreferenciasGrupo.HandleAsync(firebaseUid, grupoId, ct);

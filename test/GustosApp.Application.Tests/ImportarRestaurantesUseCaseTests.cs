@@ -8,6 +8,22 @@ namespace GustosApp.Application.Tests;
 
 public class ImportarRestaurantesUseCaseTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReimportarFichaDesactivada_NoReactivaNiDuplica(bool confirmar)
+    {
+        var existente = CrearRestauranteExistente();
+        existente.CambiarDisponibilidad(true, 0, "Baja administrativa", FechaActualUtc);
+        var id = existente.Id;
+        PrepararExistentes(existente);
+        await _useCase.HandleAsync([CrearEntrada(nombre: "Nombre externo actualizado")], confirmar);
+        Assert.Equal(id, existente.Id);
+        Assert.True(existente.Desactivado);
+        Assert.Equal(1, existente.VersionDisponibilidad);
+        Assert.Equal("Baja administrativa", existente.MotivoDisponibilidad);
+        _restauranteRepository.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
     private static readonly DateTime FechaActualUtc = new(2026, 9, 21, 12, 0, 0, DateTimeKind.Utc);
     private readonly Mock<IRestauranteRepository> _restauranteRepository = new();
     private readonly Mock<IGustoRepository> _gustoRepository = new();

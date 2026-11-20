@@ -82,6 +82,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             .Select(rc => new RestauranteCandidato
              {
                    RestauranteId = rc.RestauranteId,
+                  Desactivado = rc.Restaurante == null || rc.Restaurante.Desactivado,
                   Nombre = rc.Restaurante?.Nombre ?? "",
                   Direccion = rc.Restaurante?.Direccion ?? "",
                   ImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(rc.RestauranteId, rc.Restaurante?.ImagenUrl) ?? "",
@@ -113,6 +114,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 .Select(v => new RestauranteVotado
                 {
                     RestauranteId = v.RestauranteId,
+                    Desactivado = v.Restaurante == null || v.Restaurante.Desactivado,
                     RestauranteNombre = v.Restaurante?.Nombre ?? "",
                     RestauranteDireccion = v.Restaurante?.Direccion ?? "",
                     RestauranteImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(v.RestauranteId, v.Restaurante?.ImagenUrl) ?? "",
@@ -184,6 +186,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
     public class RestauranteCandidato
     {
+        public bool Desactivado { get; set; }
         public Guid RestauranteId { get; set; }
         public string Nombre { get; set; } = "";
         public string Direccion { get; set; } = "";
@@ -217,6 +220,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
     public class RestauranteVotado
     {
+        public bool Desactivado { get; set; }
         public Guid RestauranteId { get; set; }
         public string RestauranteNombre { get; set; } = "";
         public string RestauranteDireccion { get; set; } = "";

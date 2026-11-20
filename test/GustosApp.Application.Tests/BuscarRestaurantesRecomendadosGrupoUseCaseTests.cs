@@ -11,6 +11,19 @@ namespace GustosApp.Application.Tests;
 
 public class BuscarRestaurantesRecomendadosGrupoUseCaseTests
 {
+    [Fact]
+    public async Task InactivoNoEntraAlRankingDelGrupoAunqueElProveedorLoDevuelva()
+    {
+        var preferencias = new UsuarioPreferencias { Gustos = ["Pizza"] };
+        _preferencias.Setup(s => s.HandleAsync("usuario-1", It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(preferencias);
+        var inactivo = new Restaurante();
+        inactivo.CambiarDisponibilidad(true, 0, "Revisión", DateTime.UtcNow);
+        _servicioRestaurantes.Setup(s => s.BuscarAsync(0, null, null, null, preferencias.Gustos, preferencias.Restricciones)).ReturnsAsync([inactivo]);
+        var resultado = await CrearCasoDeUso().BuscarAsync("usuario-1", Guid.NewGuid(), null, null, null, 1);
+        Assert.Equal(EstadoBusquedaRestaurantesGrupo.SinOpciones, resultado.Estado);
+        Assert.Empty(resultado.Restaurantes);
+        _recomendador.VerifyNoOtherCalls();
+    }
     private readonly Mock<IConstruirPreferenciasGrupoUseCase> _preferencias = new();
     private readonly Mock<IServicioRestaurantes> _servicioRestaurantes = new();
     private readonly Mock<IRecomendadorRestaurantes> _recomendador = new();

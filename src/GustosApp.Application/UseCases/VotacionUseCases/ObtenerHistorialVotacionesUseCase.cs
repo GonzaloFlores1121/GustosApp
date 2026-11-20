@@ -76,6 +76,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                         ? new RestauranteGanadorHistorial
                         {
                             RestauranteId = v.RestauranteGanadorId.Value,
+                            Desactivado = v.RestauranteGanador == null || v.RestauranteGanador.Desactivado,
                             Nombre = v.RestauranteGanador?.Nombre ?? "Restaurante no disponible",
                             Direccion = v.RestauranteGanador?.Direccion ?? string.Empty,
                             ImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(v.RestauranteGanadorId ?? Guid.Empty, v.RestauranteGanador?.ImagenUrl)
@@ -109,6 +110,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
     public class RestauranteGanadorHistorial
     {
+        public bool Desactivado { get; set; }
         public Guid RestauranteId { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public string Direccion { get; set; } = string.Empty;

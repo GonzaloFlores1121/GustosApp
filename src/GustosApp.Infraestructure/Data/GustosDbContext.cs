@@ -14,6 +14,7 @@ using GustosApp.Application.Interfaces;
 
 public class GustosDbContext : DbContext
 {
+    public DbSet<RegistroAdministracionRestaurante> RegistrosAdministracionRestaurantes { get; set; }
     public DbSet<Usuario> Usuarios { get; set; }
     public DbSet<Gusto> Gustos { get; set; }
     public DbSet<Restriccion> Restricciones { get; set; }
@@ -74,6 +75,22 @@ public class GustosDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<Restaurante>().Property(r => r.Desactivado).HasDefaultValue(false);
+        modelBuilder.Entity<Restaurante>().Property(r => r.VersionDisponibilidad).IsConcurrencyToken();
+        modelBuilder.Entity<Restaurante>().Property(r => r.MotivoDisponibilidad).HasMaxLength(1000);
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.Archivada).HasDefaultValue(false);
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.VersionArchivo).IsConcurrencyToken();
+        modelBuilder.Entity<RegistroAdministracionRestaurante>(b =>
+        {
+            b.HasKey(r => r.Id);
+            b.Property(r => r.ActorUid).HasMaxLength(128).IsRequired();
+            b.Property(r => r.Accion).HasMaxLength(24).IsRequired();
+            b.Property(r => r.Motivo).HasMaxLength(1000).IsRequired();
+            b.HasOne<Restaurante>().WithMany().HasForeignKey(r => r.RestauranteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<SolicitudRestaurante>().WithMany().HasForeignKey(r => r.SolicitudId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(r => new { r.RestauranteId, r.FechaUtc });
+            b.HasIndex(r => new { r.SolicitudId, r.FechaUtc });
+        });
 
         modelBuilder.Entity<GustosApp.Infraestructure.Files.EliminacionArchivoPendiente>(entity =>
         {

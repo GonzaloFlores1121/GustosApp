@@ -32,6 +32,7 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (restaurante.Desactivado) return "Este restaurante no está disponible para recomendaciones.";
             var preferencias = new UsuarioPreferencias
             {
                 Gustos = usuario.Gustos.Select(g => g.Nombre).ToList(),

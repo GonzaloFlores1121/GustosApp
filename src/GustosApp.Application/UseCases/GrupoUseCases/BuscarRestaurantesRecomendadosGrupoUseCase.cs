@@ -50,6 +50,7 @@ public sealed class BuscarRestaurantesRecomendadosGrupoUseCase : IBuscadorRestau
             preferencias.Gustos,
             preferencias.Restricciones);
 
+        candidatos = candidatos.Where(r => !r.Desactivado).ToList();
         if (candidatos.Count == 0)
         {
             return new ResultadoBusquedaRestaurantesGrupo(

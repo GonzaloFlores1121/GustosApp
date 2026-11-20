@@ -17,6 +17,24 @@ namespace GustosApp.Domain.Model
     public class Restaurante
     {
         public Guid Id { get; set; }
+        public bool Desactivado { get; private set; }
+        public int VersionDisponibilidad { get; private set; }
+        public DateTime? FechaCambioDisponibilidadUtc { get; private set; }
+        public string? MotivoDisponibilidad { get; private set; }
+
+        public bool CambiarDisponibilidad(bool desactivado, int versionEsperada, string motivo, DateTime fechaUtc)
+        {
+            if (string.IsNullOrWhiteSpace(motivo) || motivo.Trim().Length > 1000)
+                throw new ArgumentException("Ingresá un motivo de hasta 1000 caracteres.");
+            if (Desactivado == desactivado) return false;
+            if (VersionDisponibilidad != versionEsperada)
+                throw new InvalidOperationException("La disponibilidad cambió. Recargá la ficha antes de continuar.");
+            Desactivado = desactivado;
+            MotivoDisponibilidad = motivo.Trim();
+            FechaCambioDisponibilidadUtc = NormalizarFechaUtc(fechaUtc);
+            VersionDisponibilidad++;
+            return true;
+        }
 
         // deprecated pero mantenido por compatibilidad
          public string PropietarioUid { get; set; } = string.Empty;

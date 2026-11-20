@@ -11,6 +11,16 @@ namespace GustosApp.Application.Tests
 {
     public class RecomendacionIAUseCaseTest
     {
+        [Fact]
+        public async Task RestauranteDesactivadoNoConsultaGeminiNiEntregaExplicacionGuardada()
+        {
+            var usuario = CrearUsuario(gustos: ["Pizza"]);
+            var restaurante = CrearRestaurante(gustos: ["Pizza"]);
+            restaurante.CambiarDisponibilidad(true, 0, "Revisión", DateTime.UtcNow);
+            var resultado = await CrearCasoDeUso().Handle(usuario, restaurante, default);
+            Assert.Contains("no está disponible", resultado);
+            _ia.Verify(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
         private readonly Mock<IRecomendacionAIService> _ia = new();
 
         [Fact]

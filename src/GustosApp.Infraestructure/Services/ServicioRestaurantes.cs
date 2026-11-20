@@ -84,7 +84,7 @@ namespace GustosApp.Infraestructure.Services
      double? lng = null,
      int? radioMetros = null)
         {
-            IQueryable<Restaurante> query = _db.Restaurantes
+            IQueryable<Restaurante> query = _db.Restaurantes.Where(r => !r.Desactivado)
                 .AsNoTracking()
                 .Include(r => r.GustosQueSirve)
                     .ThenInclude(g => g.Tags)
@@ -252,7 +252,7 @@ namespace GustosApp.Infraestructure.Services
             var minLng = lng - degLng;
             var maxLng = lng + degLng;
 
-            var q = _db.Restaurantes.AsNoTracking()
+            var q = _db.Restaurantes.AsNoTracking().Where(r => !r.Desactivado)
                 .Include(r => r.Platos)
                 .Where(r => r.Latitud >= minLat && r.Latitud <= maxLat
                          && r.Longitud >= minLng && r.Longitud <= maxLng);
@@ -286,15 +286,8 @@ namespace GustosApp.Infraestructure.Services
 
         public async Task<bool> EliminarAsync(Guid id, string solicitanteUid, bool esAdmin)
         {
-            var r = await _db.Restaurantes.FirstOrDefaultAsync(x => x.Id == id);
-            if (r is null) return false;
-
-            if (!esAdmin && r.PropietarioUid != solicitanteUid)
-                throw new UnauthorizedAccessException("No tenés permisos para eliminar este restaurante.");
-
-            _db.Restaurantes.Remove(r);
-            await _db.SaveChangesAsync();
-            return true;
+            await Task.CompletedTask;
+            throw new InvalidOperationException("El borrado físico está deshabilitado. Usá la desactivación administrativa con motivo.");
         }
 
         public async Task<Restaurante> ObtenerResenasDesdeGooglePlaces(string placeId, CancellationToken ct)
@@ -547,7 +540,7 @@ namespace GustosApp.Infraestructure.Services
             if (radioMetros is <= 0 or > 50_000)
                 throw new ArgumentOutOfRangeException(nameof(radioMetros), "El radio debe estar entre 1 y 50000 metros.");
 
-            var baseQuery = _db.Restaurantes.AsNoTracking();
+            var baseQuery = _db.Restaurantes.AsNoTracking().Where(r => !r.Desactivado);
 
             // Los gustos y restricciones se evalúan en el recomendador. Filtrarlos aquí
             // impediría usar restaurantes con compatibilidad todavía desconocida como respaldo.

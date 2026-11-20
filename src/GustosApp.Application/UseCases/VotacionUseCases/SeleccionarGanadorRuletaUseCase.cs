@@ -65,6 +65,9 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 throw new InvalidOperationException("No hay empate en esta votación");
 
 
+            if (votacion.RestaurantesCandidatos.Any(c => restaurantesEmpatados.Contains(c.RestauranteId) && c.Restaurante?.Desactivado == true))
+                throw new InvalidOperationException("Un restaurante del resultado ya no está disponible. El administrador puede cancelar esta votación e iniciar otra; los votos se conservan.");
+
             // El servidor selecciona entre los empatados. El cliente solo anima el
             // resultado confirmado y no puede imponer un ganador.
             var candidatosOficiales = votacion.RestaurantesCandidatos

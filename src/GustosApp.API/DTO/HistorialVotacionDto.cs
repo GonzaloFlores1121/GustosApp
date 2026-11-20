@@ -23,6 +23,7 @@ namespace GustosApp.API.DTO
 
     public class RestauranteGanadorHistorialResponse
     {
+        public bool Desactivado { get; set; }
         public Guid RestauranteId { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public string Direccion { get; set; } = string.Empty;

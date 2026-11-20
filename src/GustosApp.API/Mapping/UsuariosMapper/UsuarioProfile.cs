@@ -18,6 +18,7 @@ namespace GustosApp.API.Mapping.UsuariosMapper
             CreateMap<Gusto, GustoLiteDto>();
 
             CreateMap<UsuarioRestauranteVisitado, VisitadoDto>()
+                .ForMember(dest => dest.Desactivado, opt => opt.MapFrom(src => src.Restaurante != null && src.Restaurante.Desactivado))
                 .ForMember(dest => dest.IdRestaurante, opt =>
                     opt.MapFrom(src =>
                         src.RestauranteId.HasValue

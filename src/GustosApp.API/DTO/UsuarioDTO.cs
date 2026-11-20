@@ -90,6 +90,7 @@ namespace GustosApp.API.DTO
 
     public class VisitadoDto
     {
+        public bool Desactivado { get; set; }
 
         public string IdRestaurante { get; set; } = string.Empty;
         public string Nombre { get; set; } = string.Empty;

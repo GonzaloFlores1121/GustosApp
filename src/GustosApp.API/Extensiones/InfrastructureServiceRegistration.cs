@@ -56,6 +56,7 @@ namespace GustosApp.API.Extensiones
             services.AddSingleton<IChatConnectionRegistry, ChatConnectionRegistry>();
             services.AddScoped<ISolicitudAmistadRealtimeService, SignalRSolicitudAmistadRealtimeService>();
             services.AddScoped<IApplicationTransaction, EfApplicationTransaction>();
+            services.AddScoped<IAdministracionRestaurantes, AdministracionRestaurantes>();
             services.AddScoped<IBloqueoResolucionSolicitud, BloqueoResolucionSolicitudSql>();
 
             //reVISAR PROXIMAMENTE ESTE USECASE 
