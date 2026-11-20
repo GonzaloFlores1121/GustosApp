@@ -325,6 +325,7 @@ namespace GustosApp.API.DTO
     }
     public class RestauranteMetricasDashboardResponse
     {
+        public GustosApp.Application.record.ResumenResenasLocales? ResenasLocales { get; set; }
         public Guid RestauranteId { get; set; }
 
         public int TotalTop3Individual { get; set; }

@@ -24,6 +24,39 @@ public sealed class SqlDisponibilidadFactAttribute : FactAttribute
 public sealed class DisponibilidadSqlPruebas
 {
     [SqlDisponibilidadFact]
+    public async Task VistasSimultaneasSeDeduplicanYTopTresNoPierdeIncrementos()
+    {
+        await ConBaseAisladaAsync(async opciones =>
+        {
+            var dueno = UsuarioNuevo();
+            var visitante = UsuarioNuevo();
+            visitante.Email = "visitante@example.test";
+            var restaurante = FichaNueva();
+            restaurante.DuenoId = dueno.Id;
+            await using var inicio = new GustosDbContext(opciones);
+            inicio.AddRange(dueno, visitante, restaurante);
+            await inicio.SaveChangesAsync();
+            var migracion = new CrearVentanasVistaRestaurante { ActiveProvider = inicio.Database.ProviderName! };
+            foreach (var comando in inicio.GetService<IMigrationsSqlGenerator>().Generate(migracion.UpOperations, inicio.Model))
+                await inicio.Database.ExecuteSqlRawAsync(comando.CommandText);
+
+            async Task RegistrarAsync(bool vista)
+            {
+                await using var db = new GustosDbContext(opciones);
+                var repositorio = new RestauranteEstadisticasRepositoryEF(db);
+                if (vista) await repositorio.RegistrarVistaPublicaAsync(restaurante.Id, visitante.Id, default);
+                else await repositorio.IncrementarTop3IndividualAsync([restaurante.Id]);
+            }
+
+            await Task.WhenAll(Enumerable.Range(0, 8).Select(i => RegistrarAsync(i % 2 == 0)));
+            var repo = new RestauranteEstadisticasRepositoryEF(inicio);
+            await repo.RegistrarVistaPublicaAsync(restaurante.Id, dueno.Id, default);
+            var resultado = await repo.ObtenerPorRestauranteAsync(restaurante.Id);
+            Assert.Equal(1, resultado!.TotalVisitasPerfil);
+            Assert.Equal(4, resultado.TotalTop3Individual);
+        });
+    }
+    [SqlDisponibilidadFact]
     public async Task MigracionAditiva_ConservaFilasExistentesYLasDejaActivasYNoArchivadas()
     {
         await ConBaseAisladaAsync(async opciones =>

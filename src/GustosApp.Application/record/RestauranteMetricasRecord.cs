@@ -7,9 +7,13 @@ using System.Threading.Tasks;
 
 namespace GustosApp.Application.record
 {
+    public sealed record ActividadResenas(DateOnly Fecha, int Cantidad);
+    public sealed record ResumenResenasLocales(int Total, double? Promedio, int[] Distribucion, ActividadResenas[] Actividad);
+
     public record RestauranteMetricasRecord(
         Guid RestauranteId,
         RestauranteEstadisticas Estadisticas,
-        List<UsuarioRestauranteFavorito> TotalFavoritos
+        List<UsuarioRestauranteFavorito> TotalFavoritos,
+        ResumenResenasLocales? ResenasLocales = null
     );
 }

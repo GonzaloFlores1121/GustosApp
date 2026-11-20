@@ -149,6 +149,18 @@ namespace GustosApp.API.Controllers
             return Ok(dto);
         }
 
+        [HttpPost("{id:guid}/vista-publica")]
+        public async Task<IActionResult> RegistrarVistaPublica(Guid id,
+            [FromServices] IRestauranteEstadisticasRepository estadisticas,
+            [FromServices] ILogger<RestaurantesController> logger, CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            try { await estadisticas.RegistrarVistaPublicaAsync(id, usuarioId, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException && !ct.IsCancellationRequested)
+            { logger.LogWarning(ex, "No se pudo registrar una vista pública."); }
+            return NoContent();
+        }
+
 
 
 
@@ -620,6 +632,7 @@ namespace GustosApp.API.Controllers
             var rest = new RestauranteMetricasDashboardResponse
             {
                 RestauranteId = metricas.RestauranteId,
+                ResenasLocales = metricas.ResenasLocales,
                 TotalTop3Individual = metricas.Estadisticas?.TotalTop3Individual ?? 0,
                 TotalTop3Grupo = metricas.Estadisticas?.TotalTop3Grupo ?? 0,
                 TotalVisitasPerfil = metricas.Estadisticas?.TotalVisitasPerfil ?? 0,
