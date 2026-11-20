@@ -40,7 +40,8 @@ namespace GustosApp.Infraestructure.Ocr
                 await img.CopyToAsync(ms, ct);
 
                 var response = await _client.DetectDocumentTextAsync(
-                    Google.Cloud.Vision.V1.Image.FromBytes(ms.ToArray()));
+                    Google.Cloud.Vision.V1.Image.FromBytes(ms.ToArray()),
+                    callSettings: Google.Api.Gax.Grpc.CallSettings.FromCancellationToken(ct));
 
                 sb.AppendLine(response.Text);
             }

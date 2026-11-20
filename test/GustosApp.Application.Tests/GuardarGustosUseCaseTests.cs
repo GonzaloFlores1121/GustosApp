@@ -48,7 +48,7 @@ public class GuardarGustosUseCaseTests
     }
 
     [Fact]
-    public async Task HandleAsync_BorrarTodo_LimpiaGustos_YGuardaCacheEnRegistro()
+    public async Task HandleAsync_BorrarTodo_LimpiaGustos_EnEdicion()
     {
         // Arrange
         var uid = "uid-test";
@@ -64,7 +64,7 @@ public class GuardarGustosUseCaseTests
         var result = await _useCase.HandleAsync(
             uid,
             new List<Guid>(), // sin ids
-            ModoPreferencias.Registro,
+            ModoPreferencias.Edicion,
             _ct
         );
 
@@ -73,11 +73,8 @@ public class GuardarGustosUseCaseTests
         _userMock.Verify(r => r.SaveChangesAsync(_ct), Times.Once);
 
         _cacheMock.Verify(c => c.SetAsync(
-            $"registro:{uid}:gustos",
-            It.Is<List<Guid>>(l => l.Count == 0),
-            It.IsAny<TimeSpan>()),
-            Times.Once
-        );
+            It.IsAny<string>(), It.IsAny<List<Guid>>(), It.IsAny<TimeSpan>()),
+            Times.Never);
     }
 
     [Fact]
@@ -96,6 +93,29 @@ public class GuardarGustosUseCaseTests
         // Act + Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _useCase.HandleAsync(uid, ids, ModoPreferencias.Registro, _ct));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task HandleAsync_Edicion_AceptaMenosDeTresGustos(int cantidad)
+    {
+        var uid = "uid-edicion";
+        var usuario = CrearUsuarioBase(uid);
+        var gustos = Enumerable.Range(0, cantidad)
+            .Select(i => new Gusto { Id = Guid.NewGuid(), Nombre = $"Gusto {i}" })
+            .ToList();
+        var ids = gustos.Select(g => g.Id).ToList();
+
+        _userMock.Setup(r => r.GetByFirebaseUidAsync(uid, _ct)).ReturnsAsync(usuario);
+        _gustoMock.Setup(r => r.GetByIdsAsync(ids, _ct)).ReturnsAsync(gustos);
+
+        await _useCase.HandleAsync(uid, ids, ModoPreferencias.Edicion, _ct);
+
+        Assert.Equal(cantidad, usuario.Gustos.Count);
+        _userMock.Verify(r => r.SaveChangesAsync(_ct),
+            cantidad == 0 ? Times.Never() : Times.Once());
     }
 
     [Fact]
@@ -278,6 +298,9 @@ public class GuardarGustosUseCaseTests
         _gustoMock
             .Setup(r => r.GetByIdsAsync(ids, _ct))
             .ReturnsAsync(new List<Gusto> { g1, g2, g3 });
+        var guardoSinIncompatible = false;
+        _userMock.Setup(r => r.SaveChangesAsync(_ct))
+            .Callback(() => guardoSinIncompatible = usuario.Gustos.All(g => g.Nombre != "Pizza"));
 
         // Act
         var result = await _useCase.HandleAsync(
@@ -290,5 +313,7 @@ public class GuardarGustosUseCaseTests
         // Assert: Pizza debe ser incompatible y removida
         Assert.Contains("Pizza", result);
         Assert.DoesNotContain(usuario.Gustos, g => g.Nombre == "Pizza");
+        Assert.True(guardoSinIncompatible);
+        _userMock.Verify(r => r.SaveChangesAsync(_ct), Times.Once);
     }
 }

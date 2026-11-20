@@ -14,6 +14,7 @@ using GustosApp.Application.Interfaces;
 
 public class GustosDbContext : DbContext
 {
+    public DbSet<RegistroAdministracionRestaurante> RegistrosAdministracionRestaurantes { get; set; }
     public DbSet<Usuario> Usuarios { get; set; }
     public DbSet<Gusto> Gustos { get; set; }
     public DbSet<Restriccion> Restricciones { get; set; }
@@ -53,6 +54,7 @@ public class GustosDbContext : DbContext
 
     public DbSet<OpinionRestaurante> OpinionesRestaurantes { get; set; }
     public DbSet<OpinionFoto> OpinionesFotos { get; set; }
+    public DbSet<GustosApp.Infraestructure.Files.EliminacionArchivoPendiente> EliminacionesArchivoPendientes { get; set; }
 
     
     public DbSet<VotacionGrupo> Votaciones { get; set; }
@@ -62,6 +64,8 @@ public class GustosDbContext : DbContext
     public DbSet<VotacionRestaurante> VotacionRestaurantes { get; set; }
     public DbSet<OpinionRestaurante> OpinionesRestaurante { get; set; }
     public DbSet<UsuarioRestauranteFavorito> UsuarioRestauranteFavoritos { get; set; }
+    public DbSet<CompraPremium> ComprasPremium { get; set; }
+    public DbSet<PagoPremiumProveedor> PagosPremiumProveedor { get; set; }
  
 
 
@@ -71,6 +75,33 @@ public class GustosDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<Restaurante>().Property(r => r.Desactivado).HasDefaultValue(false);
+        modelBuilder.Entity<Restaurante>().Property(r => r.VersionDisponibilidad).IsConcurrencyToken();
+        modelBuilder.Entity<Restaurante>().Property(r => r.MotivoDisponibilidad).HasMaxLength(1000);
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.Archivada).HasDefaultValue(false);
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.VersionArchivo).IsConcurrencyToken();
+        modelBuilder.Entity<RegistroAdministracionRestaurante>(b =>
+        {
+            b.HasKey(r => r.Id);
+            b.Property(r => r.ActorUid).HasMaxLength(128).IsRequired();
+            b.Property(r => r.Accion).HasMaxLength(24).IsRequired();
+            b.Property(r => r.Motivo).HasMaxLength(1000).IsRequired();
+            b.HasOne<Restaurante>().WithMany().HasForeignKey(r => r.RestauranteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<SolicitudRestaurante>().WithMany().HasForeignKey(r => r.SolicitudId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(r => new { r.RestauranteId, r.FechaUtc });
+            b.HasIndex(r => new { r.SolicitudId, r.FechaUtc });
+        });
+
+        modelBuilder.Entity<GustosApp.Infraestructure.Files.EliminacionArchivoPendiente>(entity =>
+        {
+            entity.ToTable("EliminacionesArchivoPendientes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Url).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.CarpetaEsperada).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.UltimoError).HasMaxLength(500);
+            entity.HasIndex(x => new { x.Url, x.CarpetaEsperada }).IsUnique();
+            entity.HasIndex(x => x.ProximoIntentoUtc);
+        });
 
         modelBuilder.ApplyConfiguration(new Configurations.UsuarioRestauranteVisitadoConfiguration());
 
@@ -85,9 +116,12 @@ public class GustosDbContext : DbContext
 
 
         modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.Estado).IsConcurrencyToken();
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.CorreoResolucion).IsConcurrencyToken();
+        modelBuilder.Entity<SolicitudRestaurante>().Property(s => s.TokenMenuResolucion).IsConcurrencyToken();
         modelBuilder.Entity<Restaurante>().Property(r => r.DuenoId).IsConcurrencyToken();
         modelBuilder.Entity<Restaurante>().Property(r => r.PropietarioUid).IsConcurrencyToken();
         modelBuilder.Entity<Usuario>().Property(u => u.Rol).IsConcurrencyToken();
+        modelBuilder.Entity<Usuario>().Property(u => u.Plan).IsConcurrencyToken();
         modelBuilder.Entity<SolicitudRestaurante>()
             .HasOne<Restaurante>().WithMany().HasForeignKey(s => s.RestauranteExistenteId)
             .OnDelete(DeleteBehavior.Restrict);
@@ -212,6 +246,33 @@ public class GustosDbContext : DbContext
            .HasIndex(u => u.IdUsuario)
            .IsUnique();
 
+        modelBuilder.Entity<CompraPremium>(entity =>
+        {
+            entity.Property(c => c.Producto).HasMaxLength(50).IsRequired();
+            entity.Property(c => c.MonedaEsperada).HasMaxLength(3).IsRequired();
+            entity.Property(c => c.EntornoEsperado).HasMaxLength(20).IsRequired();
+            entity.Property(c => c.ImporteEsperado).HasColumnType("decimal(18,2)");
+            entity.Property(c => c.OrdenProveedorId).HasMaxLength(100);
+            entity.Property(c => c.UrlCheckout).HasMaxLength(1000);
+            entity.Property(c => c.UltimoErrorCodigo).HasMaxLength(100);
+            entity.HasOne(c => c.Usuario).WithMany().HasForeignKey(c => c.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.ClaveIdempotencia).IsUnique();
+            entity.HasIndex(c => c.OrdenProveedorId).IsUnique().HasFilter("[OrdenProveedorId] IS NOT NULL");
+            entity.HasIndex(c => new { c.UsuarioId, c.Producto }).IsUnique()
+                .HasFilter("[Estado] IN (0, 1, 2, 8)");
+        });
+        modelBuilder.Entity<PagoPremiumProveedor>(entity =>
+        {
+            entity.Property(p => p.PagoProveedorId).HasMaxLength(100).IsRequired();
+            entity.Property(p => p.Moneda).HasMaxLength(3).IsRequired();
+            entity.Property(p => p.CuentaReceptoraId).HasMaxLength(100);
+            entity.Property(p => p.EstadoProveedor).HasMaxLength(50);
+            entity.Property(p => p.Importe).HasColumnType("decimal(18,2)");
+            entity.Property(p => p.ImporteReembolsado).HasColumnType("decimal(18,2)");
+            entity.HasOne(p => p.CompraPremium).WithMany(c => c.Pagos).HasForeignKey(p => p.CompraPremiumId);
+            entity.HasIndex(p => p.PagoProveedorId).IsUnique();
+        });
+
        
         // Gusto ↔ Tag
         modelBuilder.Entity<Gusto>()
@@ -304,6 +365,15 @@ public class GustosDbContext : DbContext
             .HasForeignKey(i => i.UsuarioInvitadorId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<InvitacionGrupo>()
+            .HasIndex(i => new { i.GrupoId, i.UsuarioInvitadoId })
+            .IsUnique()
+            .HasFilter("[Estado] = 0");
+
+        modelBuilder.Entity<InvitacionGrupo>()
+            .Property(i => i.Version)
+            .IsRowVersion();
+
         // Índices únicos para grupos
         modelBuilder.Entity<Grupo>()
             .HasIndex(g => g.CodigoInvitacion)
@@ -363,7 +433,16 @@ public class GustosDbContext : DbContext
             .HasKey(c => c.Id);
         modelBuilder.Entity<ChatMensaje>()
             .Property(c => c.Mensaje)
+            .HasMaxLength(2000)
             .IsRequired();
+        modelBuilder.Entity<ChatMensaje>()
+            .Property(c => c.OperacionId)
+            .HasDefaultValueSql("NEWID()");
+        modelBuilder.Entity<ChatMensaje>()
+            .HasIndex(c => new { c.GrupoId, c.FechaEnvio, c.Id });
+        modelBuilder.Entity<ChatMensaje>()
+            .HasIndex(c => new { c.GrupoId, c.UsuarioId, c.OperacionId })
+            .IsUnique();
 
         
 
@@ -401,6 +480,16 @@ public class GustosDbContext : DbContext
             entity.Property(n => n.UsuarioDestinoId)
                 .IsRequired();
 
+            entity.Property(n => n.UrlDestino)
+                .HasMaxLength(500);
+
+            entity.Property(n => n.ClaveUnica)
+                .HasMaxLength(200);
+
+            entity.HasIndex(n => n.ClaveUnica)
+                .IsUnique()
+                .HasFilter("[ClaveUnica] IS NOT NULL");
+
 
             entity.HasOne(n => n.UsuarioDestino)
                 .WithMany(u => u.Notificaciones)
@@ -426,6 +515,11 @@ public class GustosDbContext : DbContext
             .WithMany()
             .HasForeignKey(o => o.UsuarioId)
             .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<OpinionRestaurante>()
+            .HasIndex(o => new { o.UsuarioId, o.RestauranteId })
+            .IsUnique()
+            .HasFilter("[UsuarioId] IS NOT NULL");
         // (NoAction evita eliminar opiniones si se borra un usuario; se podrían conservar como "opiniones antiguas")
 
       
@@ -777,8 +871,8 @@ public class GustosDbContext : DbContext
         CT(1, "Azúcar"); CT(2, "Sal"); CT(3, "Grasa"); CT(4, "Picante");
         CT(5, "Gluten"); CT(6, "Lácteo"); CT(7, "Mariscos"); CT(8, "Frutos secos");
         CT(9, "Huevos"); CT(10, "Frito"); CT(11, "Carne roja"); CT(12, "Cafeína");
-        CT(13, "Carne roja"); CT(13, "Carne blanca"); CT(13, "Pescado");
-        CT(14, "Carne roja"); CT(14, "Carne blanca"); CT(14, "Pescado"); CT(14, "Huevos"); CT(14, "Lácteo");
+        CT(13, "Carne roja"); CT(13, "Carne blanca"); CT(13, "Pescado"); CT(13, "Mariscos");
+        CT(14, "Carne roja"); CT(14, "Carne blanca"); CT(14, "Pescado"); CT(14, "Mariscos"); CT(14, "Huevos"); CT(14, "Lácteo");
         modelBuilder.Entity("CondicionMedicaTags").HasData(ct);
     }
 }

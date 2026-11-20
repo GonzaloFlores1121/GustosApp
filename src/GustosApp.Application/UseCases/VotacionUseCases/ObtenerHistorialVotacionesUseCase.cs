@@ -1,5 +1,6 @@
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Domain.Model;
 
 namespace GustosApp.Application.UseCases.VotacionUseCases
 {
@@ -65,6 +66,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 Votaciones = votaciones.Select(v => new VotacionHistorial
                 {
                     VotacionId = v.Id,
+                    Estado = v.Estado,
                     Descripcion = v.Descripcion,
                     FechaInicio = v.FechaInicio,
                     FechaCierre = v.FechaCierre,
@@ -74,9 +76,10 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                         ? new RestauranteGanadorHistorial
                         {
                             RestauranteId = v.RestauranteGanadorId.Value,
+                            Desactivado = v.RestauranteGanador == null || v.RestauranteGanador.Desactivado,
                             Nombre = v.RestauranteGanador?.Nombre ?? "Restaurante no disponible",
                             Direccion = v.RestauranteGanador?.Direccion ?? string.Empty,
-                            ImagenUrl = v.RestauranteGanador?.ImagenUrl
+                            ImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(v.RestauranteGanadorId ?? Guid.Empty, v.RestauranteGanador?.ImagenUrl)
                         }
                         : null
                 }).ToList()
@@ -96,6 +99,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
     public class VotacionHistorial
     {
         public Guid VotacionId { get; set; }
+        public EstadoVotacion Estado { get; set; }
         public string? Descripcion { get; set; }
         public DateTime FechaInicio { get; set; }
         public DateTime? FechaCierre { get; set; }
@@ -106,6 +110,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
 
     public class RestauranteGanadorHistorial
     {
+        public bool Desactivado { get; set; }
         public Guid RestauranteId { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public string Direccion { get; set; } = string.Empty;

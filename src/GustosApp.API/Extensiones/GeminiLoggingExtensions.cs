@@ -7,18 +7,11 @@
             using var scope = app.Services.CreateScope();
 
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-
-            var apiKey = config["GeminiSettings:ApiKey"];
-            var model = config["GeminiSettings:Model"];
-
-            if (string.IsNullOrWhiteSpace(apiKey))
-                logger.LogError("❌ GeminiSettings.ApiKey falta o está vacía");
-
-            if (string.IsNullOrWhiteSpace(model))
-                logger.LogError("❌ GeminiSettings.Model falta o está vacío");
+            var opciones = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GustosApp.Application.Services.GeminiSettings>>().Value;
+            if (!opciones.Habilitada)
+                logger.LogInformation("Gemini sin configurar. Se usarán las coincidencias locales.");
             else
-                logger.LogInformation("Gemini configurado con el modelo {Modelo} (sin mostrar valores sensibles).", model);
+                logger.LogInformation("Gemini configurado.");
         }
 
     }

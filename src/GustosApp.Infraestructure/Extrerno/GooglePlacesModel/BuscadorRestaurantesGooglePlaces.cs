@@ -32,15 +32,17 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly TimeProvider _timeProvider;
+    private readonly IComprobanteFotoGoogle? _fotosGoogle;
 
     public BuscadorRestaurantesGooglePlaces(
         HttpClient httpClient,
         IConfiguration configuration,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider, IComprobanteFotoGoogle? fotosGoogle = null)
     {
         _httpClient = httpClient;
         _configuration = configuration;
         _timeProvider = timeProvider;
+        _fotosGoogle = fotosGoogle;
     }
 
     public async Task<IReadOnlyCollection<RestauranteImportacionEntrada>> BuscarCercanosAsync(
@@ -78,17 +80,15 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
         pedido.Headers.TryAddWithoutValidation("X-Goog-Api-Key", apiKey);
         pedido.Headers.TryAddWithoutValidation(
             "X-Goog-FieldMask",
-            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.types");
+            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType," +
+            "places.types,places.rating,places.userRatingCount,places.photos.name");
 
         using var respuesta = await _httpClient.SendAsync(pedido, ct);
 
         if (!respuesta.IsSuccessStatusCode)
         {
-            var contenidoError = await respuesta.Content.ReadAsStringAsync(ct);
-
             throw new HttpRequestException(
-                $"Google Places respondió {(int)respuesta.StatusCode} " +
-                $"{respuesta.StatusCode}. Respuesta: {contenidoError}",
+                $"Google Places HTTP {(int)respuesta.StatusCode}.",
                 null,
                 respuesta.StatusCode);
         }
@@ -109,7 +109,9 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
         !string.IsNullOrWhiteSpace(place.FormattedAddress) &&
         place.Location is not null;
 
-    private static RestauranteImportacionEntrada Convertir(PlaceDetails place, DateTime fechaDatosUtc)
+    private RestauranteImportacionEntrada Convertir(
+        PlaceDetails place,
+        DateTime fechaDatosUtc)
     {
         var tipos = place.Types?
             .Where(tipo => !string.IsNullOrWhiteSpace(tipo))
@@ -125,15 +127,16 @@ public sealed class BuscadorRestaurantesGooglePlaces : IBuscadorRestaurantesExte
             Latitud = place.Location!.Latitude,
             Longitud = place.Location.Longitude,
             HorariosJson = "{}",
-            Rating = null,
-            CantidadResenas = null,
+            Rating = place.Rating,
+            CantidadResenas = place.UserRatingCount,
             Categoria = tipoPrincipal,
             FechaDatosUtc = fechaDatosUtc,
             PrimaryType = tipoPrincipal,
             TypesJson = JsonSerializer.Serialize(tipos),
-            ImagenUrl = null
+            ComprobanteFotoGoogle = place.Photos?.Count > 0 ? _fotosGoogle?.Emitir(place.Id) : null
         };
     }
+
 
     private sealed class RespuestaBusquedaCercana
     {

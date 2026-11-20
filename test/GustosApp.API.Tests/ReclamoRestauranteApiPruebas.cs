@@ -9,11 +9,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
+using UglyToad.PdfPig.Writer;
 
 namespace GustosApp.API.Tests;
 
 public class ReclamoRestauranteApiPruebas
 {
+    private static readonly byte[] PdfValido = CrearPdfValido();
+    private static byte[] CrearPdfValido()
+    {
+        var builder = new PdfDocumentBuilder();
+        builder.AddPage(UglyToad.PdfPig.Content.PageSize.A4);
+        return builder.Build();
+    }
     private static MultipartFormDataContent Formulario()
     {
         var datos = new MultipartFormDataContent();
@@ -21,7 +29,7 @@ public class ReclamoRestauranteApiPruebas
         datos.Add(new StringContent("Propietaria"), "RelacionRestaurante");
         datos.Add(new StringContent("1122334455"), "TelefonoContacto");
         datos.Add(new StringContent("true"), "DeclaraAutorizacion");
-        datos.Add(new ByteArrayContent("%PDF-1.4\nprueba\n%%EOF"u8.ToArray()), "Comprobante", "prueba.pdf");
+        datos.Add(new ByteArrayContent(PdfValido), "Comprobante", "prueba.pdf");
         return datos;
     }
     [Fact]
@@ -73,7 +81,7 @@ public class ReclamoRestauranteApiPruebas
         var solicitud = await contexto.SolicitudesRestaurantes.SingleAsync();
         Assert.Equal(restauranteId, solicitud.RestauranteExistenteId);
         Assert.Equal("Ana Pérez", solicitud.NombreSolicitante);
-        Assert.Equal("%PDF-1.4\nprueba\n%%EOF"u8.ToArray(), solicitud.ComprobanteReclamo);
+        Assert.Equal(PdfValido, solicitud.ComprobanteReclamo);
         var descarga = await cliente.GetAsync($"/api/solicitudes-restaurantes/{solicitudId}/comprobante");
         Assert.Equal(HttpStatusCode.OK, descarga.StatusCode);
         Assert.Equal(solicitud.ComprobanteReclamo, await descarga.Content.ReadAsByteArrayAsync());

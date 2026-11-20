@@ -10,6 +10,7 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
         {
             // Mapping normal (Restaurante → DTO)
             CreateMap<Restaurante, RestauranteAleatorioResponse>()
+                .ForMember(dest => dest.ImagenUrl, opt => opt.MapFrom(src => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, src.ImagenUrl)))
                 .ForMember(dest => dest.Gustos,
                     opt => opt.MapFrom(src =>
                         src.GustosQueSirve != null
@@ -53,6 +54,8 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                 .ForMember(dest => dest.PrimaryType, opt => opt.Ignore())
                 .ForMember(dest => dest.TypesJson, opt => opt.Ignore())
                 .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.OrigenImagen, opt => opt.Ignore())
+                .ForMember(dest => dest.OrigenLogo, opt => opt.Ignore())
                 .ForMember(dest => dest.Score, opt => opt.Ignore());
         }
     }

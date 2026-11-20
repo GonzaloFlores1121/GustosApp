@@ -27,6 +27,7 @@ namespace GustosApp.Application.Interfaces
             double lat, double lng, int radioMetros, string? tipo = null, IEnumerable<string>? platos = null);
        
         Task<Restaurante> ObtenerResenasDesdeGooglePlaces(string placeId, CancellationToken ct);
+        Task<ResultadoActualizacionExternaRestaurante> ActualizarImportadoDesdeGooglePlacesAsync(Guid restauranteId, CancellationToken ct);
 
         Task ActualizarReviewsDesdeGoogleLegacyAsync(Guid id, string placeId, CancellationToken ct);
         Task<List<Restaurante>> BuscarAsync(double rating, double? lat, double? lng, int? radioMetros, List<string> gustos, List<string> restricciones);

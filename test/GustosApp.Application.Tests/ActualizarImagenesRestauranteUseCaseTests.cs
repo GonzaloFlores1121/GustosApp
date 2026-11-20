@@ -84,6 +84,9 @@ public sealed class ActualizarImagenesRestauranteUseCaseTests
 
         await EjecutarOperacionAsync(operacion, restauranteId, _usuarioId);
 
+        if (operacion == "destacada") Assert.Equal(OrigenImagenRestaurante.Propietario, restaurante.OrigenImagen);
+        if (operacion == "logo") Assert.Equal(OrigenImagenRestaurante.Propietario, restaurante.OrigenLogo);
+        if (operacion == "coleccion") Assert.All(restaurante.Imagenes, i => Assert.Equal(OrigenImagenRestaurante.Propietario, i.Origen));
         _restauranteRepositoryMock.Verify(
             r => r.SaveChangesAsync(It.IsAny<CancellationToken>()),
             Times.Once);
@@ -138,8 +141,8 @@ public sealed class ActualizarImagenesRestauranteUseCaseTests
                 restauranteId,
                 usuarioId,
                 TipoImagenRestaurante.Interior,
-                archivos: null,
-                soloBorrar: true,
+                archivos: [new ArchivoEntrada(new MemoryStream([1, 2, 3]), "foto.png")],
+                soloBorrar: false,
                 CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(operacion), operacion, null)
         };

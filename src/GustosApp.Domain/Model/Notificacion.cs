@@ -26,6 +26,10 @@ namespace GustosApp.Domain.Model
 
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
 
+        public string? UrlDestino { get; set; }
+
+        public string? ClaveUnica { get; set; }
+
         // Relación opcional con Usuario (si la tenés)
         public Usuario? UsuarioDestino { get; set; }
         public InvitacionGrupo? Invitacion { get; set; }

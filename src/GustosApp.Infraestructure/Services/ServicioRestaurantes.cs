@@ -7,6 +7,8 @@ using GustosApp.Infraestructure.Extrerno.GooglePlacesLegacy;
 using GustosApp.Infraestructure.Extrerno.GooglePlacesModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -19,70 +21,56 @@ namespace GustosApp.Infraestructure.Services
         private readonly IConfiguration _config;
         private readonly HttpClient _http;
         private readonly IRestauranteRepository _repo;
+        private readonly ILogger<ServicioRestaurantes> _logger;
+        private readonly IApplicationTransaction _transaccion;
 
         public ServicioRestaurantes(GustosDbContext db,
-        IConfiguration config, HttpClient http, IRestauranteRepository repo)
+        IConfiguration config, HttpClient http, IRestauranteRepository repo,
+        ILogger<ServicioRestaurantes>? logger = null, IApplicationTransaction? transaccion = null)
         {
             _db = db;
             _config = config;
             _http = http;
             _repo = repo;
+            _logger = logger ?? NullLogger<ServicioRestaurantes>.Instance;
+            _transaccion = transaccion ?? new EfApplicationTransaction(db);
         }
-        public async Task ActualizarReviewsDesdeGoogleLegacyAsync(
-    Guid restauranteId,
-    string placeId,
-    CancellationToken ct)
+        public async Task ActualizarReviewsDesdeGoogleLegacyAsync(Guid restauranteId, string placeId, CancellationToken ct)
         {
-            var apiKey = _config["GooglePlaces:ApiKey"]
-                ?? throw new InvalidOperationException("Falta GooglePlaces:ApiKey");
-
-            var url =
-                $"https://maps.googleapis.com/maps/api/place/details/json" +
-                $"?place_id={Uri.EscapeDataString(placeId)}" +
-                $"&fields=review" +
-                $"&language=es" +
-                $"&key={apiKey}";
-
-            var resp = await _http.GetAsync(url, ct);
-
-            if (!resp.IsSuccessStatusCode)
-                return;
-
-            var json = await resp.Content.ReadFromJsonAsync<GoogleLegacyDetailsResponse>(cancellationToken: ct);
-            if (json?.Result?.Reviews == null || json.Result.Reviews.Count == 0)
-                return;
-
-            // Obtener reviews existentes para evitar duplicados
-            var existentes = await _db.OpinionesRestaurantes
-                .Where(x => x.RestauranteId == restauranteId && x.EsImportada)
-                .Select(x => new { x.AutorExterno, x.Opinion })
-                .ToListAsync(ct);
-
-            var nuevas = json.Result.Reviews
-                .Where(r => !existentes.Any(e =>
-                    e.AutorExterno == r.AuthorName &&
-                    e.Opinion == r.Text))
-                .Select(r => new OpinionRestaurante
-                {
-                    Id = Guid.NewGuid(),
-                    RestauranteId = restauranteId,
-                    UsuarioId = null,
-                    AutorExterno = r.AuthorName,
-                    FuenteExterna = "GooglePlaces",
-                    ImagenAutorExterno = r.ProfilePhotoUrl,
-                    Valoracion = r.Rating,
-                    Titulo = null,
-                    Opinion = r.Text,
-                    EsImportada = true,
-                    FechaCreacion = DateTime.UtcNow
-                })
-                .ToList();
-
-            if (nuevas.Any())
+            // Se conserva el contrato de sólo reseñas; el transporte usa V2 para no poner claves en URLs.
+            if (!await _db.Restaurantes.AnyAsync(r => r.Id == restauranteId && r.PlaceId == placeId, ct)) return;
+            var apiKey = _config["GooglePlaces:ApiKey"];
+            if (string.IsNullOrWhiteSpace(apiKey)) return;
+            List<PlaceReview>? reviews;
+            try
             {
-                await _db.OpinionesRestaurantes.AddRangeAsync(nuevas, ct);
-                await _db.SaveChangesAsync(ct);
+                using var request = new HttpRequestMessage(HttpMethod.Get,
+                    $"https://places.googleapis.com/v1/places/{Uri.EscapeDataString(placeId)}?languageCode=es");
+                request.Headers.Add("X-Goog-Api-Key", apiKey);
+                request.Headers.Add("X-Goog-FieldMask", "reviews");
+                using var response = await _http.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode) return;
+                reviews = (await response.Content.ReadFromJsonAsync<PlaceDetails>(cancellationToken: ct))?.Reviews;
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Reseñas Google no disponibles para {RestauranteId}. Tipo: {Tipo}", restauranteId, ex.GetType().Name);
+                return;
+            }
+            if (reviews == null || reviews.Count == 0) return;
+            var existentes = await _db.OpinionesRestaurantes
+                .Where(x => x.RestauranteId == restauranteId && x.EsImportada && x.FuenteExterna == "GooglePlaces")
+                .Select(x => new { x.AutorExterno, x.Opinion }).ToListAsync(ct);
+            var nuevas = reviews.GroupBy(r => r.AuthorAttribution?.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .SelectMany(g => g.DistinctBy(r => r.Text?.Text, StringComparer.OrdinalIgnoreCase))
+                .Where(r => !existentes.Any(e => string.Equals(e.AutorExterno, r.AuthorAttribution?.DisplayName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(e.Opinion, r.Text?.Text, StringComparison.OrdinalIgnoreCase)))
+                .Select(r => new OpinionRestaurante { Id = Guid.NewGuid(), RestauranteId = restauranteId,
+                    AutorExterno = r.AuthorAttribution?.DisplayName, FuenteExterna = "GooglePlaces",
+                    ImagenAutorExterno = r.AuthorAttribution?.PhotoUri, Valoracion = r.Rating, Opinion = r.Text?.Text,
+                    EsImportada = true, FechaCreacion = DateTime.UtcNow }).ToList();
+            if (nuevas.Count > 0) { await _db.OpinionesRestaurantes.AddRangeAsync(nuevas, ct); await _db.SaveChangesAsync(ct); }
         }
 
         private static string NormalizarNombre(string nombre)
@@ -96,7 +84,7 @@ namespace GustosApp.Infraestructure.Services
      double? lng = null,
      int? radioMetros = null)
         {
-            IQueryable<Restaurante> query = _db.Restaurantes
+            IQueryable<Restaurante> query = _db.Restaurantes.Where(r => !r.Desactivado)
                 .AsNoTracking()
                 .Include(r => r.GustosQueSirve)
                     .ThenInclude(g => g.Tags)
@@ -202,6 +190,7 @@ namespace GustosApp.Infraestructure.Services
                      PrimaryType = primaryType,
                      TypesJson = JsonSerializer.Serialize(typesList),
                      ImagenUrl = string.IsNullOrWhiteSpace(dto.ImagenUrl) ? null : dto.ImagenUrl!.Trim(),
+                     OrigenImagen = GustosApp.Domain.Common.OrigenImagenRestaurante.Propietario,
                      Valoracion = (decimal?)dto.Valoracion,
                      Rating= dto.Valoracion,
                      CantidadResenas = 0
@@ -263,7 +252,7 @@ namespace GustosApp.Infraestructure.Services
             var minLng = lng - degLng;
             var maxLng = lng + degLng;
 
-            var q = _db.Restaurantes.AsNoTracking()
+            var q = _db.Restaurantes.AsNoTracking().Where(r => !r.Desactivado)
                 .Include(r => r.Platos)
                 .Where(r => r.Latitud >= minLat && r.Latitud <= maxLat
                          && r.Longitud >= minLng && r.Longitud <= maxLng);
@@ -297,52 +286,122 @@ namespace GustosApp.Infraestructure.Services
 
         public async Task<bool> EliminarAsync(Guid id, string solicitanteUid, bool esAdmin)
         {
-            var r = await _db.Restaurantes.FirstOrDefaultAsync(x => x.Id == id);
-            if (r is null) return false;
-
-            if (!esAdmin && r.PropietarioUid != solicitanteUid)
-                throw new UnauthorizedAccessException("No tenés permisos para eliminar este restaurante.");
-
-            _db.Restaurantes.Remove(r);
-            await _db.SaveChangesAsync();
-            return true;
+            await Task.CompletedTask;
+            throw new InvalidOperationException("El borrado físico está deshabilitado. Usá la desactivación administrativa con motivo.");
         }
 
         public async Task<Restaurante> ObtenerResenasDesdeGooglePlaces(string placeId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(placeId))
                 throw new ArgumentException("placeId requerido", nameof(placeId));
+            return await ActualizarDesdeGoogleAsync(placeId, null, ct)
+                ?? throw new KeyNotFoundException("La ficha ya no está disponible.");
+        }
 
-            var apiKey = _config["GooglePlaces:ApiKey"]
-                ?? throw new InvalidOperationException("Falta GooglePlaces:ApiKey");
+        public async Task<ResultadoActualizacionExternaRestaurante> ActualizarImportadoDesdeGooglePlacesAsync(Guid restauranteId, CancellationToken ct)
+        {
+            var inicial = await _db.Restaurantes.AsNoTracking().SingleOrDefaultAsync(r => r.Id == restauranteId, ct);
+            if (!EsImportadoSinPropietario(inicial)) return ResultadoActualizacionExternaRestaurante.Omitida;
+            var resultado = await ActualizarDesdeGoogleAsync(inicial!.PlaceId, restauranteId, ct);
+            return resultado is null ? ResultadoActualizacionExternaRestaurante.Omitida
+                : resultado.EstadoUltimaActualizacionExterna == Domain.Common.EstadoActualizacionExternaRestaurante.Exitosa
+                    ? ResultadoActualizacionExternaRestaurante.Exitosa : ResultadoActualizacionExternaRestaurante.Fallida;
+        }
 
-            var fieldMask = string.Join(",",
-                "id,displayName,primaryType,types,priceLevel,rating,userRatingCount,",
-                "formattedAddress,internationalPhoneNumber,websiteUri,location,photos.name,",
-                "currentOpeningHours,reviews"
-            );
+        private static bool EsImportadoSinPropietario(Restaurante? restaurante) => restaurante != null &&
+            !string.IsNullOrWhiteSpace(restaurante.PlaceId) && !restaurante.DuenoId.HasValue &&
+            string.IsNullOrWhiteSpace(restaurante.PropietarioUid);
 
-            var url = $"https://places.googleapis.com/v1/places/{Uri.EscapeDataString(placeId)}?languageCode=es";
-
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.TryAddWithoutValidation("X-Goog-Api-Key", apiKey);
-            req.Headers.TryAddWithoutValidation("X-Goog-FieldMask", fieldMask);
-
-            var resp = await _http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode)
+        private async Task<Restaurante?> ActualizarDesdeGoogleAsync(string placeId, Guid? soloImportadoId, CancellationToken ct)
+        {
+            // La llamada de red no retiene bloqueos ni una copia antigua de datos editables.
+            PlaceDetails? details = null;
+            string? error = null;
+            var apiKey = _config["GooglePlaces:ApiKey"];
+            try
             {
-                Console.WriteLine($" Google Places API error: {resp.StatusCode}");
-                return await _repo.GetByPlaceIdAsync(placeId, ct)
-                    ?? new Restaurante { PlaceId = placeId, Nombre = "(sin datos)" };
+                if (string.IsNullOrWhiteSpace(apiKey))
+                    throw new InvalidOperationException("Configuración externa ausente.");
+                const string fieldMask = "id,displayName,primaryType,types,priceLevel,rating,userRatingCount," +
+                    "formattedAddress,internationalPhoneNumber,websiteUri,location,photos.name,currentOpeningHours,reviews";
+                using var req = new HttpRequestMessage(HttpMethod.Get,
+                    $"https://places.googleapis.com/v1/places/{Uri.EscapeDataString(placeId)}?languageCode=es");
+                req.Headers.TryAddWithoutValidation("X-Goog-Api-Key", apiKey);
+                req.Headers.TryAddWithoutValidation("X-Goog-FieldMask", fieldMask);
+                using var resp = await _http.SendAsync(req, ct);
+                if (!resp.IsSuccessStatusCode) error = $"GooglePlaces HTTP {(int)resp.StatusCode}";
+                else
+                {
+                    details = await resp.Content.ReadFromJsonAsync<PlaceDetails>(cancellationToken: ct);
+                    if (details is null || (details.DisplayName is null && details.FormattedAddress is null &&
+                        !details.Rating.HasValue && !details.UserRatingCount.HasValue && details.Location is null &&
+                        details.PrimaryType is null && details.Photos?.Count is not > 0 && details.Reviews?.Count is not > 0))
+                        error = "GooglePlaces RespuestaVacia";
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                // Mensajes de proveedores/URLs/cuerpos pueden contener credenciales.
+                error = $"GooglePlaces {ex.GetType().Name}";
             }
 
-            var details = await resp.Content.ReadFromJsonAsync<PlaceDetails>(cancellationToken: ct);
-            if (details is null)
-                return await _repo.GetByPlaceIdAsync(placeId, ct)
-                    ?? new Restaurante { PlaceId = placeId, Nombre = "(sin datos)" };
+            Restaurante? actual = null;
+            Microsoft.EntityFrameworkCore.ChangeTracking.PropertyValues? originales = null;
+            var restaurantesPrevios = _db.ChangeTracker.Entries<Restaurante>().Select(e => e.Entity).ToHashSet();
+            var opinionesPrevias = _db.ChangeTracker.Entries<OpinionRestaurante>().Select(e => e.Entity).ToHashSet();
+            try
+            {
+                return await _transaccion.ExecuteAsync(async token =>
+                {
+                    actual = soloImportadoId.HasValue
+                        ? await _db.Restaurantes.SingleOrDefaultAsync(r => r.Id == soloImportadoId.Value, token)
+                        : await _db.Restaurantes.SingleOrDefaultAsync(r => r.PlaceId == placeId, token);
+                    if (actual != null)
+                    {
+                        // También refrescar una entidad que el scope ya tuviera seguida.
+                        await _db.Entry(actual).ReloadAsync(token);
+                        if (_db.Entry(actual).State == EntityState.Detached) actual = null;
+                    }
+                    if (soloImportadoId.HasValue && (!EsImportadoSinPropietario(actual) || actual!.PlaceId != placeId))
+                        return null;
+                    if (actual != null) originales = _db.Entry(actual).CurrentValues.Clone();
+                    return error != null
+                        ? await RegistrarFalloActualizacionExternaAsync(actual, placeId, error, token)
+                        : await AplicarDetallesGoogleAsync(actual, placeId, details!, apiKey!, token);
+                }, ct);
+            }
+            catch
+            {
+                // Un Save/commit fallido no debe reaparecer al guardar el siguiente registro del lote.
+                var nuevasFichas = _db.ChangeTracker.Entries<Restaurante>()
+                    .Where(e => e.Entity.PlaceId == placeId && !restaurantesPrevios.Contains(e.Entity)).ToList();
+                var ids = nuevasFichas.Select(e => e.Entity.Id).ToHashSet();
+                if (actual != null) ids.Add(actual.Id);
+                foreach (var entry in _db.ChangeTracker.Entries<OpinionRestaurante>()
+                    .Where(e => ids.Contains(e.Entity.RestauranteId) && !opinionesPrevias.Contains(e.Entity)).ToList())
+                {
+                    entry.Entity.Restaurante?.Reviews.Remove(entry.Entity);
+                    entry.State = EntityState.Detached;
+                }
+                foreach (var entry in nuevasFichas) entry.State = EntityState.Detached;
+                if (actual != null && originales != null)
+                {
+                    _db.Entry(actual).CurrentValues.SetValues(originales);
+                    _db.Entry(actual).OriginalValues.SetValues(originales);
+                    _db.Entry(actual).State = EntityState.Unchanged;
+                }
+                throw;
+            }
+        }
 
-            // Buscar restaurante existente
-            var existente = await _repo.GetByPlaceIdAsync(placeId, ct);
+        private async Task<Restaurante> AplicarDetallesGoogleAsync(
+            Restaurante? existente,
+            string placeId,
+            PlaceDetails details,
+            string apiKey,
+            CancellationToken ct)
+        {
 
             if (existente is null)
             {
@@ -360,7 +419,8 @@ namespace GustosApp.Infraestructure.Services
                     CantidadResenas = details.UserRatingCount,
                     Categoria = details.PrimaryType ?? "restaurant",
                     UltimaActualizacion = DateTime.UtcNow,
-                    ImagenUrl = GetPhotoUrl(details.Photos?.FirstOrDefault()?.Name, apiKey),
+                    ImagenUrl = details.Photos?.Count > 0 ? GustosApp.Domain.Common.ImagenRestaurantePublica.GoogleActual : null,
+                    OrigenImagen = GustosApp.Domain.Common.OrigenImagenRestaurante.Google,
                     Reviews = new List<OpinionRestaurante>()
                 };
 
@@ -368,18 +428,36 @@ namespace GustosApp.Infraestructure.Services
             }
             else
             {
-                // Actualizar información básica del restaurante
-                existente.Nombre = details.DisplayName?.Text ?? existente.Nombre;
-                existente.Direccion = details.FormattedAddress ?? existente.Direccion;
-                existente.Latitud = details.Location?.Latitude ?? existente.Latitud;
-                existente.Longitud = details.Location?.Longitude ?? existente.Longitud;
+                var administradoPorPropietario = existente.DuenoId.HasValue ||
+                    !string.IsNullOrWhiteSpace(existente.PropietarioUid);
+
+                // Una vez reclamada la ficha, los datos editables quedan bajo control del propietario.
+                // Google continúa siendo la fuente de métricas y opiniones externas.
+                if (!administradoPorPropietario)
+                {
+                    if (!string.IsNullOrWhiteSpace(details.DisplayName?.Text))
+                    {
+                        existente.Nombre = details.DisplayName.Text;
+                        existente.NombreNormalizado = NormalizarNombre(existente.Nombre);
+                    }
+                    if (!string.IsNullOrWhiteSpace(details.FormattedAddress)) existente.Direccion = details.FormattedAddress;
+                    existente.Latitud = details.Location?.Latitude ?? existente.Latitud;
+                    existente.Longitud = details.Location?.Longitude ?? existente.Longitud;
+                    if (!string.IsNullOrWhiteSpace(details.PrimaryType)) existente.Categoria = details.PrimaryType;
+                    if (existente.OrigenImagen == GustosApp.Domain.Common.OrigenImagenRestaurante.Google)
+                        existente.ImagenUrl = details.Photos?.Count > 0 ? GustosApp.Domain.Common.ImagenRestaurantePublica.GoogleActual : null;
+                    existente.ActualizadoUtc = DateTime.UtcNow;
+                }
+
                 existente.Rating = details.Rating ?? existente.Rating;
                 existente.CantidadResenas = details.UserRatingCount ?? existente.CantidadResenas;
-                existente.Categoria = details.PrimaryType ?? existente.Categoria;
-                existente.ImagenUrl = GetPhotoUrl(details.Photos?.FirstOrDefault()?.Name, apiKey);
-                existente.ActualizadoUtc = DateTime.UtcNow;
                 existente.UltimaActualizacion = DateTime.UtcNow;
+
+                // La ficha se recargó con seguimiento dentro de la transacción:
+                // sólo se escriben los campos efectivamente modificados.
             }
+
+            existente.RegistrarActualizacionExternaExitosa(DateTime.UtcNow);
 
             // Procesar opiniones desde Google
             if (details.Reviews is { Count: > 0 })
@@ -401,11 +479,13 @@ namespace GustosApp.Infraestructure.Services
 
                 // Evitar duplicados (comparando texto + autor)
                 var existentes = await _db.OpinionesRestaurantes
-                    .Where(x => x.RestauranteId == existente.Id && x.EsImportada)
+                    .Where(x => x.RestauranteId == existente.Id && x.EsImportada && x.FuenteExterna == "GooglePlaces")
                     .Select(x => new { x.AutorExterno, x.Opinion })
                     .ToListAsync(ct);
 
                 var nuevas = opiniones
+                    .GroupBy(o => o.AutorExterno, StringComparer.OrdinalIgnoreCase)
+                    .SelectMany(grupo => grupo.DistinctBy(o => o.Opinion, StringComparer.OrdinalIgnoreCase))
                     .Where(o => !existentes.Any(e =>
                         string.Equals(e.AutorExterno, o.AutorExterno, StringComparison.OrdinalIgnoreCase) &&
                         string.Equals(e.Opinion, o.Opinion, StringComparison.OrdinalIgnoreCase)))
@@ -414,25 +494,36 @@ namespace GustosApp.Infraestructure.Services
                 if (nuevas.Any())
                 {
                     await _db.OpinionesRestaurantes.AddRangeAsync(nuevas, ct);
-                    await _db.SaveChangesAsync(ct);
-
-
-                    foreach (var nueva in nuevas)
-                    {
-                        existente.Reviews.Add(nueva);
-                    }
                 }
             }
 
-            await _db.SaveChangesAsync(ct);
+            await _repo.SaveChangesAsync(ct);
             return existente;
         }
 
-        private static string? GetPhotoUrl(string? fotoName, string apiKey)
+        private async Task<Restaurante> RegistrarFalloActualizacionExternaAsync(
+            Restaurante? existente,
+            string placeId,
+            string detalle,
+            CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(fotoName)) return null;
-            return $"https://places.googleapis.com/v1/{Uri.EscapeDataString(fotoName)}/media?maxWidthPx=800&key={apiKey}";
+            _logger.LogWarning(
+                "No se pudo actualizar el restaurante {PlaceId} desde Google Places: {Detalle}",
+                placeId,
+                detalle);
+
+            if (existente is null)
+            {
+                var sinDatos = new Restaurante { PlaceId = placeId, Nombre = "(sin datos)" };
+                sinDatos.RegistrarErrorActualizacionExterna(DateTime.UtcNow, detalle);
+                return sinDatos;
+            }
+
+            existente.RegistrarErrorActualizacionExterna(DateTime.UtcNow, detalle);
+            await _repo.SaveChangesAsync(ct);
+            return existente;
         }
+
 
         public async Task<List<Restaurante>> BuscarAsync(
             double rating,
@@ -442,12 +533,23 @@ namespace GustosApp.Infraestructure.Services
             List<string> gustos,
             List<string> restricciones)
         {
-            var baseQuery = _db.Restaurantes.AsNoTracking();
+            if (lat.HasValue != lng.HasValue)
+                throw new ArgumentException("La latitud y la longitud deben informarse juntas.");
+            if (lat is < -90 or > 90 || lng is < -180 or > 180)
+                throw new ArgumentOutOfRangeException(nameof(lat), "Las coordenadas no son válidas.");
+            if (radioMetros is <= 0 or > 50_000)
+                throw new ArgumentOutOfRangeException(nameof(radioMetros), "El radio debe estar entre 1 y 50000 metros.");
+
+            var baseQuery = _db.Restaurantes.AsNoTracking().Where(r => !r.Desactivado);
 
             // Los gustos y restricciones se evalúan en el recomendador. Filtrarlos aquí
             // impediría usar restaurantes con compatibilidad todavía desconocida como respaldo.
 
-            // Resto del filtrado (ubicación / rating)
+            baseQuery = baseQuery.Where(r => rating <= 0 ||
+                (r.Valoracion.HasValue && r.Valoracion.Value > 0 && r.Valoracion.Value >= (decimal)rating) ||
+                ((!r.Valoracion.HasValue || r.Valoracion.Value <= 0) &&
+                    r.Rating.HasValue && r.Rating.Value >= rating));
+
             if (lat.HasValue && lng.HasValue && radioMetros is > 0)
             {
                 double latVal = lat.Value;
@@ -463,27 +565,43 @@ namespace GustosApp.Infraestructure.Services
 
                 baseQuery = baseQuery.Where(r =>
                     r.Latitud >= minLat && r.Latitud <= maxLat &&
-                    r.Longitud >= minLng && r.Longitud <= maxLng &&
-                    (rating <= 0 || r.Rating >= rating));
-
-                baseQuery = baseQuery.OrderBy(r =>
-                        Math.Abs(r.Latitud - latVal) +
-                        Math.Abs(r.Longitud - lngVal))
-                    .Take(200);
+                    r.Longitud >= minLng && r.Longitud <= maxLng);
             }
             else
             {
                 baseQuery = baseQuery
-                    .Where(r => rating <= 0 || r.Rating >= rating)
-                    .OrderBy(r => r.NombreNormalizado)
-                    .Take(1000);
+                    .OrderBy(r => r.NombreNormalizado);
             }
 
-            return await baseQuery
+            var candidatos = await baseQuery
                 .Include(r => r.GustosQueSirve)
                     .ThenInclude(g => g.Tags)
                 .Include(r => r.RestriccionesQueRespeta)
+                .Include(r => r.Reviews)
                 .ToListAsync();
+
+            if (lat.HasValue && lng.HasValue && radioMetros.HasValue)
+            {
+                return candidatos
+                    .Select(r => new { Restaurante = r, Distancia = CalcularDistanciaMetros(lat.Value, lng.Value, r.Latitud, r.Longitud) })
+                    .Where(x => x.Distancia <= radioMetros.Value + 0.5)
+                    .OrderBy(x => x.Distancia)
+                    .Select(x => x.Restaurante)
+                    .ToList();
+            }
+
+            return candidatos;
+        }
+
+        private static double CalcularDistanciaMetros(double lat1, double lng1, double lat2, double lng2)
+        {
+            const double radioTierra = 6_371_000d;
+            var dLat = (lat2 - lat1) * Math.PI / 180d;
+            var dLng = (lng2 - lng1) * Math.PI / 180d;
+            var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                    Math.Cos(lat1 * Math.PI / 180d) * Math.Cos(lat2 * Math.PI / 180d) *
+                    Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+            return radioTierra * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
         }
     }
 }

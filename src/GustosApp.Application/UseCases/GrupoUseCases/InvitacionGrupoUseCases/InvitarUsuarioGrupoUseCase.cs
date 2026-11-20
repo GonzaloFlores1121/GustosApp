@@ -12,21 +12,24 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
         private readonly IUsuarioRepository _usuarioRepository;
         private readonly IInvitacionGrupoRepository _invitacionRepository;
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;
-        private readonly INotificacionRepository _notificacionRepository;
-        private readonly INotificacionRealtimeService _notificacionRealtimeService;
+        private readonly ISolicitudAmistadRealtimeService _solicitudesRealtime;
+        private readonly IApplicationTransaction _transaction;
+        private readonly TimeProvider _timeProvider;
         public InvitarUsuarioGrupoUseCase(IGrupoRepository grupoRepository,
             IUsuarioRepository usuarioRepository,
             IInvitacionGrupoRepository invitacionRepository,
             IMiembroGrupoRepository miembroGrupoRepository,
-            INotificacionRepository notificacionRepository,
-            INotificacionRealtimeService notificacionRealtimeService)
+            ISolicitudAmistadRealtimeService solicitudesRealtime,
+            IApplicationTransaction? transaction = null,
+            TimeProvider? timeProvider = null)
         {
             _grupoRepository = grupoRepository;
             _usuarioRepository = usuarioRepository;
             _invitacionRepository = invitacionRepository;
             _miembroGrupoRepository = miembroGrupoRepository;
-            _notificacionRepository = notificacionRepository;
-            _notificacionRealtimeService = notificacionRealtimeService;
+            _solicitudesRealtime = solicitudesRealtime;
+            _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
+            _timeProvider = timeProvider ?? TimeProvider.System;
 
         }
 
@@ -59,6 +62,7 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
                 throw new ArgumentException("El usuario ya es miembro del grupo");
 
 
+            await _invitacionRepository.MarcarInvitacionesExpiradasAsync(ct);
             var ultimaInvitacion = await _invitacionRepository.ObtenerUltimaInvitacionAsync(grupoId, usuarioInvitado.Id, ct);
 
             if (ultimaInvitacion?.Estado == EstadoInvitacion.Pendiente)
@@ -68,51 +72,32 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
                 await _miembroGrupoRepository.UsuarioEsMiembroActivoAsync(grupoId, usuarioInvitado.Id, ct))
                 throw new ArgumentException("El usuario ya es miembro del grupo");
 
-            // si llegó hasta acá → se puede crear una nueva invitación
-
-
-
-            // 5. Crear notificación
-            var notificacion = new Notificacion
+            var invitacionCompleta = await _transaction.ExecuteAsync(async transactionCt =>
             {
-                UsuarioDestinoId = usuarioInvitado.Id,
-                Titulo = "Invitación a grupo",
-                Mensaje = $"{usuarioInvitador.Nombre} te ha invitado a unirte al grupo '{grupo.Nombre}'",
-                Tipo = TipoNotificacion.InvitacionGrupo,
-                Leida = false,
-                FechaCreacion = DateTime.UtcNow,
-            };
-            await _notificacionRepository.crearAsync(notificacion, ct);
+                var invitacion = new InvitacionGrupo(
+                    grupoId,
+                    usuarioInvitado.Id,
+                    usuarioInvitador.Id,
+                    MensajePersonalizado,
+                    _timeProvider.GetUtcNow().UtcDateTime);
+                await _invitacionRepository.CreateAsync(invitacion, transactionCt);
 
-            // 6. Crear invitación y vincular notificación
-            var invitacion = new InvitacionGrupo(
-                grupoId,
-                usuarioInvitado.Id,
-                usuarioInvitador.Id,
-                MensajePersonalizado)
+                return await _invitacionRepository.GetByIdAsync(invitacion.Id, transactionCt)
+                    ?? throw new InvalidOperationException("Error al crear la invitación");
+            }, ct);
+
+            try
             {
-                NotificacionId = notificacion.Id
-            };
-            await _invitacionRepository.CreateAsync(invitacion, ct);
-
-            // 7. Enlazar y actualizar notificación
-            notificacion.InvitacionId = invitacion.Id;
-            await _notificacionRepository.UpdateAsync(notificacion, ct);
-
-            // 8. Enviar notificación en tiempo real
-            await _notificacionRealtimeService.EnviarNotificacionAsync(
-                usuarioInvitado.FirebaseUid,
-                notificacion.Titulo,
-                notificacion.Mensaje,
-                notificacion.Tipo.ToString(),
-                ct,
-                notificacion.Id,
-                invitacion.Id
-            );
-
-            // 9. Obtener invitación completa
-            var invitacionCompleta = await _invitacionRepository.GetByIdAsync(invitacion.Id, ct)
-                ?? throw new InvalidOperationException("Error al crear la invitación");
+                await _solicitudesRealtime.EnviarInvitacionGrupoAsync(
+                    usuarioInvitado.FirebaseUid,
+                    invitacionCompleta,
+                    ct);
+            }
+            catch
+            {
+                // La invitación ya quedó persistida. SignalR es una optimización y el cliente
+                // recupera el estado completo al conectar o reconectar.
+            }
 
             return invitacionCompleta;
         }

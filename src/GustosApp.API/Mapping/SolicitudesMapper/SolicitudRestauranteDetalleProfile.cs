@@ -2,6 +2,7 @@
 using GustosApp.API.DTO;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
+using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
 
 namespace GustosApp.API.Mapping.SolicitudesMapper
 {
@@ -10,6 +11,9 @@ namespace GustosApp.API.Mapping.SolicitudesMapper
         public SolicitudRestauranteDetalleProfile()
         {
             CreateMap<SolicitudRestaurante, SolicitudRestauranteDetalleDto>()
+                .ForMember(dest => dest.Resolucion, opt => opt.MapFrom(src => src.Estado == EstadoSolicitudRestaurante.Pendiente
+                    ? null : ResumenResolucionSolicitud.Desde(src)))
+                .ForMember(dest => dest.CoincidenciasAlta, opt => opt.Ignore())
                 .ForMember(dest => dest.UsuarioId, opt => opt.MapFrom(src => src.Usuario.Id))
                 .ForMember(dest => dest.UsuarioNombre, opt => opt.MapFrom(src => $"{src.Usuario.Nombre} {src.Usuario.Apellido}".Trim()))
                 .ForMember(dest => dest.UsuarioEmail, opt => opt.MapFrom(src => src.Usuario.Email))

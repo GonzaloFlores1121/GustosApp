@@ -21,11 +21,13 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases.OpinionesRestaurant
 
         public async Task HandleAsync(Guid restauranteId, CancellationToken cancellationToken)
         {
-            var valoraciones = await _opinionRestauranteRepository.ObtenerPorRestauranteAsync(restauranteId, cancellationToken);
+            var valoraciones = (await _opinionRestauranteRepository.ObtenerPorRestauranteAsync(restauranteId, cancellationToken))
+                .Where(v => !v.EsImportada && v.UsuarioId.HasValue)
+                .ToList();
 
             if (!valoraciones.Any())
             {
-                await _restauranteRepository.ActualizarValoracionAsync(restauranteId, 0, cancellationToken);
+                await _restauranteRepository.ActualizarValoracionAsync(restauranteId, null, cancellationToken);
                 return;
             }
 

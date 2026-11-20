@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Application.Common.Exceptions;
+using GustosApp.Application.Interfaces;
 
 namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
 {
@@ -15,22 +16,27 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
     {
 
         private readonly IUsuarioRepository _usuarioRepo;
-        private readonly INotificacionRepository _notificacionRepo;
         private readonly IInvitacionGrupoRepository _invitacionRepository;
+        private readonly ISolicitudAmistadRealtimeService _solicitudesRealtime;
+        private readonly TimeProvider _timeProvider;
        
 
-        public RechazarInvitacionAGrupoUseCase(IUsuarioRepository usuarioRepo, INotificacionRepository notificacionRepo,
-          IInvitacionGrupoRepository invitacionRepository)
+        public RechazarInvitacionAGrupoUseCase(
+            IUsuarioRepository usuarioRepo,
+            IInvitacionGrupoRepository invitacionRepository,
+            ISolicitudAmistadRealtimeService solicitudesRealtime,
+            TimeProvider? timeProvider = null)
         {
             _usuarioRepo = usuarioRepo;
-            _notificacionRepo = notificacionRepo;
             _invitacionRepository = invitacionRepository;
+            _solicitudesRealtime = solicitudesRealtime;
+            _timeProvider = timeProvider ?? TimeProvider.System;
           
         }
 
 
 
-        public async Task HandleAsync(string uid, Guid notificacionId, CancellationToken ct)
+        public async Task HandleAsync(string uid, Guid invitacionId, CancellationToken ct)
         {
           
             var usuario = await _usuarioRepo.GetByFirebaseUidAsync(uid, ct);
@@ -38,18 +44,6 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
                 throw new UnauthorizedAccessException("Usuario no encontrado");
 
            
-            var notificacion = await _notificacionRepo.GetByIdAsync(notificacionId, ct);
-            if (notificacion == null)
-                throw new ArgumentException("Notificación no encontrada");
-
-           
-            if (!notificacion.InvitacionId.HasValue)
-                throw new ArgumentException("La notificación no está asociada a una invitación.");
-
-
-            var invitacionId = notificacion.InvitacionId.Value;
-
-            //  Obtener invitación
             var invitacion = await _invitacionRepository.GetByIdAsync(invitacionId, ct);
             if (invitacion == null)
                 throw new ArgumentException("Invitación no encontrada");
@@ -64,15 +58,31 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases
                 throw new ArgumentException("La invitación ya fue procesada");
 
             //  Verificar expiración
-            if (invitacion.EstaExpirada())
+            var ahora = _timeProvider.GetUtcNow().UtcDateTime;
+            if (invitacion.EstaExpirada(ahora))
+            {
+                invitacion.MarcarComoExpirada(ahora);
+                await _invitacionRepository.UpdateAsync(invitacion, ct);
                 throw new ArgumentException("La invitación ha expirado");
+            }
 
             // Marcar como rechazada
-            invitacion.Rechazar();
+            invitacion.Rechazar(ahora);
             await _invitacionRepository.UpdateAsync(invitacion, ct);
 
-            //  Eliminar notificación
-            await _notificacionRepo.EliminarAsync(notificacionId, ct);
+            try
+            {
+                await _solicitudesRealtime.EnviarSolicitudResueltaAsync(
+                    usuario.FirebaseUid,
+                    invitacion.Id,
+                    "invitacion_grupo",
+                    "rechazada",
+                    ct);
+            }
+            catch
+            {
+                // El estado se recupera desde la API si SignalR no está disponible.
+            }
         }
     }
 }

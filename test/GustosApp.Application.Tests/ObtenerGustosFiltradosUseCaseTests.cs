@@ -9,6 +9,8 @@ using GustosApp.Domain.Model;
 using Moq;
 using Xunit;
 using GustosApp.Application.UseCases.UsuarioUseCases.GustoUseCases;
+using GustosApp.Application.Services;
+using GustosApp.Domain.Common;
 
 namespace GustosApp.Application.Tests.UseCases
 {
@@ -75,6 +77,21 @@ namespace GustosApp.Application.Tests.UseCases
             Assert.Equal("Sushi", result.GustosFiltrados.First().Nombre);
 
             Assert.DoesNotContain(result.GustosFiltrados, g => g.Nombre == "Pizza");
+
+            var preferencias = new UsuarioPreferencias
+            {
+                Restricciones = [restriccion.Nombre],
+                ReglasCompatibilidad = ReglasCompatibilidadPreferencias.DesdeUsuario(usuario)
+            };
+            var restauranteSoloPizza = new Restaurante
+            {
+                GustosQueSirve = [gustoIncompatible]
+            };
+            Assert.Equal(NivelCompatibilidadRestaurante.Incompatible,
+                new EvaluadorCompatibilidadRestaurante().Evaluar(preferencias, restauranteSoloPizza));
+            restauranteSoloPizza.GustosQueSirve.Add(gustoCompatible);
+            Assert.Equal(NivelCompatibilidadRestaurante.Desconocida,
+                new EvaluadorCompatibilidadRestaurante().Evaluar(preferencias, restauranteSoloPizza));
 
             _usuarioRepoMock.Verify(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()), Times.Once);
             _gustoRepoMock.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);

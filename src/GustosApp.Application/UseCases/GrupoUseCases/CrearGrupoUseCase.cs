@@ -1,6 +1,7 @@
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Interfaces;
 
 namespace GustosApp.Application.UseCases
 {
@@ -10,16 +11,19 @@ namespace GustosApp.Application.UseCases
         private readonly IMiembroGrupoRepository _miembroGrupoRepository;
         private readonly IUsuarioRepository _usuarioRepository;
         private IGustosGrupoRepository _gustosGrupoRepository;
+        private readonly IApplicationTransaction _transaction;
 
         public CrearGrupoUseCase(IGrupoRepository grupoRepository,
             IMiembroGrupoRepository miembroGrupoRepository,
             IUsuarioRepository usuarioRepository,
-            IGustosGrupoRepository gustosGrupoRepository)
+            IGustosGrupoRepository gustosGrupoRepository,
+            IApplicationTransaction? transaction = null)
         {
             _grupoRepository = grupoRepository;
             _miembroGrupoRepository = miembroGrupoRepository;
             _usuarioRepository = usuarioRepository;
             _gustosGrupoRepository = gustosGrupoRepository;
+            _transaction = transaction ?? ImmediateApplicationTransaction.Instance;
         }
 
         public async Task<Grupo> HandleAsync(string firebaseUid, string NombreGrupo, string? DescripcionGrupo, CancellationToken cancellationToken = default)
@@ -29,31 +33,16 @@ namespace GustosApp.Application.UseCases
             if (usuario == null)
                 throw new UnauthorizedAccessException("Usuario no encontrado");
 
-            // Verificar límite de grupos para usuarios Free  
-            if (!usuario.EsPremium())
+            var grupo = await _transaction.ExecuteAsync(async transactionCt =>
             {
-                var gruposActuales = await _grupoRepository.GetGruposByUsuarioIdAsync(usuario.Id, cancellationToken);
-                var cantidadGrupos = gruposActuales.Count();
-
-                if (cantidadGrupos >= 3)
-                {
-                    throw new LimiteGruposAlcanzadoException(
-                        tipoPlan: "Free",
-                        limiteActual: 3,
-                        gruposActuales: cantidadGrupos
-                    );
-                }
-            }
-
-            // Crear el grupo  
-            var grupo = new Grupo(NombreGrupo, usuario.Id, DescripcionGrupo);
-            await _grupoRepository.CreateAsync(grupo, cancellationToken);
-
-            // Agregar al creador como miembro administrador  
-            var miembro = new MiembroGrupo(grupo.Id, usuario.Id, true);
-            await _miembroGrupoRepository.CreateAsync(miembro, cancellationToken);
-
-            await _gustosGrupoRepository.AgregarGustosAlGrupo(grupo.Id, usuario.Gustos.ToList(),miembro.Id);
+                await ValidarCupoAsync(usuario, transactionCt);
+                var nuevoGrupo = new Grupo(NombreGrupo, usuario.Id, DescripcionGrupo);
+                await _grupoRepository.CreateAsync(nuevoGrupo, transactionCt);
+                var miembro = new MiembroGrupo(nuevoGrupo.Id, usuario.Id, true);
+                await _miembroGrupoRepository.CreateAsync(miembro, transactionCt);
+                await _gustosGrupoRepository.AgregarGustosAlGrupo(nuevoGrupo.Id, usuario.Gustos.ToList(), miembro.Id);
+                return nuevoGrupo;
+            }, cancellationToken);
 
             // Obtener el grupo completo con relaciones  
             var grupoCompleto = await _grupoRepository.GetByIdAsync(grupo.Id, cancellationToken);
@@ -61,6 +50,13 @@ namespace GustosApp.Application.UseCases
                 throw new InvalidOperationException("Error al crear el grupo");
 
             return grupoCompleto;
+        }
+
+        private async Task ValidarCupoAsync(Usuario usuario, CancellationToken ct)
+        {
+            if (usuario.EsPremium()) return;
+            var cantidad = (await _grupoRepository.GetGruposByUsuarioIdAsync(usuario.Id, ct)).Count();
+            if (cantidad >= 3) throw new LimiteGruposAlcanzadoException("Free", 3, cantidad);
         }
     }
 }

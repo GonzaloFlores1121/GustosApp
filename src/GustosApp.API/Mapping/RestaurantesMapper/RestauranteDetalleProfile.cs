@@ -11,13 +11,21 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
         public RestauranteDetalleProfile()
         {
             CreateMap<Restaurante, RestauranteDetalleDto>()
+                .ForMember(dest => dest.OrigenImagen, opt => opt.MapFrom(src => src.OrigenImagen.ToString()))
+                .ForMember(dest => dest.OrigenLogo, opt => opt.MapFrom(src => src.OrigenLogo.ToString()))
+                .ForMember(dest => dest.ImagenesGaleria, opt => opt.MapFrom(src => src.Imagenes
+                    .Where(i => i.Tipo == TipoImagenRestaurante.Interior || i.Tipo == TipoImagenRestaurante.Comida)
+                    .OrderBy(i => i.Orden).ThenBy(i => i.Id)
+                    .Select(i => new ImagenGaleriaDto { Id = i.Id, Url = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, i.Url)!, Tipo = (int)i.Tipo, Orden = i.Orden, Origen = i.Origen.ToString() }).ToList()))
 
-                   .ForMember(dest => dest.RatingCalculado,
-                           opt => opt.MapFrom(src =>
-                          src.Reviews != null && src.Reviews.Any()
-                        ? Math.Round(src.Reviews.Average(r => r.Valoracion), 1)
-                        : (src.Rating ?? 0)
-                ))
+
+                .ForMember(dest => dest.RatingCalculado, opt => opt.MapFrom(src => src.ObtenerPuntuacionPrincipal()))
+                .ForMember(dest => dest.PuntuacionPrincipal, opt => opt.MapFrom(src => src.ObtenerPuntuacionPrincipal()))
+                .ForMember(dest => dest.FuentePuntuacionPrincipal, opt => opt.MapFrom(src => src.ObtenerFuentePuntuacionPrincipal()))
+                .ForMember(dest => dest.ValoracionLocal, opt => opt.MapFrom(src => src.ObtenerValoracionLocal()))
+                .ForMember(dest => dest.CantidadResenasLocales, opt => opt.MapFrom(src => src.ObtenerCantidadResenasLocales()))
+                .ForMember(dest => dest.RatingGoogle, opt => opt.MapFrom(src => src.Rating.HasValue && src.Rating.Value > 0 ? src.Rating : null))
+                .ForMember(dest => dest.CantidadResenasGoogle, opt => opt.MapFrom(src => src.CantidadResenas))
 
                 .ForMember(dest => dest.Latitud, opt => opt.MapFrom(src => src.Latitud))
                 .ForMember(dest => dest.Longitud, opt => opt.MapFrom(src => src.Longitud))
@@ -26,17 +34,17 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                     opt => opt.MapFrom(src => string.IsNullOrWhiteSpace(src.PlaceId)))
 
                 .ForMember(dest => dest.ImagenDestacada,
-                    opt => opt.MapFrom(src => src.ImagenUrl))
+                    opt => opt.MapFrom(src => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, src.ImagenUrl)))
 
                 .ForMember(dest => dest.LogoUrl,
-                    opt => opt.MapFrom(src => src.LogoUrl))
+                    opt => opt.MapFrom(src => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, src.LogoUrl)))
 
                 .ForMember(dest => dest.ImagenesInterior,
                     opt => opt.MapFrom(src =>
                         src.Imagenes
                             .Where(i => i.Tipo == TipoImagenRestaurante.Interior)
                             .OrderBy(i => i.Orden)
-                            .Select(i => i.Url)
+                            .Select(i => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, i.Url))
                             .ToList()))
 
                 .ForMember(dest => dest.ImagenesComida,
@@ -44,12 +52,24 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                         src.Imagenes
                             .Where(i => i.Tipo == TipoImagenRestaurante.Comida)
                             .OrderBy(i => i.Orden)
-                            .Select(i => i.Url)
+                            .Select(i => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, i.Url))
                             .ToList()))
+
+                .ForMember(dest => dest.ImagenMenu,
+                    opt => opt.MapFrom(src =>
+                        src.MenuProcesado == true
+                            ? src.Menu != null && !string.IsNullOrWhiteSpace(src.Menu.ImagenFuentePublicadaUrl)
+                                ? GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, src.Menu.ImagenFuentePublicadaUrl)
+                                : src.Imagenes
+                            .Where(i => i.Tipo == TipoImagenRestaurante.Menu)
+                            .OrderBy(i => i.Orden)
+                            .Select(i => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, i.Url))
+                            .FirstOrDefault()
+                            : null))
 
                 .ForMember(dest => dest.Menu,
                     opt => opt.MapFrom(src =>
-                        src.Menu != null &&
+                        src.MenuProcesado == true && src.Menu != null &&
                         !string.IsNullOrWhiteSpace(src.Menu.Json)
                             ? DeserializeMenu(src)
                             : null))

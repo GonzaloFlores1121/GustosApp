@@ -1,6 +1,7 @@
 ﻿using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Domain.Model.@enum;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -65,10 +66,42 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task<List<Notificacion>> ObtenerNotificacionPorUsuarioAsync(Guid usuarioId, CancellationToken ct)
         {
             return await _context.Notificaciones
-                .Where(n => n.UsuarioDestinoId == usuarioId)
+                .Where(n => n.UsuarioDestinoId == usuarioId
+                    && n.Tipo != TipoNotificacion.SolicitudAmistad
+                    && n.Tipo != TipoNotificacion.InvitacionGrupo)
                 .OrderByDescending(n => n.FechaCreacion)
                 .ToListAsync(ct);
         }
+
+        public async Task<Notificacion> CrearSiNoExisteAsync(
+            Notificacion notificacion,
+            CancellationToken cancellationToken)
+        {
+            if (!string.IsNullOrWhiteSpace(notificacion.ClaveUnica))
+            {
+                var existente = await ObtenerPorClaveUnicaAsync(notificacion.ClaveUnica, cancellationToken);
+                if (existente != null) return existente;
+            }
+
+            await _context.Notificaciones.AddAsync(notificacion, cancellationToken);
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+                return notificacion;
+            }
+            catch (DbUpdateException) when (!string.IsNullOrWhiteSpace(notificacion.ClaveUnica))
+            {
+                _context.Entry(notificacion).State = EntityState.Detached;
+                var existente = await ObtenerPorClaveUnicaAsync(notificacion.ClaveUnica, cancellationToken);
+                if (existente != null) return existente;
+                throw;
+            }
+        }
+
+        public Task<Notificacion?> ObtenerPorClaveUnicaAsync(string claveUnica, CancellationToken cancellationToken) =>
+            _context.Notificaciones.FirstOrDefaultAsync(
+                n => n.ClaveUnica == claveUnica,
+                cancellationToken);
 
         public async Task UpdateAsync(Notificacion notificacion, CancellationToken ct)
         {

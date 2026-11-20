@@ -9,6 +9,25 @@ namespace GustosApp.Application.Tests
 {
     public class ObtenerHistorialVotacionesUseCaseTests
     {
+        [Fact]
+        public async Task GanadorDesactivadoSeIdentificaSinCambiarLaDecisionAnterior()
+        {
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "admin" };
+            var grupo = new Grupo("Grupo", usuario.Id);
+            var restaurante = new Restaurante { Id = Guid.NewGuid(), Nombre = "Elección anterior" };
+            var votacion = new VotacionGrupo(grupo.Id) { RestauranteGanador = restaurante };
+            votacion.CerrarVotacion(restaurante.Id);
+            restaurante.CambiarDisponibilidad(true, 0, "Revisión", DateTime.UtcNow);
+            _usuarioRepository.Setup(r => r.GetByFirebaseUidAsync("admin", It.IsAny<CancellationToken>())).ReturnsAsync(usuario);
+            _grupoRepository.Setup(r => r.GetByIdAsync(grupo.Id, It.IsAny<CancellationToken>())).ReturnsAsync(grupo);
+            _votacionRepository.Setup(r => r.ObtenerHistorialVotacionesAsync(grupo.Id, 1, 10, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((new List<VotacionGrupo> { votacion }, 1));
+            var historial = await CrearCasoDeUso().HandleAsync("admin", grupo.Id);
+            var ganador = Assert.Single(historial.Votaciones).Ganador!;
+            Assert.True(ganador.Desactivado);
+            Assert.Equal(restaurante.Id, ganador.RestauranteId);
+            Assert.Equal("Elección anterior", ganador.Nombre);
+        }
         private readonly Mock<IVotacionRepository> _votacionRepository = new();
         private readonly Mock<IUsuarioRepository> _usuarioRepository = new();
         private readonly Mock<IGrupoRepository> _grupoRepository = new();

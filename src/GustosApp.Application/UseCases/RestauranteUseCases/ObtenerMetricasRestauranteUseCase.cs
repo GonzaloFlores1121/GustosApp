@@ -40,14 +40,23 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
 
             var estadisticas = await _estadisticasRepository.ObtenerPorRestauranteAsync(restauranteId, ct);
 
-            if (estadisticas==null)
-            {
-                throw new KeyNotFoundException("No se encontraron estadisticas con esa clave");
-            }
+            estadisticas ??= new() { RestauranteId = restauranteId };
 
             var totalFavoritos = await _favoritoRepository.CountByRestauranteAsync(restauranteId, ct);
 
-            return new RestauranteMetricasRecord( restauranteId , estadisticas, totalFavoritos);
+            var valoraciones = await _estadisticasRepository.ObtenerValoracionesLocalesAsync(restauranteId, ct) ?? [];
+            var zona = TimeZoneInfo.FindSystemTimeZoneById(GustosApp.Domain.Common.HorariosRestaurante.ZonaHoraria);
+            DateOnly DiaLocal(DateTime utc) => DateOnly.FromDateTime(
+                TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zona));
+            var hoy = DiaLocal(DateTime.UtcNow);
+            var porDia = valoraciones.GroupBy(v => DiaLocal(v.FechaUtc)).ToDictionary(g => g.Key, g => g.Count());
+            var actividad = Enumerable.Range(0, 7).Select(i => hoy.AddDays(i - 6))
+                .Select(fecha => new ActividadResenas(fecha, porDia.GetValueOrDefault(fecha))).ToArray();
+            var distribucion = Enumerable.Range(1, 5)
+                .Select(estrellas => valoraciones.Count(v => Math.Round(v.Valoracion, MidpointRounding.AwayFromZero) == estrellas)).ToArray();
+            var resumen = new ResumenResenasLocales(valoraciones.Count,
+                valoraciones.Count == 0 ? null : valoraciones.Average(v => v.Valoracion), distribucion, actividad);
+            return new RestauranteMetricasRecord(restauranteId, estadisticas, totalFavoritos, resumen);
         }
     }
 }

@@ -39,6 +39,7 @@ namespace GustosApp.API.Controllers
         private readonly EliminarRestauranteUseCase _eliminarRestaurante;
         private readonly ObtenerRestauranteIdPorPropietarioUseCase _obtenerRestauranteIdPorPropietario;
         private readonly ObtenerMiSolicitudRestauranteUseCase _obtenerMiSolicitudRestaurante;
+        private readonly GestionarBorradorMenuRestauranteUseCase _gestionarBorradorMenu;
 
         public RestaurantesController(
       ObtenerUsuarioUseCase obtenerUsuario,
@@ -53,7 +54,8 @@ namespace GustosApp.API.Controllers
     IActualizarImagenesRestauranteUseCase actualizarImagenesUseCase,
     EliminarRestauranteUseCase eliminarRestaurante,
     ObtenerRestauranteIdPorPropietarioUseCase obtenerRestauranteIdPorPropietario,
-    ObtenerMiSolicitudRestauranteUseCase obtenerMiSolicitudRestaurante)
+    ObtenerMiSolicitudRestauranteUseCase obtenerMiSolicitudRestaurante,
+    GestionarBorradorMenuRestauranteUseCase gestionarBorradorMenu)
         {
             _obtenerUsuario = obtenerUsuario;
             _solicitudesRestaurantes = solicitudesRestaurantes;
@@ -69,6 +71,7 @@ namespace GustosApp.API.Controllers
             _eliminarRestaurante = eliminarRestaurante;
             _obtenerRestauranteIdPorPropietario = obtenerRestauranteIdPorPropietario;
             _obtenerMiSolicitudRestaurante = obtenerMiSolicitudRestaurante;
+            _gestionarBorradorMenu = gestionarBorradorMenu;
         }
 
         [HttpGet("mi-solicitud")]
@@ -106,13 +109,14 @@ namespace GustosApp.API.Controllers
             [FromQuery(Name = "near.lat")] double? lat,
             [FromQuery(Name = "near.lng")] double? lng,
             [FromQuery(Name = "radiusMeters")] int? radius = 3000,
-            [FromQuery] int top = 10
+            [FromQuery] int top = 10,
+            [FromQuery] bool abiertoAhora = false
   )
         {
             var firebaseUid = GetFirebaseUid();
 
             var recommendations = await _buscarRestauranteRecomendado.HandleAsync(
-                firebaseUid,gustos,amigoUsername,lat, lng,radius,top,rating,ct);
+                firebaseUid,gustos,amigoUsername,lat, lng,radius,top,rating,ct,abiertoAhora);
 
             // DTO
             var response = _mapper.Map<List<RestauranteDTO>>(recommendations);
@@ -120,6 +124,7 @@ namespace GustosApp.API.Controllers
             return Ok(new
             {
                 total = response.Count,
+                estado = response.Count == 0 ? "SinCoincidencias" : "Encontrados",
                 recomendaciones = response
             });
 
@@ -144,11 +149,23 @@ namespace GustosApp.API.Controllers
             return Ok(dto);
         }
 
+        [HttpPost("{id:guid}/vista-publica")]
+        public async Task<IActionResult> RegistrarVistaPublica(Guid id,
+            [FromServices] IRestauranteEstadisticasRepository estadisticas,
+            [FromServices] ILogger<RestaurantesController> logger, CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            try { await estadisticas.RegistrarVistaPublicaAsync(id, usuarioId, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException && !ct.IsCancellationRequested)
+            { logger.LogWarning(ex, "No se pudo registrar una vista pública."); }
+            return NoContent();
+        }
+
 
 
 
         [HttpPost]
-        [RequestSizeLimit(50 * 1024 * 1024)]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -170,14 +187,33 @@ namespace GustosApp.API.Controllers
                     uid, dto.Nombre, dto.Direccion, dto.Lat, dto.Lng, dto.HorariosJson,
                     dto.GustosQueSirveIds, dto.RestriccionesQueRespetaIds,
                     imagenDestacada, imagenesInterior, imagenesComidas, imagenMenu, logo,
-                    dto.WebsiteUrl, ct);
+                    dto.WebsiteUrl, ct, dto.DeclaroOtroLocal);
 
                 return Ok(response);
+            }
+            catch (SolicitudRestaurantePendienteException ex)
+            {
+                return Conflict(new { code = "SOLICITUD_PENDIENTE", message = ex.Message });
+            }
+            catch (DbUpdateException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 return BadRequest(new { error = ex.Message });
             }
+        }
+
+        [HttpGet("coincidencias-alta")]
+        [EnableRateLimiting("BusquedaRestaurantes")]
+        public async Task<IActionResult> CoincidenciasAlta(
+            [FromQuery] string? nombre, [FromQuery] string? direccion, [FromQuery] double? latitud,
+            [FromQuery] double? longitud, [FromServices] BuscarCoincidenciasAltaUseCase buscar, CancellationToken ct)
+        {
+            if (nombre?.Length > 160 || direccion?.Length > 300)
+                return BadRequest(new { message = "Revisá el nombre y la dirección." });
+            return Ok(await buscar.HandleAsync(nombre, direccion, latitud, longitud, ct));
         }
 
 
@@ -248,14 +284,29 @@ namespace GustosApp.API.Controllers
                 dto.WebUrl,
                 dto.GustosQueSirveIds,
                 dto.RestriccionesQueRespetaIds,
-                ct);
+                ct,
+                dto.WebUrlFueEnviado);
 
             var detalle = _mapper.Map<RestauranteDetalleDto>(restauranteActualizado);
             return Ok(detalle);
         }
 
-
-
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPost("{id:guid}/restricciones/sugerencias")]
+        public async Task<IActionResult> SugerirRestricciones(
+            Guid id, [FromBody] SugerirRestriccionesOfertaRequest request,
+            [FromServices] SugerirRestriccionesOfertaUseCase useCase, CancellationToken ct)
+        {
+            try
+            {
+                var resultado = await useCase.HandleAsync(id, await ObtenerUsuarioIdActualAsync(ct),
+                    request.GustoIds ?? [], ct);
+                return Ok(resultado);
+            }
+            catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+            catch (AccesoProhibidoException) { return Forbid(); }
+            catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        }
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpGet("mio")]
@@ -274,6 +325,7 @@ namespace GustosApp.API.Controllers
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/destacada")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -308,6 +360,7 @@ namespace GustosApp.API.Controllers
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/logo")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -342,6 +395,8 @@ namespace GustosApp.API.Controllers
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/interior")]
+        [HttpPost("{id:guid}/imagenes/interior")]
+        [RequestSizeLimit(30 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -354,16 +409,18 @@ namespace GustosApp.API.Controllers
             CancellationToken ct = default)
         {
             var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            if (request.SoloBorrar) return BadRequest(new { error = "Elegí la foto que querés eliminar." });
             var archivos = request.Archivos?.Select(a => new ArchivoEntrada(a.OpenReadStream(), a.FileName)).ToList();
-            var urls = await _actualizarImagenesUseCase.ActualizarImagenesColeccionAsync(
-                id, usuarioId, TipoImagenRestaurante.Interior, archivos, request.SoloBorrar, ct);
-
-            return Ok(new { imagenesInterior = urls });
+            var imagenes = await _actualizarImagenesUseCase.AgregarImagenesAsync(
+                id, usuarioId, TipoImagenRestaurante.Interior, archivos ?? [], ct);
+            return Ok(RespuestaGaleria(imagenes));
         }
 
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/comidas")]
+        [HttpPost("{id:guid}/imagenes/comidas")]
+        [RequestSizeLimit(30 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -376,16 +433,56 @@ namespace GustosApp.API.Controllers
             CancellationToken ct = default)
         {
             var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            if (request.SoloBorrar) return BadRequest(new { error = "Elegí la foto que querés eliminar." });
             var archivos = request.Archivos?.Select(a => new ArchivoEntrada(a.OpenReadStream(), a.FileName)).ToList();
-            var urls = await _actualizarImagenesUseCase.ActualizarImagenesColeccionAsync(
-                id, usuarioId, TipoImagenRestaurante.Comida, archivos, request.SoloBorrar, ct);
-
-            return Ok(new { imagenesComida = urls });
+            var imagenes = await _actualizarImagenesUseCase.AgregarImagenesAsync(
+                id, usuarioId, TipoImagenRestaurante.Comida, archivos ?? [], ct);
+            return Ok(RespuestaGaleria(imagenes));
         }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPut("{id:guid}/imagenes/{categoria}/{imagenId:guid}")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ReemplazarFoto(Guid id, string categoria, Guid imagenId,
+            [FromForm] ActualizarImagenRestauranteRequest request, CancellationToken ct)
+        {
+            if (request.Archivo is null || request.SoloBorrar) return BadRequest(new { error = "Elegí una foto para reemplazar." });
+            var tipo = TipoGaleria(categoria);
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            var imagenes = await _actualizarImagenesUseCase.ModificarImagenAsync(id, usuarioId, tipo, imagenId,
+                new ArchivoEntrada(request.Archivo.OpenReadStream(), request.Archivo.FileName), ct);
+            return Ok(RespuestaGaleria(imagenes));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpDelete("{id:guid}/imagenes/{categoria}/{imagenId:guid}")]
+        public async Task<IActionResult> EliminarFoto(Guid id, string categoria, Guid imagenId, CancellationToken ct)
+        {
+            var tipo = TipoGaleria(categoria);
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            var imagenes = await _actualizarImagenesUseCase.ModificarImagenAsync(id, usuarioId, tipo, imagenId, null, ct);
+            return Ok(RespuestaGaleria(imagenes));
+        }
+
+        private static TipoImagenRestaurante TipoGaleria(string categoria) => categoria switch
+        {
+            "interior" => TipoImagenRestaurante.Interior,
+            "comidas" => TipoImagenRestaurante.Comida,
+            _ => throw new ArgumentException("La categoría de fotos no es válida.")
+        };
+
+        private static object RespuestaGaleria(IEnumerable<RestauranteImagen> imagenes) => new
+        {
+            imagenesInterior = imagenes.Where(i => i.Tipo == TipoImagenRestaurante.Interior).Select(i => i.Url).ToList(),
+            imagenesComida = imagenes.Where(i => i.Tipo == TipoImagenRestaurante.Comida).Select(i => i.Url).ToList(),
+            imagenesGaleria = imagenes.Select(i => new ImagenGaleriaDto { Id = i.Id, Url = i.Url, Tipo = (int)i.Tipo, Orden = i.Orden, Origen = i.Origen.ToString() }).ToList()
+        };
 
 
         [Authorize(Policy = "DuenoRestaurante")]
         [HttpPut("{id:guid}/imagenes/menu")]
+        [RequestSizeLimit(10 * 1024 * 1024)]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -398,14 +495,55 @@ namespace GustosApp.API.Controllers
             CancellationToken ct = default)
         {
             var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
-            var archivos = request.Archivo != null 
-                ? new List<ArchivoEntrada> { new ArchivoEntrada(request.Archivo.OpenReadStream(), request.Archivo.FileName) }
-                : null;
+            if (request.SoloBorrar)
+                return BadRequest(new { code = "BORRADOR_TOKEN_REQUERIDO", message = "Usá la acción Descartar borrador para quitar una carga sin afectar el menú publicado." });
+            if (request.Archivo == null)
+                return BadRequest(new { message = "Seleccioná una imagen de menú." });
 
-            var urls = await _actualizarImagenesUseCase.ActualizarImagenesColeccionAsync(
-                id, usuarioId, TipoImagenRestaurante.Menu, archivos, request.SoloBorrar, ct);
+            var borrador = await _gestionarBorradorMenu.CrearDesdeArchivoAsync(
+                id,
+                usuarioId,
+                new ArchivoEntrada(request.Archivo.OpenReadStream(), request.Archivo.FileName),
+                ct);
 
-            return Ok(new { imagenMenu = urls.FirstOrDefault() });
+            return Ok(CrearRespuestaBorrador(borrador, borrador.Version > 0));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpGet("{id:guid}/menu/borrador")]
+        public async Task<IActionResult> ObtenerBorradorMenu(Guid id, CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            var menu = await _gestionarBorradorMenu.ObtenerAsync(id, usuarioId, ct);
+            return Ok(menu == null
+                ? new BorradorMenuRestauranteResponse()
+                : CrearRespuestaBorrador(menu, menu.Version > 0));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpPut("{id:guid}/menu/borrador/publicar")]
+        public async Task<IActionResult> PublicarBorradorMenu(
+            Guid id,
+            [FromBody] PublicarBorradorMenuRequest request,
+            CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            await _gestionarBorradorMenu.PublicarAsync(
+                id, usuarioId, request.Token, request.JsonRevisado, ct);
+            var menu = await _gestionarBorradorMenu.ObtenerAsync(id, usuarioId, ct);
+            return Ok(CrearRespuestaBorrador(menu!, true));
+        }
+
+        [Authorize(Policy = "DuenoRestaurante")]
+        [HttpDelete("{id:guid}/menu/borrador/{token:guid}")]
+        public async Task<IActionResult> DescartarBorradorMenu(
+            Guid id,
+            Guid token,
+            CancellationToken ct)
+        {
+            var usuarioId = await ObtenerUsuarioIdActualAsync(ct);
+            await _gestionarBorradorMenu.DescartarAsync(id, usuarioId, token, ct);
+            return NoContent();
         }
         
         [HttpDelete("{id:guid}")]
@@ -415,12 +553,9 @@ namespace GustosApp.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var uid = GetFirebaseUid();
-
-            var esAdmin = User.IsInRole("admin") || User.Claims.Any(c => c.Type == "role" && c.Value == "admin");
-
-            var ok = await _eliminarRestaurante.HandleAsync(id, uid, esAdmin);
-            return ok ? NoContent() : NotFound();
+            await Task.CompletedTask;
+            return StatusCode(StatusCodes.Status410Gone, new { message =
+                "El borrado de restaurantes está deshabilitado. Un administrador puede desactivar la ficha indicando un motivo." });
         }
 
 
@@ -442,7 +577,7 @@ namespace GustosApp.API.Controllers
                 Categoria = r.Categoria,
                 Rating = r.Rating,
                 Direccion = r.Direccion,
-                ImagenUrl = string.IsNullOrWhiteSpace(r.ImagenUrl) ? "https://firebasestorage.googleapis.com/v0/b/gustosapp-5c3c9.firebasestorage.app/o/restauranteicono.jpg?alt=media&token=cb818ad4-78b0-4fbb-a13d-46ce1aa66ac1" : r.ImagenUrl
+                ImagenUrl = ImagenRestaurantePublica.Url(r.Id, r.ImagenUrl)
             }).ToList();
 
             return Ok(dto);
@@ -478,6 +613,7 @@ namespace GustosApp.API.Controllers
 
         }
 
+        [Authorize(Policy = "DuenoRestaurante")]
         [HttpGet("{id:guid}/metricas")]
         [ProducesResponseType(typeof(RestauranteMetricasDashboardResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -496,6 +632,7 @@ namespace GustosApp.API.Controllers
             var rest = new RestauranteMetricasDashboardResponse
             {
                 RestauranteId = metricas.RestauranteId,
+                ResenasLocales = metricas.ResenasLocales,
                 TotalTop3Individual = metricas.Estadisticas?.TotalTop3Individual ?? 0,
                 TotalTop3Grupo = metricas.Estadisticas?.TotalTop3Grupo ?? 0,
                 TotalVisitasPerfil = metricas.Estadisticas?.TotalVisitasPerfil ?? 0,
@@ -504,6 +641,21 @@ namespace GustosApp.API.Controllers
 
             return Ok(rest);
         }
+
+        private static BorradorMenuRestauranteResponse CrearRespuestaBorrador(
+            RestauranteMenu menu,
+            bool tieneMenuPublicado) => new()
+        {
+            Token = menu.BorradorToken,
+            Estado = menu.EstadoBorrador.ToString(),
+            Json = menu.BorradorJson,
+            ImagenFuenteUrl = menu.BorradorImagenFuenteUrl,
+            ImagenPublicadaUrl = menu.ImagenFuentePublicadaUrl,
+            Error = menu.BorradorError,
+            FechaUtc = menu.FechaBorradorUtc,
+            TieneMenuPublicado = tieneMenuPublicado,
+            VersionPublicada = menu.Version
+        };
 
         private async Task<Guid> ObtenerUsuarioIdActualAsync(CancellationToken ct)
         {

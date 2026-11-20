@@ -8,6 +8,22 @@ namespace GustosApp.Application.Tests;
 
 public class ImportarRestaurantesUseCaseTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReimportarFichaDesactivada_NoReactivaNiDuplica(bool confirmar)
+    {
+        var existente = CrearRestauranteExistente();
+        existente.CambiarDisponibilidad(true, 0, "Baja administrativa", FechaActualUtc);
+        var id = existente.Id;
+        PrepararExistentes(existente);
+        await _useCase.HandleAsync([CrearEntrada(nombre: "Nombre externo actualizado")], confirmar);
+        Assert.Equal(id, existente.Id);
+        Assert.True(existente.Desactivado);
+        Assert.Equal(1, existente.VersionDisponibilidad);
+        Assert.Equal("Baja administrativa", existente.MotivoDisponibilidad);
+        _restauranteRepository.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
     private static readonly DateTime FechaActualUtc = new(2026, 9, 21, 12, 0, 0, DateTimeKind.Utc);
     private readonly Mock<IRestauranteRepository> _restauranteRepository = new();
     private readonly Mock<IGustoRepository> _gustoRepository = new();
@@ -68,6 +84,7 @@ public class ImportarRestaurantesUseCaseTests
         resultado.Creados.Should().Be(1);
         agregado.Should().NotBeNull();
         agregado!.PlaceId.Should().Be(entrada.PlaceId);
+        agregado.OrigenImagen.Should().Be(GustosApp.Domain.Common.OrigenImagenRestaurante.Administracion);
         agregado.DuenoId.Should().BeNull();
         agregado.PropietarioUid.Should().BeEmpty();
         agregado.Rating.Should().Be(4.5);
@@ -98,11 +115,16 @@ public class ImportarRestaurantesUseCaseTests
             Times.Never);
     }
 
-    [Fact]
-    public async Task RestauranteConPropietario_NoDebeSobrescribirloAutomaticamente()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RestauranteConPropietario_NoDebeSobrescribirloAutomaticamente(bool usaDuenoId)
     {
         var existente = CrearRestauranteExistente();
-        existente.DuenoId = Guid.NewGuid();
+        existente.DuenoId = usaDuenoId ? Guid.NewGuid() : null;
+        existente.PropietarioUid = usaDuenoId ? string.Empty : "firebase-propietario";
+        var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Gusto del propietario" };
+        existente.GustosQueSirve.Add(gusto);
         PrepararExistentes(existente);
 
         var resultado = await _useCase.HandleAsync(
@@ -112,6 +134,7 @@ public class ImportarRestaurantesUseCaseTests
         resultado.Omitidos.Should().Be(1);
         resultado.Items.Single().Accion.Should().Be(AccionImportacionRestaurante.RequiereRevision);
         existente.Nombre.Should().Be("Restaurante de prueba");
+        existente.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(gusto);
         _restauranteRepository.Verify(
             repository => repository.UpdateAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -290,6 +313,44 @@ public class ImportarRestaurantesUseCaseTests
         existente.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(gustoManual);
         existente.OrigenDatosCompatibilidad.Should().Be(
             GustosApp.Domain.Common.OrigenDatosCompatibilidadRestaurante.Administracion);
+    }
+
+    [Theory]
+    [InlineData(GustosApp.Domain.Common.OrigenImagenRestaurante.Desconocida)]
+    [InlineData(GustosApp.Domain.Common.OrigenImagenRestaurante.Administracion)]
+    [InlineData(GustosApp.Domain.Common.OrigenImagenRestaurante.Propietario)]
+    public async Task Reimportar_ConComprobanteGoogle_ConservaFotoManualYOrigen(GustosApp.Domain.Common.OrigenImagenRestaurante origen)
+    {
+        var existente = CrearRestauranteExistente();
+        existente.OrigenImagen = origen;
+        PrepararExistentes(existente);
+        var fotos = new Mock<GustosApp.Application.Interfaces.IComprobanteFotoGoogle>();
+        fotos.Setup(x => x.Validar("valido", existente.PlaceId!)).Returns(true);
+        var sut = new ImportarRestaurantesUseCase(_restauranteRepository.Object, _gustoRepository.Object,
+            new ClasificadorRestaurantesImportados(), TimeProvider.System, fotos.Object);
+
+        await sut.HandleAsync([CrearEntrada(nombre: "Actualizado") with { ComprobanteFotoGoogle = "valido" }], confirmar: true);
+
+        existente.ImagenUrl.Should().Be("https://example.com/restaurante.jpg");
+        existente.OrigenImagen.Should().Be(origen);
+    }
+
+    [Fact]
+    public async Task NuevaFotoGoogle_RequiereComprobanteServidorYPersisteSoloMarcador()
+    {
+        PrepararExistentes();
+        var fotos = new Mock<GustosApp.Application.Interfaces.IComprobanteFotoGoogle>();
+        fotos.Setup(x => x.Validar("valido", It.IsAny<string>())).Returns(true);
+        var sut = new ImportarRestaurantesUseCase(_restauranteRepository.Object, _gustoRepository.Object,
+            new ClasificadorRestaurantesImportados(), TimeProvider.System, fotos.Object);
+        Restaurante? agregado = null;
+        _restauranteRepository.Setup(x => x.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()))
+            .Callback<Restaurante, CancellationToken>((r, _) => agregado = r).Returns(Task.CompletedTask);
+
+        await sut.HandleAsync([CrearEntrada() with { ComprobanteFotoGoogle = "valido" }], confirmar: true);
+
+        agregado!.ImagenUrl.Should().Be(GustosApp.Domain.Common.ImagenRestaurantePublica.GoogleActual);
+        agregado.OrigenImagen.Should().Be(GustosApp.Domain.Common.OrigenImagenRestaurante.Google);
     }
 
     private void PrepararExistentes(params Restaurante[] restaurantes)

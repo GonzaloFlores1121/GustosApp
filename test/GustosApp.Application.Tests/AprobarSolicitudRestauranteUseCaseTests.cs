@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model.@enum;
@@ -28,6 +29,9 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IEmailTemplateService> _templates;
         private readonly Mock<IHttpDownloader> _downloader;
         private readonly AprobarSolicitudRestauranteUseCase _useCase;
+        private readonly BloqueoResolucionPruebas _bloqueo = new();
+        private Restaurante? _restauranteGuardado;
+        private RestauranteMenu? _menuGuardado;
 
         public AprobarSolicitudRestauranteUseCaseTests()
         {
@@ -44,21 +48,19 @@ namespace GustosApp.Application.Tests
             _templates = new Mock<IEmailTemplateService>();
             _downloader = new Mock<IHttpDownloader>();
 
+            _restaurantes.Setup(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()))
+                .Callback<Restaurante, CancellationToken>((restaurante, _) => _restauranteGuardado = restaurante);
+            _restaurantes.Setup(r => r.GetRestauranteByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => _restauranteGuardado);
+            _menuRepo.Setup(r => r.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()))
+                .Callback<RestauranteMenu, CancellationToken>((menu, _) => _menuGuardado = menu);
+            _menuRepo.Setup(r => r.GetByRestauranteIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => _menuGuardado);
+            var procesar = new ProcesarResolucionSolicitudUseCase(_solicitudes.Object, _restaurantes.Object,
+                _menuRepo.Object, _bloqueo, _downloader.Object, _ocr.Object, _menuParser.Object,
+                _firebase.Object, _email.Object, _templates.Object);
             _useCase = new AprobarSolicitudRestauranteUseCase(
-                _solicitudes.Object,
-                _restaurantes.Object,
-                _usuarios.Object,
-                _ocr.Object,
-                _menuParser.Object,
-                _restricciones.Object,
-                _gustos.Object,
-                _menuRepo.Object,
-                _firebase.Object,
-                _email.Object,
-                _templates.Object,
-                _downloader.Object
-
-            );
+                _solicitudes.Object, _restaurantes.Object, _restricciones.Object, _gustos.Object, procesar);
         }
         private Usuario FakeUsuario(Guid id)
             => new Usuario
@@ -135,7 +137,7 @@ namespace GustosApp.Application.Tests
             Restaurante? restCapturado = null;
 
             _restaurantes.Setup(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()))
-                .Callback<Restaurante, CancellationToken>((r, _) => restCapturado = r)
+                .Callback<Restaurante, CancellationToken>((r, _) => { restCapturado = r; _restauranteGuardado = r; })
                 .Returns(Task.CompletedTask);
 
             _restaurantes.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -151,11 +153,13 @@ namespace GustosApp.Application.Tests
 
             // Parser válido
             _menuParser.Setup(p => p.ParsearAsync("texto del menú", "ARS", It.IsAny<CancellationToken>()))
-                .ReturnsAsync("{\"parsed\":true}");
+                .ReturnsAsync("{\"categorias\":[]}");
 
             // No existe menú previo
-            _menuRepo.Setup(m => m.GetByRestauranteIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((RestauranteMenu?)null);
+            RestauranteMenu? menuCapturado = null;
+            _menuRepo.Setup(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()))
+                .Callback<RestauranteMenu, CancellationToken>((m, _) => { menuCapturado = m; _menuGuardado = m; })
+                .Returns(Task.CompletedTask);
 
             Dictionary<string, string>? valoresPlantilla = null;
             _templates.Setup(t => t.Render("SolicitudAprobada.html", It.IsAny<Dictionary<string, string>>()))
@@ -173,11 +177,17 @@ namespace GustosApp.Application.Tests
             var res = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
             // === ASSERT ===
-            res.MenuProcesado.Should().BeTrue();
+            res.MenuProcesado.Should().NotBeTrue();
             res.MenuError.Should().BeNull();
+            res.DuenoId.Should().Be(usuario.Id);
+            res.PropietarioUid.Should().Be(usuario.FirebaseUid);
 
             _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Once);
-            _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            menuCapturado.Should().NotBeNull();
+            menuCapturado!.EstadoBorrador.Should().Be(EstadoBorradorMenu.Listo);
+            menuCapturado.BorradorJson.Should().Be("{\"categorias\":[]}");
+            menuCapturado.Json.Should().Be("{}");
+            menuCapturado.Version.Should().Be(0);
             valoresPlantilla.Should().NotBeNull();
             valoresPlantilla!["LINK"].Should().Be($"http://localhost:3000/restaurante/{res.Id}/dashboard");
         }
@@ -199,7 +209,24 @@ namespace GustosApp.Application.Tests
         public async Task Reclamo_ConservaFichaRatingYMenuExistentes()
         {
             var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), false);
-            var existente = new Restaurante { Id = Guid.NewGuid(), Nombre = "Ficha original", PlaceId = "google-123", Rating = 4.7, MenuProcesado = true };
+            var gusto = new Gusto { Id = Guid.NewGuid(), Nombre = "Pizza" };
+            var restriccion = new Restriccion { Id = Guid.NewGuid(), Nombre = "Sin gluten" };
+            var menu = new RestauranteMenu { RestauranteId = Guid.NewGuid(), Json = "{\"menu\":true}" };
+            var imagen = new RestauranteImagen { Id = Guid.NewGuid(), Url = "https://img.test/interior.jpg" };
+            var existente = new Restaurante
+            {
+                Id = menu.RestauranteId,
+                Nombre = "Ficha original",
+                PlaceId = "google-123",
+                ImagenUrl = GustosApp.Domain.Common.ImagenRestaurantePublica.GoogleActual,
+                OrigenImagen = GustosApp.Domain.Common.OrigenImagenRestaurante.Google,
+                Rating = 4.7,
+                MenuProcesado = true,
+                Menu = menu,
+                GustosQueSirve = new List<Gusto> { gusto },
+                RestriccionesQueRespeta = new List<Restriccion> { restriccion },
+                Imagenes = new List<RestauranteImagen> { imagen }
+            };
             solicitud.RestauranteExistenteId = existente.Id;
             _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
             _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(existente.Id, default)).ReturnsAsync(existente);
@@ -208,10 +235,17 @@ namespace GustosApp.Application.Tests
 
             resultado.Should().BeSameAs(existente);
             resultado.DuenoId.Should().Be(solicitud.UsuarioId);
+            resultado.PropietarioUid.Should().Be(solicitud.Usuario.FirebaseUid);
             resultado.PlaceId.Should().Be("google-123");
+            resultado.ImagenUrl.Should().Be(GustosApp.Domain.Common.ImagenRestaurantePublica.GoogleActual);
+            resultado.OrigenImagen.Should().Be(GustosApp.Domain.Common.OrigenImagenRestaurante.Google);
             resultado.Nombre.Should().Be("Ficha original");
             resultado.Rating.Should().Be(4.7);
             resultado.MenuProcesado.Should().BeTrue();
+            resultado.Menu.Should().BeSameAs(menu);
+            resultado.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(gusto);
+            resultado.RestriccionesQueRespeta.Should().ContainSingle().Which.Should().BeSameAs(restriccion);
+            resultado.Imagenes.Should().ContainSingle().Which.Should().BeSameAs(imagen);
             solicitud.RestauranteAprobadoId.Should().Be(existente.Id);
             _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()), Times.Never);
             _downloader.VerifyNoOtherCalls();
@@ -240,14 +274,15 @@ namespace GustosApp.Application.Tests
             _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
             Restaurante? creado = null;
             _restaurantes.Setup(r => r.AddAsync(It.IsAny<Restaurante>(), default))
-                .Callback<Restaurante, CancellationToken>((r, _) => creado = r).Returns(Task.CompletedTask);
+                .Callback<Restaurante, CancellationToken>((r, _) => { creado = r; _restauranteGuardado = r; }).Returns(Task.CompletedTask);
             _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(It.IsAny<Guid>(), default)).ReturnsAsync(() => creado);
-            _email.SetupSequence(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), default))
-                .ThrowsAsync(new InvalidOperationException("Correo no disponible"))
+            _email.SetupSequence(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new CorreoNoIniciadoException())
                 .Returns(Task.CompletedTask);
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => _useCase.HandleAsync(solicitud.Id, default));
+            await _useCase.HandleAsync(solicitud.Id, default);
             solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Aprobada);
+            solicitud.CorreoResolucion.Should().Be(EstadoCorreoResolucion.Pendiente);
             var resultado = await _useCase.HandleAsync(solicitud.Id, default);
             await _useCase.HandleAsync(solicitud.Id, default);
 
@@ -255,7 +290,93 @@ namespace GustosApp.Application.Tests
             solicitud.CorreoAprobacionEnviado.Should().BeTrue();
             _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Once);
             _firebase.Verify(f => f.SetUserRoleAsync(solicitud.Usuario.FirebaseUid, RolUsuario.DuenoRestaurante.ToString()), Times.Once);
-            _email.Verify(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), default), Times.Exactly(2));
+            _email.Verify(e => e.EnviarEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task AprobadaAntesDeProcesar_RecuperaMenuTrasInterrupcionSinDuplicarFicha()
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), true);
+            SetupGustosYRestricciones(solicitud);
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(It.IsAny<Guid>(), default))
+                .ReturnsAsync(() => _restauranteGuardado);
+            _bloqueo.Disponible = false;
+            var inicial = await _useCase.HandleAsync(solicitud.Id, default);
+            solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Aprobada);
+            solicitud.MenuResolucion.Should().Be(EstadoMenuResolucion.Pendiente);
+            _ocr.VerifyNoOtherCalls();
+
+            _bloqueo.Disponible = true;
+            _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync([1]);
+            _ocr.SetupSequence(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("interrupción simulada"))
+                .ReturnsAsync("Pizza");
+            _menuParser.Setup(p => p.ParsearAsync("Pizza", "ARS", It.IsAny<CancellationToken>())).ReturnsAsync("{\"categorias\":[]}");
+
+            (await _useCase.HandleAsync(solicitud.Id, default)).Id.Should().Be(inicial.Id);
+            solicitud.MenuResolucion.Should().Be(EstadoMenuResolucion.Error);
+            var anterior = solicitud.TokenMenuResolucion;
+            await _useCase.ReprocesarMenuAsync(solicitud.Id, default);
+            await _useCase.ReprocesarMenuAsync(solicitud.Id, default);
+            solicitud.MenuResolucion.Should().Be(EstadoMenuResolucion.Listo);
+            Assert.NotEqual(anterior, solicitud.TokenMenuResolucion);
+            _menuGuardado!.BorradorToken.Should().Be(solicitud.TokenMenuResolucion);
+            _ocr.Verify(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", It.IsAny<CancellationToken>()), Times.Exactly(2));
+            _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Once);
+        }
+
+        [Fact]
+        public async Task CancelacionDuranteOcr_DejaBorradorRecuperableYElSiguienteIntentoLoCompleta()
+        {
+            using var cancelacion = new CancellationTokenSource();
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), true);
+            SetupGustosYRestricciones(solicitud);
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, It.IsAny<CancellationToken>())).ReturnsAsync(solicitud);
+            _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(It.IsAny<Guid>(), default))
+                .ReturnsAsync(() => _restauranteGuardado);
+            _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync([1]);
+            _ocr.Setup(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", It.IsAny<CancellationToken>()))
+                .Returns((IEnumerable<Stream> _, string _, CancellationToken ct) =>
+                {
+                    cancelacion.Cancel();
+                    return Task.FromCanceled<string>(ct);
+                });
+
+            var restaurante = await _useCase.HandleAsync(solicitud.Id, cancelacion.Token);
+            solicitud.Estado.Should().Be(EstadoSolicitudRestaurante.Aprobada);
+            solicitud.MenuResolucion.Should().Be(EstadoMenuResolucion.Pendiente);
+            _menuGuardado!.EstadoBorrador.Should().Be(EstadoBorradorMenu.Procesando);
+
+            _ocr.Setup(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", It.IsAny<CancellationToken>()))
+                .ReturnsAsync("Pizza");
+            _menuParser.Setup(p => p.ParsearAsync("Pizza", "ARS", It.IsAny<CancellationToken>())).ReturnsAsync("{\"categorias\":[]}");
+            (await _useCase.HandleAsync(solicitud.Id, default)).Id.Should().Be(restaurante.Id);
+            solicitud.MenuResolucion.Should().Be(EstadoMenuResolucion.Listo);
+            _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task DuranteOcr_CambioDeBorradorDelPropietarioSeConserva()
+        {
+            var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), true);
+            SetupGustosYRestricciones(solicitud);
+            _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
+            _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync([1]);
+            _ocr.Setup(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", It.IsAny<CancellationToken>())).ReturnsAsync("Pizza");
+            _menuParser.Setup(p => p.ParsearAsync("Pizza", "ARS", It.IsAny<CancellationToken>())).ReturnsAsync("{\"categorias\":[]}");
+            var tokenDueno = Guid.NewGuid();
+            _menuRepo.Setup(m => m.ReloadAsync(It.IsAny<RestauranteMenu>(), default))
+                .Callback<RestauranteMenu, CancellationToken>((menu, _) =>
+                    menu.IniciarBorrador(tokenDueno, "foto-nueva", DateTime.UtcNow,
+                        GustosApp.Domain.Common.OrigenImagenRestaurante.Propietario));
+
+            await _useCase.HandleAsync(solicitud.Id, default);
+
+            solicitud.MenuResolucion.Should().Be(EstadoMenuResolucion.Conservado);
+            _menuGuardado!.BorradorToken.Should().Be(tokenDueno);
+            _menuGuardado.BorradorImagenFuenteUrl.Should().Be("foto-nueva");
+            _menuGuardado.BorradorJson.Should().BeNull();
         }
 
         [Fact]
@@ -276,15 +397,24 @@ namespace GustosApp.Application.Tests
         {
             var solicitud = FakeSolicitudConMenu(Guid.NewGuid(), FakeUsuario(Guid.NewGuid()), true);
             solicitud.Estado = EstadoSolicitudRestaurante.Aprobada;
-            var restaurante = new Restaurante { Id = Guid.NewGuid() };
+            solicitud.MenuResolucion = EstadoMenuResolucion.Pendiente;
+            solicitud.TokenMenuResolucion = Guid.NewGuid();
+            var restaurante = new Restaurante { Id = Guid.NewGuid(), DuenoId = solicitud.UsuarioId, PropietarioUid = solicitud.Usuario.FirebaseUid };
             solicitud.RestauranteAprobadoId = restaurante.Id;
+            _restauranteGuardado = restaurante;
             _solicitudes.Setup(r => r.GetByIdAsync(solicitud.Id, default)).ReturnsAsync(solicitud);
             _restaurantes.Setup(r => r.GetRestauranteConImagenesAsync(restaurante.Id, default)).ReturnsAsync(restaurante);
-            _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), default)).ReturnsAsync(new byte[] { 1 });
-            _ocr.Setup(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", default)).ReturnsAsync("Pizza");
-            _menuParser.Setup(p => p.ParsearAsync("Pizza", "ARS", default)).ReturnsAsync("{}");
+            _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(new byte[] { 1 });
+            _ocr.Setup(o => o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", It.IsAny<CancellationToken>())).ReturnsAsync("Pizza");
+            _menuParser.Setup(p => p.ParsearAsync("Pizza", "ARS", It.IsAny<CancellationToken>())).ReturnsAsync("{\"categorias\":[]}");
+            RestauranteMenu? borrador = null;
+            _menuRepo.Setup(m => m.AddAsync(It.IsAny<RestauranteMenu>(), default))
+                .Callback<RestauranteMenu, CancellationToken>((m, _) => { borrador = m; _menuGuardado = m; })
+                .Returns(Task.CompletedTask);
             await _useCase.ReprocesarMenuAsync(solicitud.Id, default);
-            restaurante.MenuProcesado.Should().BeTrue();
+            restaurante.MenuProcesado.Should().NotBeTrue();
+            borrador.Should().NotBeNull();
+            borrador!.EstadoBorrador.Should().Be(EstadoBorradorMenu.Listo);
             _restaurantes.Verify(r => r.AddAsync(It.IsAny<Restaurante>(), default), Times.Never);
             _firebase.VerifyNoOtherCalls();
             _email.VerifyNoOtherCalls();
@@ -314,8 +444,6 @@ namespace GustosApp.Application.Tests
                 .ReturnsAsync(string.Empty);
 
        
-            _menuRepo.Setup(m => m.GetByRestauranteIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((RestauranteMenu?)null);
 
             _templates.Setup(t => t.Render("SolicitudAprobada.html", It.IsAny<Dictionary<string, string>>()))
                 .Returns("HTML");
@@ -330,17 +458,17 @@ namespace GustosApp.Application.Tests
             var result = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
             // === ASSERT ===
-            result.MenuProcesado.Should().BeFalse();
-            result.MenuError.Should().Be("Menú vacío");
-
-            // NO debe crearse ningún menú
-            _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
-            _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            result.MenuProcesado.Should().NotBeTrue();
+            result.MenuError.Should().BeNull();
+            _menuRepo.Verify(m => m.AddAsync(It.Is<RestauranteMenu>(menu =>
+                menu.EstadoBorrador == EstadoBorradorMenu.Error &&
+                menu.BorradorError != null && menu.BorradorError.Contains("detectar texto")),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
 
 
         [Fact]
-        public async Task HandleAsync_ConMenuExistente_DeberiaActualizarMenu()
+        public async Task HandleAsync_ConMenuExistente_ConservaVersionPublicada()
         {
             var idSolicitud = Guid.NewGuid();
             var usuario = FakeUsuario(Guid.NewGuid());
@@ -357,7 +485,7 @@ namespace GustosApp.Application.Tests
             Restaurante? rest = null;
 
             _restaurantes.Setup(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()))
-                .Callback<Restaurante, CancellationToken>((x, _) => rest = x)
+                .Callback<Restaurante, CancellationToken>((x, _) => { rest = x; _restauranteGuardado = x; })
                 .Returns(Task.CompletedTask);
 
             _restaurantes.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -397,14 +525,18 @@ namespace GustosApp.Application.Tests
 
             var result = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
-            result.MenuProcesado.Should().BeTrue();
+            result.MenuProcesado.Should().NotBeTrue();
             result.MenuError.Should().BeNull();
 
-            menuExistente.Json.Should().Be("{\"menu\":true}");
-            menuExistente.Version.Should().Be(2);
+            menuExistente.Json.Should().Be("{}");
+            menuExistente.Version.Should().Be(1);
+            menuExistente.EstadoBorrador.Should().Be(EstadoBorradorMenu.Ninguno);
+            menuExistente.BorradorJson.Should().BeNull();
+            solicitud.MenuResolucion.Should().Be(EstadoMenuResolucion.Conservado);
 
-            _menuRepo.Verify(m => m.UpdateAsync(menuExistente, It.IsAny<CancellationToken>()), Times.Once);
+            _menuRepo.Verify(m => m.UpdateAsync(menuExistente, It.IsAny<CancellationToken>()), Times.Never);
             _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            _ocr.VerifyNoOtherCalls();
         }
 
      
@@ -426,9 +558,10 @@ namespace GustosApp.Application.Tests
             Restaurante? rest = null;
 
             _restaurantes.Setup(r => r.AddAsync(It.IsAny<Restaurante>(), It.IsAny<CancellationToken>()))
-                .Callback<Restaurante, CancellationToken>((x, _) => rest = x)
+                .Callback<Restaurante, CancellationToken>((x, _) => { rest = x; _restauranteGuardado = x; })
                 .Returns(Task.CompletedTask);
 
+            _downloader.Setup(d => d.DownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync([1]);
             _ocr.Setup(o =>
                 o.ReconocerTextoAsync(It.IsAny<IEnumerable<Stream>>(), "spa+eng", It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Error en OCR"));
@@ -448,11 +581,12 @@ namespace GustosApp.Application.Tests
 
             var result = await _useCase.HandleAsync(idSolicitud, CancellationToken.None);
 
-            result.MenuProcesado.Should().BeFalse();
-            result.MenuError.Should().Be("Error en OCR");
-
-            _menuRepo.Verify(m => m.AddAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
-            _menuRepo.Verify(m => m.UpdateAsync(It.IsAny<RestauranteMenu>(), It.IsAny<CancellationToken>()), Times.Never);
+            result.MenuProcesado.Should().NotBeTrue();
+            result.MenuError.Should().BeNull();
+            _menuRepo.Verify(m => m.AddAsync(It.Is<RestauranteMenu>(menu =>
+                menu.EstadoBorrador == EstadoBorradorMenu.Error &&
+                menu.BorradorError != null && menu.BorradorError.Contains("administración")),
+                It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 }

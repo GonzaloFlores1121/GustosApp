@@ -9,9 +9,16 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
         public RestauranteProfile()
         {
             CreateMap<Restaurante, RestauranteDTO>()
+                .ForMember(dest => dest.ImagenUrl, opt => opt.MapFrom(src => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, src.ImagenUrl)))
                 .ForMember(dest => dest.Latitud, opt => opt.MapFrom(src => src.Latitud))
                 .ForMember(dest => dest.Longitud, opt => opt.MapFrom(src => src.Longitud))
                 .ForMember(dest => dest.Score, opt => opt.MapFrom(src => src.Score))
+                .ForMember(dest => dest.PuntuacionPrincipal, opt => opt.MapFrom(src => src.ObtenerPuntuacionPrincipal()))
+                .ForMember(dest => dest.FuentePuntuacionPrincipal, opt => opt.MapFrom(src => src.ObtenerFuentePuntuacionPrincipal()))
+                .ForMember(dest => dest.ValoracionLocal, opt => opt.MapFrom(src => src.ObtenerValoracionLocal()))
+                .ForMember(dest => dest.CantidadResenasLocales, opt => opt.MapFrom(src => src.ObtenerCantidadResenasLocales()))
+                .ForMember(dest => dest.RatingGoogle, opt => opt.MapFrom(src => src.Rating.HasValue && src.Rating.Value > 0 ? src.Rating : null))
+                .ForMember(dest => dest.CantidadResenasGoogle, opt => opt.MapFrom(src => src.CantidadResenas))
                 .ForMember(dest => dest.NivelCompatibilidad,
                     opt => opt.MapFrom(src => src.NivelCompatibilidad.ToString()))
                 .ForMember(dest => dest.OrigenDatosCompatibilidad,
@@ -20,20 +27,25 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
                     opt => opt.MapFrom(src =>
                         src.ObtenerEstadoActualDatosCompatibilidad(DateTime.UtcNow).ToString()))
                 .ForMember(dest => dest.AdvertenciaCompatibilidad,
-                    opt => opt.MapFrom(src => src.ObtenerEstadoActualDatosCompatibilidad(DateTime.UtcNow) == GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante.Desactualizado
-                        ? "Los datos de compatibilidad están desactualizados. Revisá el menú o consultá al restaurante antes de elegir."
-                        : src.NivelCompatibilidad == GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Desconocida
-                        ? "No hay datos suficientes para confirmar la compatibilidad con todas las restricciones y condiciones médicas."
-                        : src.NivelCompatibilidad == GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Estimada
-                            ? src.ObtenerEstadoActualDatosCompatibilidad(DateTime.UtcNow) == GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante.Verificado
-                                ? "Compatibilidad orientativa basada en datos verificados por el restaurante. Consultá ante restricciones médicas."
-                                : "Compatibilidad estimada con datos que todavía no fueron verificados por el restaurante."
-                            : "El restaurante presenta una incompatibilidad conocida."))
+                    opt => opt.MapFrom(src => ObtenerAdvertencia(src)))
                 .ForMember(dest => dest.GustosQueSirve, opt => opt.MapFrom(src =>
                     src.GustosQueSirve.Select(g => new GustoDto(g.Id, g.Nombre, g.ImagenUrl))))
                 .ForMember(dest => dest.RestriccionesQueRespeta, opt => opt.MapFrom(src =>
                     src.RestriccionesQueRespeta.Select(r => new RestriccionResponse(r.Id, r.Nombre))))
                 .ForMember(dest => dest.GooglePlaceId, opt => opt.MapFrom(src => src.PlaceId));
+        }
+
+        private static string ObtenerAdvertencia(Restaurante restaurante)
+        {
+            var advertencia = restaurante.NivelCompatibilidad switch
+            {
+                GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Estimada =>
+                    "Evaluación orientativa. Las declaraciones generales no confirman un plato concreto; consultá ingredientes y preparación.",
+                GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Incompatible =>
+                    "Las opciones registradas presentan conflictos conocidos para esta búsqueda.",
+                _ => "No hay datos suficientes para confirmar opciones para todas las preferencias de esta búsqueda."
+            };
+            return advertencia;
         }
     }
 }

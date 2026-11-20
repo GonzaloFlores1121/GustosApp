@@ -11,8 +11,6 @@ namespace GustosApp.API.Mapping.UsuariosMapper
             CreateMap<Usuario, UsuarioSimpleResponse>()
                 .ForMember(dest => dest.Username,
                     opt => opt.MapFrom(src => src.IdUsuario))
-                .ForMember(dest => dest.Email,
-                    opt => opt.MapFrom(src => src.Email))
                 .ForMember(dest => dest.Nombre,
                     opt => opt.MapFrom(src => src.Nombre))
                 .ForMember(dest => dest.FotoPerfilUrl,

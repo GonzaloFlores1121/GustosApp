@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Domain.Model;
+using GustosApp.Domain.Common;
 
 namespace GustosApp.Domain.Interfaces
 {
@@ -15,11 +16,14 @@ namespace GustosApp.Domain.Interfaces
                 IReadOnlyCollection<string> placeIds,
                 CancellationToken ct = default);
 
-            Task<List<Restaurante>> ObtenerPendientesClasificacionAsync(
-                int cantidadMaxima,
+            Task<PaginaRestaurantesPendientes> ObtenerPendientesClasificacionAsync(
+                ConsultaPendientesClasificacion consulta,
                 CancellationToken ct = default);
 
             Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct);
+            Task<List<Restaurante>> ObtenerPorIdsAsync(
+                IReadOnlyCollection<Guid> ids,
+                CancellationToken ct = default);
             Task<Restaurante?> GetRestauranteConImagenesAsync(Guid id, CancellationToken ct);
             Task AddAsync(Restaurante restaurante, CancellationToken ct);
 
@@ -36,11 +40,13 @@ namespace GustosApp.Domain.Interfaces
             double lat, double lng, int radiusMeters,
             TimeSpan? maxAge = null,
             CancellationToken ct = default);
-        Task ActualizarValoracionAsync(Guid restauranteId, double promedio, CancellationToken cancellationToken);
+        Task ActualizarValoracionAsync(Guid restauranteId, double? promedio, CancellationToken cancellationToken);
         Task UpdateAsync(Restaurante restaurante, CancellationToken ct);
         Task <List<Restaurante>> BuscarPorPrefijo(string prefijo, CancellationToken ct = default);
    
         Task<List<Restaurante>> BuscarPorTextoAsync(string texto, CancellationToken ct = default);
+        Task<List<LocalCercano>> BuscarLocalesEnVentanaAsync(
+            double latitud, double longitud, double amplitudLatitud, double amplitudLongitud, CancellationToken ct);
         Task<List<Restaurante>> obtenerRestauranteConResenias(List<Guid> ids);
     }
 }

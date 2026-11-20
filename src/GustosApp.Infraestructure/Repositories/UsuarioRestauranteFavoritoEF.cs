@@ -1,6 +1,7 @@
 ﻿using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,6 +29,72 @@ namespace GustosApp.Infraestructure.Repositories
         {
             await _dbContext.UsuarioRestauranteFavoritos.AddAsync(usuarioRestauranteFavorito, ct);
             await _dbContext.SaveChangesAsync(ct);
+        }
+
+        public async Task<ResultadoAgregarFavorito> AgregarSiCorrespondeAsync(
+            Guid usuarioId,
+            Guid restauranteId,
+            int? limite,
+            DateTime fechaAgregado,
+            CancellationToken ct)
+        {
+            if (!_dbContext.Database.IsRelational())
+                return await AgregarInternoAsync(usuarioId, restauranteId, limite, fechaAgregado, ct);
+
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                ct);
+            try
+            {
+                var resultado = await AgregarInternoAsync(
+                    usuarioId,
+                    restauranteId,
+                    limite,
+                    fechaAgregado,
+                    ct);
+                await transaction.CommitAsync(ct);
+                return resultado;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        }
+
+        private async Task<ResultadoAgregarFavorito> AgregarInternoAsync(
+            Guid usuarioId,
+            Guid restauranteId,
+            int? limite,
+            DateTime fechaAgregado,
+            CancellationToken ct)
+        {
+            if (await ExistsAsync(usuarioId, restauranteId, ct))
+                return ResultadoAgregarFavorito.YaExistia;
+
+            if (limite.HasValue && await CountByUsuarioAsync(usuarioId, ct) >= limite.Value)
+                return ResultadoAgregarFavorito.LimiteAlcanzado;
+
+            var favorito = new UsuarioRestauranteFavorito
+            {
+                UsuarioId = usuarioId,
+                RestauranteId = restauranteId,
+                FechaAgregado = fechaAgregado
+            };
+            await _dbContext.UsuarioRestauranteFavoritos.AddAsync(favorito, ct);
+
+            try
+            {
+                await _dbContext.SaveChangesAsync(ct);
+                return ResultadoAgregarFavorito.Agregado;
+            }
+            catch (DbUpdateException)
+            {
+                _dbContext.Entry(favorito).State = EntityState.Detached;
+                if (await ExistsAsync(usuarioId, restauranteId, ct))
+                    return ResultadoAgregarFavorito.YaExistia;
+                throw;
+            }
         }
 
         public async Task<bool> ExistsAsync(Guid usuarioId, Guid restauranteId, CancellationToken ct)

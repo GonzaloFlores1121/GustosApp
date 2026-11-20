@@ -36,6 +36,7 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<IRecomendadorRestaurantes, SugerirGustosSobreUnRadioUseCase>();
             //reVISAR PROXIMAMENTE ESTE USECASE 
             services.AddScoped<IAuthorizationHandler, RegistroIncompletoHandler>();
+            services.AddScoped<IAuthorizationHandler, RolVigenteHandler>();
             services.AddScoped<ICacheService, RedisCacheService>();
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IUsuarioRepository, UsuarioRepositoryEF>();
@@ -50,7 +51,13 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<INotificacionesVotacionService, NotificacionesVotacionService>();
             services.AddScoped<INotificacionRealtimeService, SignalRNotificacionRealtimeService>();
             services.AddScoped<IChatRealTimeService, SignalRChatRealtimeService>();
+            // Registro en memoria por instancia. Si el chat escala horizontalmente,
+            // debe reemplazarse por un backplane/registro distribuido coordinado.
+            services.AddSingleton<IChatConnectionRegistry, ChatConnectionRegistry>();
             services.AddScoped<ISolicitudAmistadRealtimeService, SignalRSolicitudAmistadRealtimeService>();
+            services.AddScoped<IApplicationTransaction, EfApplicationTransaction>();
+            services.AddScoped<IAdministracionRestaurantes, AdministracionRestaurantes>();
+            services.AddScoped<IBloqueoResolucionSolicitud, BloqueoResolucionSolicitudSql>();
 
             //reVISAR PROXIMAMENTE ESTE USECASE 
             services.AddScoped<IEnviarMensajeGrupoUseCase, EnviarMensajeGrupoUseCase>();
@@ -73,11 +80,28 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<IMenuParser, SimpleMenuParser>();
             services.AddSingleton<IUserIdProvider, FirebaseUserIdProvider>();
             services.AddScoped<IServicioRestaurantes, ServicioRestaurantes>();
+            services.AddScoped<IActualizadorExternoRestaurantes, ActualizadorExternoRestaurantes>();
+            services.AddScoped<IComprobanteFotoGoogle, ComprobanteFotoGoogle>();
+            services.AddOptions<FotosGoogleOptions>().Bind(config.GetSection("FotosGoogle")).ValidateDataAnnotations().ValidateOnStart();
+            services.AddSingleton<PresupuestoFotosGoogle>();
+            services.AddHttpClient<IFotoGoogleService, FotoGoogleService>()
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+                .RemoveAllLoggers();
+            services.AddHttpClient<IServicioRestaurantes, ServicioRestaurantes>()
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+                .RemoveAllLoggers();
+            services.AddOptions<ActualizacionExternaRestaurantesOptions>()
+                .Bind(config.GetSection(ActualizacionExternaRestaurantesOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+            services.AddHostedService<ActualizacionExternaRestaurantesHostedService>();
             services.AddScoped<ISolicitudAmistadRepository, SolicitudAmistadRepositoryEF>();
-            services.AddScoped<IPagoService, MercadoPagoService>();
+            services.AddHttpClient<IPagoService, MercadoPagoService>();
             services.AddScoped<IBuscarRestaurantesRecomendadosOrquestador, BuscarRestaurantesRecomendadosOrquestador>();
             services.AddScoped<IUsuarioPreferenciasService, UsuarioPreferenciasService>();
-            services.AddHttpClient<IBuscadorRestaurantesExternos, BuscadorRestaurantesGooglePlaces>();
+            services.AddHttpClient<IBuscadorRestaurantesExternos, BuscadorRestaurantesGooglePlaces>()
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+                .RemoveAllLoggers();
 
 
 

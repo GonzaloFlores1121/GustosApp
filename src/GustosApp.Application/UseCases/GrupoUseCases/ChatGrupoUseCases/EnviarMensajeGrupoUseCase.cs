@@ -24,8 +24,12 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases
             _grupoRepository = grupoRepository;
         }
 
-        public async Task<ChatMensaje> HandleAsync(string firebaseUid, Guid grupoId, string mensaje
-            , CancellationToken cancellationToken = default)
+        public async Task<ChatMensaje> HandleAsync(
+            string firebaseUid,
+            Guid grupoId,
+            string mensaje,
+            CancellationToken cancellationToken = default,
+            Guid? operacionId = null)
         {
 
             var usuario = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid, cancellationToken);
@@ -45,6 +49,20 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases
 
             if (string.IsNullOrWhiteSpace(mensaje))
                 throw new ArgumentException("El mensaje no puede estar vacío.");
+            var mensajeNormalizado = mensaje.Trim();
+            if (mensajeNormalizado.Length > 2000)
+                throw new ArgumentException("El mensaje no puede superar los 2000 caracteres.");
+
+            var idOperacion = operacionId.GetValueOrDefault(Guid.NewGuid());
+            if (idOperacion == Guid.Empty)
+                throw new ArgumentException("El identificador de envío no es válido.");
+
+            var existente = await _chatRepository.GetByOperacionIdAsync(
+                grupoId,
+                usuario.Id,
+                idOperacion,
+                cancellationToken);
+            if (existente != null) return existente;
 
             var chat = new ChatMensaje
             {
@@ -52,8 +70,9 @@ namespace GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases
                 GrupoId = grupoId,
                 UsuarioId = usuario.Id,
                 UsuarioNombre = $"{usuario.Nombre} {usuario.Apellido}",
-                Mensaje = mensaje.Trim(),
-                FechaEnvio = DateTime.UtcNow
+                Mensaje = mensajeNormalizado,
+                FechaEnvio = DateTime.UtcNow,
+                OperacionId = idOperacion
             };
 
             var saved = await _chatRepository.AddMessageAsync(chat, cancellationToken);

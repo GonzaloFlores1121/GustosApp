@@ -35,7 +35,9 @@ namespace GustosApp.Infraestructure.Repositories
      => _db.Usuarios
          .Include(u => u.Gustos)
          .Include(u => u.Restricciones)
+            .ThenInclude(r => r.TagsProhibidos)
          .Include(u => u.CondicionesMedicas)
+            .ThenInclude(c => c.TagsCriticos)
          .Include(u => u.Visitados)
          .FirstOrDefaultAsync(u => u.IdUsuario == username, ct);
 
@@ -100,7 +102,7 @@ namespace GustosApp.Infraestructure.Repositories
             return await _db.Usuarios
                 .Where(u => u.Id != excludeId &&
                             u.Activo &&
-                            u.Rol == RolUsuario.Usuario && 
+                            u.Rol != RolUsuario.Admin &&
                             u.IdUsuario.ToLower().Contains(normalized))
                 .OrderBy(u => u.IdUsuario)
                 .Take(50)
@@ -113,15 +115,33 @@ namespace GustosApp.Infraestructure.Repositories
             return _db.SaveChangesAsync(ct);
         }
 
-        public Task MarcarRestauranteComoVisitadoAsync(Guid id, Guid restauranteId, CancellationToken cancellationToken)
+        public async Task MarcarRestauranteComoVisitadoAsync(Guid id, Guid restauranteId, CancellationToken cancellationToken)
         {
-         _db.UsuarioRestauranteVisitados.Add(new UsuarioRestauranteVisitado
-         {
-             UsuarioId = id,
-             RestauranteId = restauranteId,
-             FechaVisitaUtc = DateTime.UtcNow
-         });
-            return _db.SaveChangesAsync(cancellationToken);
+            if (await _db.UsuarioRestauranteVisitados.AnyAsync(
+                    v => v.UsuarioId == id && v.RestauranteId == restauranteId,
+                    cancellationToken))
+                return;
+
+            var visitado = new UsuarioRestauranteVisitado
+            {
+                UsuarioId = id,
+                RestauranteId = restauranteId,
+                FechaVisitaUtc = DateTime.UtcNow
+            };
+            _db.UsuarioRestauranteVisitados.Add(visitado);
+
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                _db.Entry(visitado).State = EntityState.Detached;
+                if (!await _db.UsuarioRestauranteVisitados.AnyAsync(
+                        v => v.UsuarioId == id && v.RestauranteId == restauranteId,
+                        cancellationToken))
+                    throw;
+            }
         }
 
         public Task<Usuario?> GetByUsernameWithRestaurantesVisitadosAsync(string? username, CancellationToken ct)

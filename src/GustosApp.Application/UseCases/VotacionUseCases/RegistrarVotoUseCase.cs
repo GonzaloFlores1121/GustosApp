@@ -64,6 +64,9 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             var restaurante = await _restauranteRepository.GetRestauranteByIdAsync(restauranteId, ct)
                 ?? throw new ArgumentException("Restaurante no encontrado");
 
+            if (restaurante.Desactivado)
+                throw new InvalidOperationException("Este restaurante no está disponible. No se puede votar por él.");
+
             // 7. ¿Ya votó?
             var votoExistente = await _votacionRepository.ObtenerVotoUsuarioAsync(votacionId, usuario.Id, ct);
 
@@ -82,7 +85,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                     UsuarioFoto = usuario.FotoPerfilUrl ?? "",
                     RestauranteId = restaurante.Id,
                     RestauranteNombre = restaurante.Nombre,
-                    RestauranteImagen = restaurante.ImagenUrl ?? "",
+                    RestauranteImagen = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(restaurante.Id, restaurante.ImagenUrl) ?? "",
                     EsActualizacion = true
                 };
 
@@ -101,10 +104,11 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                 VotacionId = votacionId,
                 UsuarioId = usuario.Id,
                 UsuarioNombre = usuario.Nombre,
+                UsuarioFirebaseUid = usuario.FirebaseUid,
                 UsuarioFoto = usuario.FotoPerfilUrl ?? "",
                 RestauranteId = restaurante.Id,
                 RestauranteNombre = restaurante.Nombre,
-                RestauranteImagen = restaurante.ImagenUrl ?? "",
+                RestauranteImagen = GustosApp.Domain.Common.ImagenRestaurantePublica.Url(restaurante.Id, restaurante.ImagenUrl) ?? "",
                 EsActualizacion = false
             };
 
@@ -118,7 +122,19 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             EventoVotoRegistrado evento,
             CancellationToken ct)
         {
-            var seCerro = votacion.IntentarCerrarConGanadorUnico();
+            // Otro participante puede haber confirmado su voto en paralelo. Volvemos a
+            // consultar participantes y votos antes de decidir el cierre para no dejar
+            // activa una votación que ya recibió todas las respuestas.
+            await _votacionRepository.RecargarVotacionAsync(votacion, ct);
+
+            var posiblesGanadores = votacion.ObtenerRestaurantesEmpatados();
+            var ganadorDisponible = false;
+            if (posiblesGanadores.Count == 1)
+            {
+                var candidato = await _restauranteRepository.GetRestauranteByIdAsync(posiblesGanadores[0], ct);
+                ganadorDisponible = candidato != null && !candidato.Desactivado;
+            }
+            var seCerro = ganadorDisponible && votacion.IntentarCerrarConGanadorUnico();
 
             if (seCerro)
                 await _votacionRepository.ActualizarVotacionAsync(votacion, ct);
@@ -138,7 +154,7 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
                     votacion.Id,
                     votacion.RestauranteGanadorId);
             }
-            else if (votacion.TodosLosParticipantesVotaron())
+            else if (votacion.TodosLosParticipantesVotaron() && posiblesGanadores.Count > 1)
             {
                 await _notificaciones.NotificarEmpate(votacion.GrupoId, votacion.Id);
             }

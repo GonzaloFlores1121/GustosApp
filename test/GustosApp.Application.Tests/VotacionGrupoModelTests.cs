@@ -138,7 +138,7 @@ namespace GustosApp.Application.Tests
 
             // Act & Assert
             var exception = Assert.Throws<InvalidOperationException>(() => votacion.Cancelar());
-            Assert.Equal("No se puede cancelar una votación cerrada", exception.Message);
+            Assert.Equal("Solo se pueden cancelar votaciones activas", exception.Message);
         }
 
         [Fact]

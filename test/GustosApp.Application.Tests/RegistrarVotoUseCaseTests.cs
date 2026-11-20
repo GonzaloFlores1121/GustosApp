@@ -478,6 +478,44 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
+        public async Task HandleAsync_VotoParaleloApareceAlRecargar_CierraConResultadosActuales()
+        {
+            var firebaseUid = "uid-voto-paralelo";
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = firebaseUid };
+            var otroUsuarioId = Guid.NewGuid();
+            var grupo = new Grupo("Grupo", usuario.Id);
+            var ganadorId = Guid.NewGuid();
+            var votacion = new VotacionGrupo(grupo.Id) { Grupo = grupo };
+            AgregarParticipantes(votacion, usuario.Id, otroUsuarioId);
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, ganadorId));
+            votacion.RestaurantesCandidatos.Add(new VotacionRestaurante(votacion.Id, Guid.NewGuid()));
+
+            _mockUsuarioRepository.Setup(r => r.GetByFirebaseUidAsync(firebaseUid, default))
+                .ReturnsAsync(usuario);
+            _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(votacion.Id, default))
+                .ReturnsAsync(votacion);
+            _mockRestauranteRepository.Setup(r => r.GetRestauranteByIdAsync(ganadorId, default))
+                .ReturnsAsync(new Restaurante { Id = ganadorId, Nombre = "Ganador" });
+            _mockVotacionRepository.Setup(r => r.ObtenerVotoUsuarioAsync(votacion.Id, usuario.Id, default))
+                .ReturnsAsync((VotoRestaurante?)null);
+            _mockVotacionRepository.Setup(r => r.RegistrarVotoAsync(It.IsAny<VotoRestaurante>(), default))
+                .ReturnsAsync((VotoRestaurante voto, CancellationToken _) => voto);
+            _mockVotacionRepository
+                .Setup(r => r.RecargarVotacionAsync(votacion, default))
+                .Callback(() => votacion.Votos.Add(
+                    new VotoRestaurante(votacion.Id, otroUsuarioId, ganadorId)))
+                .Returns(Task.CompletedTask);
+
+            await _useCase.HandleAsync(firebaseUid, votacion.Id, ganadorId);
+
+            votacion.Estado.Should().Be(EstadoVotacion.Cerrada);
+            votacion.RestauranteGanadorId.Should().Be(ganadorId);
+            _mockVotacionRepository.Verify(
+                r => r.RecargarVotacionAsync(votacion, default),
+                Times.Once);
+        }
+
+        [Fact]
         public async Task HandleAsync_UltimoVotoConEmpate_MantieneVotacionActivaYNotificaEmpate()
         {
             var firebaseUid = "uid-empate";

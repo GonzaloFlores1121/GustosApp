@@ -12,6 +12,7 @@ namespace GustosApp.Domain.Interfaces
         Task AddAsync(RestauranteMenu menu, CancellationToken ct);
         Task UpdateAsync(RestauranteMenu menu, CancellationToken ct);
         Task<RestauranteMenu?> GetByRestauranteIdAsync(Guid restauranteId, CancellationToken ct);
+        Task ReloadAsync(RestauranteMenu menu, CancellationToken ct);
     }
 
 }

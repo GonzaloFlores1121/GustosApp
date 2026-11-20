@@ -18,6 +18,7 @@ namespace GustosApp.Application.Interfaces
         int? radius,
         int top,
         double rating,
-        CancellationToken ct);
+        CancellationToken ct,
+        bool abiertoAhora = false);
     }
 }

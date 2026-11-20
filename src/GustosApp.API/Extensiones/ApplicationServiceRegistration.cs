@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GustosApp.Application.Handlers;
+using GustosApp.Application.Interfaces;
 using GustosApp.Application.Services;
 using GustosApp.Application.UseCases.AmistadUseCases;
 using GustosApp.Application.UseCases.GrupoUseCases.ChatGrupoUseCases;
@@ -39,6 +40,9 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ObtenerRestriccionesUseCase>();
             services.AddScoped<CrearGrupoUseCase>();
             services.AddScoped<ConstruirPreferenciasGrupoUseCase>();
+            services.AddScoped<IConstruirPreferenciasGrupoUseCase>(provider =>
+                provider.GetRequiredService<ConstruirPreferenciasGrupoUseCase>());
+            services.AddScoped<IBuscadorRestaurantesGrupo, BuscarRestaurantesRecomendadosGrupoUseCase>();
             services.AddScoped<ActualizarNombreGrupoUseCase>();
             services.AddScoped<InvitarUsuarioGrupoUseCase>();
             services.AddScoped<UnirseGrupoUseCase>();
@@ -59,13 +63,16 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ObtenerNotificacionesUsuarioUseCase>();
             services.AddScoped<ObtenerNotificacionUsuarioUseCase>();
             services.AddScoped<MarcarNotificacionLeidaUseCase>();
+            services.AddScoped<PublicarNotificacionInformativaUseCase>();
             services.AddScoped<ConstruirPreferenciasUsuarioIndividualUseCase>();
             services.AddScoped<ConstruirPreferenciasUsuarioConAmigoCase>();
             services.AddScoped<ActualizarValoracionRestauranteUseCase>();
             services.AddScoped<CrearSolicitudRestauranteUseCase>();
+            services.AddScoped<BuscarCoincidenciasAltaUseCase>();
             services.AddScoped<ReclamarRestauranteUseCase>();
             services.AddScoped<ObtenerMiSolicitudRestauranteUseCase>();
             services.AddScoped<AprobarSolicitudRestauranteUseCase>();
+            services.AddScoped<ProcesarResolucionSolicitudUseCase>();
             services.AddScoped<ObtenerSolicitudRestaurantesPorIdUseCase>();
             services.AddScoped<ObtenerDatosRegistroRestauranteUseCase>();
             services.AddScoped<ObtenerSolicitudesPorTipoUseCase>();
@@ -75,6 +82,7 @@ namespace GustosApp.API.Extensiones
             services.AddSingleton(TimeProvider.System);
             services.AddScoped<EvaluadorCompatibilidadRestaurante>();
             services.AddScoped<ActualizarPerfilUsuarioUseCase>();
+            services.AddScoped<SincronizarEmailUsuarioUseCase>();
             services.AddScoped<RechazarInvitacionAGrupoUseCase>();
             services.AddScoped<EnviarSolicitudAmistadUseCase>();
             services.AddScoped<ObtenerSolicitudesPendientesUseCase>();
@@ -101,7 +109,11 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ActivarMiembroDeGrupoUseCase>();
             services.AddScoped<EnviarRecomendacionesUsuariosActivosUseCase>();
             services.AddScoped<CrearOpinionRestauranteUseCase>();
+            services.AddScoped<ObtenerMiOpinionRestauranteUseCase>();
+            services.AddScoped<ActualizarOpinionRestauranteUseCase>();
+            services.AddScoped<EliminarOpinionRestauranteUseCase>();
             services.AddScoped<ObtenerValoracionUseCase>();
+            services.AddScoped<ObtenerHistorialOpinionesUsuarioUseCase>();
             services.AddScoped<BuscarRestaurantesUseCase>();
             services.AddScoped<AgregarUsuarioRestauranteFavoritoUseCase>();
             services.AddScoped<RegistrarTop3IndividualRestaurantesUseCase>();
@@ -109,12 +121,14 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<RegistrarVisitaPerfilRestauranteUseCase>();
             services.AddScoped<ObtenerMetricasRestauranteUseCase>();
             services.AddScoped<ActualizarRestauranteDashboardUseCase>();
+            services.AddScoped<GestionarBorradorMenuRestauranteUseCase>();
             services.AddScoped<ObtenerRestaurantesFavoritosUseCase>();
             services.AddScoped<ObtenerRestauranteDetalleUseCase>();
             services.AddScoped<IniciarVotacionUseCase>();
             services.AddScoped<RegistrarVotoUseCase>();
             services.AddScoped<ObtenerResultadosVotacionUseCase>();
             services.AddScoped<CerrarVotacionUseCase>();
+            services.AddScoped<CancelarVotacionUseCase>();
             services.AddScoped<SeleccionarGanadorRuletaUseCase>();
             services.AddScoped<ObtenerHistorialVotacionesUseCase>();
             services.AddScoped<IActualizarImagenesRestauranteUseCase, ActualizarImagenesRestauranteUseCase>();
@@ -129,6 +143,8 @@ namespace GustosApp.API.Extensiones
             services.AddScoped<ObtenerPendientesClasificacionRestauranteUseCase>();
             services.AddScoped<ObtenerDetalleGestionRestauranteUseCase>();
             services.AddScoped<GuardarClasificacionRestauranteImportadoUseCase>();
+            services.AddSingleton<SugeridorRestriccionesOferta>();
+            services.AddScoped<SugerirRestriccionesOfertaUseCase>();
 
             return services;
         }

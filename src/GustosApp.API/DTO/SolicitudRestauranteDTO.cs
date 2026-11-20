@@ -1,5 +1,7 @@
 ﻿using GustosApp.Domain.Model.@enum;
 
+using GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
+
 namespace GustosApp.API.DTO
 {
     public sealed class MiSolicitudRestauranteDto
@@ -16,6 +18,10 @@ namespace GustosApp.API.DTO
 
     public class SolicitudRestaurantePendienteDto
     {
+        public bool Archivada { get; set; }
+        public int VersionArchivo { get; set; }
+        public string? MotivoRechazo { get; set; }
+        public ResumenResolucionSolicitud? Resolucion { get; set; }
         public Guid? RestauranteExistenteId { get; set; }
         public Guid? RestauranteAprobadoId { get; set; }
         public bool RolFirebaseSincronizado { get; set; }
@@ -35,6 +41,9 @@ namespace GustosApp.API.DTO
     }
     public class SolicitudRestauranteDetalleDto
     {
+        public ResumenResolucionSolicitud? Resolucion { get; set; }
+        public bool DeclaroOtroLocal { get; set; }
+        public GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases.RevisionCoincidenciasAlta? CoincidenciasAlta { get; set; }
         public string? NombreSolicitante { get; set; }
         public string? RelacionRestaurante { get; set; }
         public string? TelefonoContacto { get; set; }
@@ -88,6 +97,7 @@ namespace GustosApp.API.DTO
     {
         public string Dia { get; set; } = default!;
         public bool Cerrado { get; set; }
+        public bool TodoElDia { get; set; }
         public string? Desde { get; set; } // "12:00"
         public string? Hasta { get; set; } // "22:00"
     }

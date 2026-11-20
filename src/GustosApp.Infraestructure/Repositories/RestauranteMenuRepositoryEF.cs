@@ -35,6 +35,9 @@ namespace GustosApp.Infraestructure.Repositories
             return _db.RestauranteMenus
                 .FirstOrDefaultAsync(m => m.RestauranteId == restauranteId, ct);
         }
+
+        public Task ReloadAsync(RestauranteMenu menu, CancellationToken ct) =>
+            _db.Entry(menu).ReloadAsync(ct);
     }
 
 }

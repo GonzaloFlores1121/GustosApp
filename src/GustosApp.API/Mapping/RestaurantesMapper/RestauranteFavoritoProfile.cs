@@ -11,7 +11,7 @@ namespace GustosApp.API.Mapping.RestaurantesMapper
             CreateMap<Restaurante, RestauranteFavoritoDto>()
                 .ForMember(dest => dest.RestauranteId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.Nombre, opt => opt.MapFrom(src => src.Nombre))
-                .ForMember(dest => dest.LogoUrl, opt => opt.MapFrom(src => src.LogoUrl))
+                .ForMember(dest => dest.LogoUrl, opt => opt.MapFrom(src => GustosApp.Domain.Common.ImagenRestaurantePublica.Url(src.Id, src.LogoUrl)))
                 .ForMember(dest => dest.Rating, opt => opt.MapFrom(src => src.Rating));
         }
     }

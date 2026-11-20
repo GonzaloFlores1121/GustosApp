@@ -239,6 +239,9 @@ public class GuardarRestriccionesUseCaseTests
         _restriccionMock
             .Setup(r => r.GetRestriccionesByIdsAsync(ids, _ct))
             .ReturnsAsync(new List<Restriccion> { restriccionDiabetes });
+        var guardoSinIncompatible = false;
+        _userMock.Setup(r => r.SaveChangesAsync(_ct))
+            .Callback(() => guardoSinIncompatible = usuario.Gustos.All(g => g.Nombre != "Pizza"));
 
         // Act
         var result = await _useCase.HandleAsync(
@@ -252,5 +255,6 @@ public class GuardarRestriccionesUseCaseTests
         // Assert: Pizza debe ser incompatible y removida
         Assert.Contains("Pizza", result);
         Assert.DoesNotContain(usuario.Gustos, g => g.Nombre == "Pizza");
+        Assert.True(guardoSinIncompatible);
     }
 }

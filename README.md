@@ -48,6 +48,14 @@ Descargá la firebase-key.json desde Firebase Console → Service Accounts.
 Guardala en la carpeta /secrets dentro del proyecto.
 Asegurate de que esté en el .gitignore.
 
+Para habilitar Mercado Pago en producción, configurá `MercadoPago__AccessToken` y `MercadoPago__WebhookSecret` en las variables privadas del servicio. `appsettings.Production.json` conserva estos campos vacíos en el repositorio.
+
+Para habilitar Gemini, configurá `GeminiSettings__ApiKey` en los secretos de la API o usá `GOOGLE_API_KEY`. El modelo se configura con `GeminiSettings__Model`. Si falta la clave o el modelo, la ficha y el análisis de menú usan coincidencias locales. Podés ajustar `GeminiSettings__TimeoutSegundos`, `GeminiSettings__RecomendacionesPorMinuto` y `GeminiSettings__AnalisisPorMinuto`.
+
+La ficha guarda las explicaciones exitosas por usuario y restaurante en el Redis configurado en `ConnectionStrings__Redis`. `GeminiSettings__CacheExplicacionesTtlSegundos` controla la duración, con un máximo de 86.400 segundos. Si Redis no responde, la ficha muestra coincidencias locales. Para ejecutar las pruebas de reservas y expiración contra un Redis desechable en localhost, indicá su puerto en `GUSTOS_REDIS_PRUEBAS_PUERTO`.
+
+ImageSharp requiere una licencia de Six Labors al compilar `GustosApp.Application` y `GustosApp.Infraestructure`. En desarrollo, guardá el archivo `sixlabors.lic` junto a `GustosApp.sln`. Git y Docker excluyen ese archivo. En GitHub Actions, configurá el secreto de repositorio `SIXLABORS_LICENSE_KEY` con el contenido completo del archivo antes de ejecutar CI o desplegar. La imagen de Docker recibe la licencia como secreto de BuildKit durante la compilación. Para construirla localmente con el archivo, usá `docker build --secret id=sixlabors_license,src=sixlabors.lic -t gustosapp:local .`. [Documentación de Six Labors](https://docs.sixlabors.com/articles/imagesharp/)
+
 4. Ejecutar la API
 
 Seleccioná GustosApp.API como Startup Project.
@@ -75,3 +83,21 @@ Probá los endpoints de /api/usuarios.
   /GustosApp.Application.Tests
   /GustosApp.Infrastructure.Tests
   /GustosApp.API.Tests
+
+## Compatibilidad orientativa en recomendaciones
+
+El perfil y el recomendador utilizan las asociaciones de etiquetas del catálogo. Una opción con una etiqueta crítica conocida no se usa como coincidencia gastronómica adecuada. Si el restaurante también ofrece otras opciones sin conflicto conocido, permanece como candidato con compatibilidad **desconocida**: la ausencia de etiquetas no demuestra que un plato sea seguro ni que se conozcan todos sus ingredientes. Si todas las opciones registradas presentan conflictos conocidos y no existe una declaración sobre esa restricción, se excluye de esa recomendación; el catálogo puede ser parcial y esto no certifica el menú completo. Una declaración desactualizada queda como **desconocida**, no como confirmación.
+
+Una declaración vigente del restaurante sobre una restricción puede producir una evaluación **estimada**, siempre orientativa; las condiciones médicas sin declaración equivalente no se confirman por inferencia. La votación evalúa las preferencias actuales de los participantes fijados al iniciarla y muestra el nivel sin divulgar condiciones individuales. Antes del despliegue, aplicá también la migración `CorregirEtiquetasVegetarianas`, que agrega la etiqueta de mariscos al catálogo vegetariano y vegano existente.
+
+### Pistas de restricciones para propietarios
+
+El dashboard permite pedir sugerencias de declaraciones generales. Se basan solo en nombres inequívocos de gustos seleccionados o de ítems del **menú publicado** que terminan en “sin gluten”, “libre de gluten”, “sin lactosa” o “libre de lactosa”, y solo si existe esa restricción en el catálogo. No se leen descripciones ni borradores de OCR, no se interpreta la ausencia de tags como seguridad y no se usan condiciones de usuarios. La pista muestra su fuente y requiere que el propietario revise ingredientes, preparación y disponibilidad.
+
+Aceptar agrega la restricción al formulario, pero no guarda ni confirma la vigencia. Descartar no cambia datos. Si se retira la fuente antes de guardar, el propietario debe revisar manualmente la declaración o quitarla. El guardado mantiene la regla de actualización parcial y la confirmación integral sigue siendo una acción separada. Este bloque no requiere una migración nueva; la migración previa `SepararVigenciaOfertaYDeclaraciones` sí debe estar aplicada antes de desplegar la vigencia independiente.
+
+## Archivos e imágenes
+
+Las nuevas imágenes se validan (JPG/PNG/WEBP, máximo 5 MB), se orientan y se vuelven a codificar sin metadatos antes de subirlas. Los objetos nuevos usan carpetas ligadas al ID del usuario, restaurante, solicitud u opinión. La eliminación exige URL HTTPS del bucket configurado, nombre generado por la aplicación, carpeta esperada y ausencia de referencias en la base. Las URLs externas y los objetos heredados sin procedencia demostrable se conservan.
+
+Aplicá la migración `RegistrarEliminacionesArchivoPendientes` en el despliegue antes de habilitar las nuevas subidas. Los borrados que fallen y las subidas con persistencia incierta se registran para reintento; el proceso vuelve a verificar referencias antes de eliminar. La frecuencia se configura con `FileCleanup__IntervalMinutes` (10 minutos por defecto, entre 1 y 1440). No se realiza limpieza histórica automática.

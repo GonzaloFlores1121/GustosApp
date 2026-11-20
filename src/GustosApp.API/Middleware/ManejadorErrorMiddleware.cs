@@ -3,6 +3,8 @@ using System.Text.Json;
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.API.DTO;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace GustosApp.API.Middleware
 {
@@ -31,7 +33,15 @@ namespace GustosApp.API.Middleware
 
         private static async Task HandleExceptionAsync(HttpContext context, Exception ex, ILogger logger)
         {
-            logger.LogError(ex, "❌ Error no controlado: {Message}", ex.Message);
+            if (ex is DbUpdateException or SqlException || ex.InnerException is DbUpdateException)
+            {
+                var sql = ex as SqlException ?? (ex.InnerException as SqlException)
+                    ?? (ex.InnerException?.InnerException as SqlException);
+                logger.LogError("Fallo de persistencia en {Endpoint}. Tipo {Tipo}, número SQL {Numero}.",
+                    context.GetEndpoint()?.DisplayName, ex.GetType().Name, sql?.Number);
+            }
+            else
+                logger.LogError(ex, "❌ Error no controlado: {Message}", ex.Message);
 
             var response = context.Response;
             response.ContentType = "application/json";
@@ -42,6 +52,16 @@ namespace GustosApp.API.Middleware
 
             switch (ex)
             {
+                case SinPreferenciasRecomendacionException:
+                    status = HttpStatusCode.UnprocessableEntity;
+                    result = new { status = 422, code = "SIN_PREFERENCIAS", message = ex.Message };
+                    break;
+
+                case FiltroGustosInvalidoException:
+                    status = HttpStatusCode.BadRequest;
+                    result = new { status = 400, code = "FILTRO_GUSTOS_INVALIDO", message = ex.Message };
+                    break;
+
                 case UnauthorizedAccessException:
                     status = HttpStatusCode.Unauthorized;
                     result = new { status = 401, error = "Unauthorized", message = ex.Message };
@@ -70,10 +90,15 @@ namespace GustosApp.API.Middleware
                     result = new { status = 409, error = "Conflict", message = ex.Message };
                     break;
 
+                case PreferenciasGrupoDesdePerfilException:
+                    status = HttpStatusCode.Gone;
+                    result = new { status = 410, error = "Gone", message = ex.Message };
+                    break;
+
                 
                 case LimiteGruposAlcanzadoException limiteEx:
                     status = (HttpStatusCode)402; 
-                    var beneficios = new BeneficiosPremiumDto { Precio = 9999.99m };
+                    var beneficios = new BeneficiosPremiumDto();
 
                     var responseObj = new LimiteGruposAlcanzadoResponse(
                         $"Has alcanzado el límite de {limiteEx.LimiteActual} grupos para usuarios del plan {limiteEx.TipoPlan}.",
@@ -91,7 +116,7 @@ namespace GustosApp.API.Middleware
                 case LimiteFavoritosAlcanzadoException favEx:
                     status = (HttpStatusCode)402;
 
-                    var beneficiosFav = new BeneficiosPremiumDto { Precio = 9999.99m };
+                    var beneficiosFav = new BeneficiosPremiumDto();
 
                     var favResponse = new
                     {

@@ -14,15 +14,18 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
         private readonly IRestauranteRepository _restauranteRepository;
         private readonly IGustoRepository _gustoRepository;
         private readonly IRestriccionRepository _restriccionRepository;
+        private readonly TimeProvider _reloj;
 
         public ActualizarRestauranteDashboardUseCase(
             IRestauranteRepository restauranteRepository,
             IGustoRepository gustoRepository,
-            IRestriccionRepository restriccionRepository)
+            IRestriccionRepository restriccionRepository,
+            TimeProvider? reloj = null)
         {
             _restauranteRepository = restauranteRepository;
             _gustoRepository = gustoRepository;
             _restriccionRepository = restriccionRepository;
+            _reloj = reloj ?? TimeProvider.System;
         }
 
         public async Task<Restaurante> HandleAsync(
@@ -35,7 +38,8 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
             string? webUrl,
             List<Guid>? gustosQueSirveIds,
             List<Guid>? restriccionesQueRespetaIds,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            bool webUrlFueEnviado = false)
         {
             var restaurante = await _restauranteRepository.GetByIdAsync(restauranteId, ct);
             if (restaurante == null)
@@ -60,30 +64,31 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 restaurante.HorariosJson = horariosJson;
 
             // WebUrl: si viene null no tocamos; si viene string vacío, lo seteamos en null
-            if (webUrl != null)
+            if (webUrlFueEnviado || webUrl != null)
                 restaurante.WebUrl = string.IsNullOrWhiteSpace(webUrl) ? null : webUrl;
 
             // Gustos
             if (gustosQueSirveIds != null)
             {
+                var idsAnteriores = restaurante.GustosQueSirve.Select(g => g.Id).ToArray();
                 var gustos = gustosQueSirveIds.Count > 0
                     ? await _gustoRepository.GetByIdsAsync(gustosQueSirveIds, ct)
                     : new List<Gusto>();
 
                 restaurante.SetGustos(gustos);
+                restaurante.RegistrarCambioOferta(idsAnteriores, _reloj.GetUtcNow().UtcDateTime);
             }
 
             // Restricciones
             if (restriccionesQueRespetaIds != null)
             {
+                var idsAnteriores = restaurante.RestriccionesQueRespeta.Select(r => r.Id).ToArray();
                 var restricciones = restriccionesQueRespetaIds.Count > 0
                     ? await _restriccionRepository.GetRestriccionesByIdsAsync(restriccionesQueRespetaIds, ct)
                     : new List<Restriccion>();
 
                 restaurante.SetRestricciones(restricciones);
-                restaurante.RegistrarVerificacionDatosCompatibilidad(
-                    OrigenDatosCompatibilidadRestaurante.Restaurante,
-                    DateTime.UtcNow);
+                restaurante.RegistrarCambioRestricciones(idsAnteriores, _reloj.GetUtcNow().UtcDateTime);
             }
 
             restaurante.ActualizadoUtc = DateTime.UtcNow;

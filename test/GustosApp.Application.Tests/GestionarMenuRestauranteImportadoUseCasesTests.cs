@@ -22,7 +22,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         var gustos = new Mock<IGustoRepository>();
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([pizza]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"categoria\":\"Pizzería\",\"gustos\":[\"Pizza\",\"Inventado\"]}");
 
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
@@ -58,7 +58,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([cafeConLeche, pasteleria]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("Error de límite de uso");
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
             restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
@@ -86,7 +86,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         var gustos = new Mock<IGustoRepository>();
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([pizza]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("API key secreta inválida"));
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
             restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
@@ -115,7 +115,7 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         gustos.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([pizza, empanadas]);
         var ia = new Mock<IRecomendacionAIService>();
-        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>()))
+        ia.Setup(s => s.GenerarRecomendacion(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"categoria\":\"Restaurante\",\"gustos\":[\"Empanadas\"]}");
         var useCase = new AnalizarMenuRestauranteImportadoUseCase(
             restaurantes.Object, gustos.Object, Mock.Of<IOcrService>(), ia.Object,
@@ -140,18 +140,23 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
             DateTime.UtcNow);
         var repositorio = new Mock<IRestauranteRepository>();
         repositorio.Setup(r => r.ObtenerPendientesClasificacionAsync(
-                ObtenerPendientesClasificacionRestauranteUseCase.CantidadMaxima,
+                It.IsAny<ConsultaPendientesClasificacion>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync([restaurante]);
+            .ReturnsAsync(new PaginaRestaurantesPendientes([restaurante], 121, 2, 20));
         var useCase = new ObtenerPendientesClasificacionRestauranteUseCase(repositorio.Object);
 
-        var resultado = await useCase.HandleAsync();
+        var consulta = new ConsultaPendientesClasificacion(2, 20, FiltroPendientesClasificacion.ErrorMenu);
+        var resultado = await useCase.HandleAsync(consulta);
 
-        resultado.Should().ContainSingle();
-        resultado.Single().Motivos.Should().Equal(
+        resultado.Total.Should().Be(121);
+        resultado.Pagina.Should().Be(2);
+        resultado.TotalPaginas.Should().Be(7);
+        resultado.Elementos.Should().ContainSingle();
+        resultado.Elementos.Single().Motivos.Should().Equal(
             "Error al procesar menú",
             "Sin gustos",
             "Clasificación automática");
+        repositorio.Verify(r => r.ObtenerPendientesClasificacionAsync(consulta, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -253,7 +258,8 @@ public sealed class GestionarMenuRestauranteImportadoUseCasesTests
         restaurante.Categoria.Should().Be("Pizzería");
         restaurante.GustosQueSirve.Should().ContainSingle().Which.Should().BeSameAs(pizza);
         restaurante.RestriccionesQueRespeta.Should().ContainSingle().Which.Should().BeSameAs(restriccion);
-        restaurante.OrigenDatosCompatibilidad.Should().Be(OrigenDatosCompatibilidadRestaurante.Administracion);
+        restaurante.FechaRevisionOfertaUtc.Should().BeNull();
+        restaurante.VersionOferta.Should().BeGreaterThan(0);
         restaurante.EstadoDatosCompatibilidad.Should().Be(EstadoDatosCompatibilidadRestaurante.Estimado);
         restaurante.MenuProcesado.Should().BeTrue();
         menus.Verify(r => r.AddAsync(It.Is<RestauranteMenu>(m => m.RestauranteId == restaurante.Id), It.IsAny<CancellationToken>()));

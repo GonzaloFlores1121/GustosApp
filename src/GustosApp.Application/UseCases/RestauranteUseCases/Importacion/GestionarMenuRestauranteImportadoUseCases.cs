@@ -37,7 +37,10 @@ public sealed record DetalleGestionRestaurante(
     string? Categoria,
     string EstadoMenu,
     IReadOnlyCollection<GustoSugeridoMenu> Gustos,
-    IReadOnlyCollection<GustoSugeridoMenu> CatalogoGustos);
+    IReadOnlyCollection<GustoSugeridoMenu> CatalogoGustos,
+    IReadOnlyCollection<GustoSugeridoMenu> RestriccionesQueRespeta,
+    int VersionOferta,
+    int VersionRestricciones);
 
 public sealed record RestaurantePendienteClasificacion(
     Guid Id,
@@ -110,8 +113,8 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
 
         try
         {
-            var respuesta = await _ia.GenerarRecomendacion(CrearPrompt(texto, catalogo));
-            if (IntentarLeerRespuesta(respuesta, catalogo, out var categoriaIa, out var gustosIa))
+            var respuesta = await _ia.GenerarRecomendacion(CrearPrompt(texto, catalogo), ct);
+            if (respuesta is not null && IntentarLeerRespuesta(respuesta, catalogo, out var categoriaIa, out var gustosIa))
             {
                 categoria = categoriaIa;
                 sugerenciasLocales.UnionWith(gustosIa);
@@ -123,11 +126,11 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex,
-                "Gemini no pudo complementar el análisis del menú del restaurante {RestauranteId}",
-                restauranteId);
+            _logger.LogWarning("Gemini no pudo complementar el análisis del menú del restaurante {RestauranteId}. Tipo: {Tipo}",
+                restauranteId, ex.GetType().Name);
         }
 
+        ct.ThrowIfCancellationRequested();
         return new ResultadoAnalisisMenuRestaurante(
             restaurante.Id,
             restaurante.Nombre,
@@ -218,19 +221,25 @@ public sealed class AnalizarMenuRestauranteImportadoUseCase
     }
 }
 
+public sealed record PaginaPendientesClasificacion(
+    IReadOnlyCollection<RestaurantePendienteClasificacion> Elementos, int Total, int Pagina, int TamanoPagina)
+{
+    public int TotalPaginas => (int)Math.Ceiling((double)Total / TamanoPagina);
+}
+
 public sealed class ObtenerPendientesClasificacionRestauranteUseCase
 {
-    public const int CantidadMaxima = 100;
     private readonly IRestauranteRepository _restaurantes;
 
     public ObtenerPendientesClasificacionRestauranteUseCase(IRestauranteRepository restaurantes) =>
         _restaurantes = restaurantes;
 
-    public async Task<IReadOnlyCollection<RestaurantePendienteClasificacion>> HandleAsync(
+    public async Task<PaginaPendientesClasificacion> HandleAsync(
+        ConsultaPendientesClasificacion consulta,
         CancellationToken ct = default)
     {
-        var restaurantes = await _restaurantes.ObtenerPendientesClasificacionAsync(CantidadMaxima, ct);
-        return restaurantes.Select(restaurante => new RestaurantePendienteClasificacion(
+        var pagina = await _restaurantes.ObtenerPendientesClasificacionAsync(consulta, ct);
+        var elementos = pagina.Elementos.Select(restaurante => new RestaurantePendienteClasificacion(
                 restaurante.Id,
                 restaurante.Nombre,
                 restaurante.Direccion,
@@ -240,6 +249,7 @@ public sealed class ObtenerPendientesClasificacionRestauranteUseCase
                 restaurante.GustosQueSirve.OrderBy(gusto => gusto.Nombre)
                     .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray()))
             .ToArray();
+        return new PaginaPendientesClasificacion(elementos, pagina.Total, pagina.Pagina, pagina.TamanoPagina);
     }
 
     private static IReadOnlyCollection<string> ObtenerMotivos(Restaurante restaurante)
@@ -263,13 +273,16 @@ public sealed class ObtenerDetalleGestionRestauranteUseCase
 {
     private readonly IRestauranteRepository _restaurantes;
     private readonly IGustoRepository _gustos;
+    private readonly TimeProvider _reloj;
 
     public ObtenerDetalleGestionRestauranteUseCase(
         IRestauranteRepository restaurantes,
-        IGustoRepository gustos)
+        IGustoRepository gustos,
+        TimeProvider? reloj = null)
     {
         _restaurantes = restaurantes;
         _gustos = gustos;
+        _reloj = reloj ?? TimeProvider.System;
     }
 
     public async Task<DetalleGestionRestaurante> HandleAsync(Guid restauranteId, CancellationToken ct = default)
@@ -286,7 +299,11 @@ public sealed class ObtenerDetalleGestionRestauranteUseCase
             restaurante.GustosQueSirve.OrderBy(gusto => gusto.Nombre)
                 .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray(),
             catalogo.OrderBy(gusto => gusto.Nombre)
-                .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray());
+                .Select(gusto => new GustoSugeridoMenu(gusto.Id, gusto.Nombre)).ToArray(),
+            restaurante.RestriccionesQueRespeta.OrderBy(restriccion => restriccion.Nombre)
+                .Select(restriccion => new GustoSugeridoMenu(restriccion.Id, restriccion.Nombre)).ToArray(),
+            restaurante.VersionOferta,
+            restaurante.VersionRestricciones);
     }
 
     internal static async Task<Restaurante> ObtenerRestauranteImportadoAsync(
@@ -336,10 +353,10 @@ public sealed class GuardarClasificacionRestauranteImportadoUseCase
 
         var ahora = _reloj.GetUtcNow().UtcDateTime;
         restaurante.Categoria = categoria.Trim();
+        var idsAnteriores = restaurante.GustosQueSirve.Select(g => g.Id).ToArray();
         restaurante.SetGustos(gustos);
+        restaurante.RegistrarCambioOferta(idsAnteriores, ahora);
         restaurante.ActualizadoUtc = ahora;
-        restaurante.RegistrarDatosCompatibilidadEstimados(
-            OrigenDatosCompatibilidadRestaurante.Administracion, ahora);
         await _restaurantes.UpdateAsync(restaurante, ct);
         await _restaurantes.SaveChangesAsync(ct);
     }
@@ -390,6 +407,7 @@ public sealed class ConfirmarMenuRestauranteImportadoUseCase
             {
                 RestauranteId = restauranteId,
                 Json = json,
+                Version = 1,
                 FechaActualizacionUtc = ahora
             }, ct);
         }
@@ -402,11 +420,13 @@ public sealed class ConfirmarMenuRestauranteImportadoUseCase
         }
 
         restaurante.Categoria = categoria.Trim();
+        var idsAnteriores = restaurante.GustosQueSirve.Select(g => g.Id).ToArray();
         restaurante.SetGustos(gustos);
+        restaurante.RegistrarCambioOferta(idsAnteriores, ahora);
+        restaurante.RegistrarCambioMenuPublicado();
         restaurante.MenuProcesado = true;
         restaurante.MenuError = null;
         restaurante.ActualizadoUtc = ahora;
-        restaurante.RegistrarDatosCompatibilidadEstimados(OrigenDatosCompatibilidadRestaurante.Administracion, ahora);
         await _restaurantes.UpdateAsync(restaurante, ct);
         await _restaurantes.SaveChangesAsync(ct);
     }

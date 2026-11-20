@@ -14,20 +14,10 @@ namespace GustosApp.Infraestructure.Repositories
     public class RestauranteRepositoryEF : IRestauranteRepository
     {
         private readonly GustosDbContext _db;
-        private readonly Dictionary<string, List<Restaurante>> _index = new();
 
         public RestauranteRepositoryEF(GustosDbContext db)
         {
             _db = db;
-            ConstruirIndice();
-        }
-        private void ConstruirIndice()
-        {
-            var restaurantes = _db.Restaurantes.ToList();
-            foreach (var restaurante in restaurantes)
-            {
-                Indexar(restaurante);
-            }
         }
 
         public async Task<Restaurante?> GetByPlaceIdAsync(string placeId, CancellationToken ct = default)
@@ -48,30 +38,61 @@ namespace GustosApp.Infraestructure.Repositories
                 .ToListAsync(ct);
         }
 
-        public Task<List<Restaurante>> ObtenerPendientesClasificacionAsync(
-            int cantidadMaxima,
+        public async Task<PaginaRestaurantesPendientes> ObtenerPendientesClasificacionAsync(
+            ConsultaPendientesClasificacion consulta,
             CancellationToken ct = default)
         {
-            return _db.Restaurantes
+            var pendientes = _db.Restaurantes
                 .AsNoTracking()
-                .Include(restaurante => restaurante.GustosQueSirve)
                 .Where(restaurante =>
                     !restaurante.DuenoId.HasValue &&
                     string.IsNullOrEmpty(restaurante.PropietarioUid) &&
                     (restaurante.MenuProcesado != true ||
                      !restaurante.GustosQueSirve.Any() ||
                      restaurante.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces ||
-                     restaurante.MenuError != null))
-                .OrderByDescending(restaurante => restaurante.MenuError != null)
+                     !string.IsNullOrWhiteSpace(restaurante.MenuError)));
+            pendientes = consulta.Filtro switch
+            {
+                FiltroPendientesClasificacion.ErrorMenu => pendientes.Where(r => !string.IsNullOrWhiteSpace(r.MenuError)),
+                FiltroPendientesClasificacion.SinMenuProcesado => pendientes.Where(r =>
+                    r.MenuProcesado != true && string.IsNullOrWhiteSpace(r.MenuError)),
+                FiltroPendientesClasificacion.SinGustos => pendientes.Where(r => !r.GustosQueSirve.Any()),
+                FiltroPendientesClasificacion.ClasificacionAutomatica => pendientes.Where(r =>
+                    r.OrigenDatosCompatibilidad == OrigenDatosCompatibilidadRestaurante.GooglePlaces),
+                _ => pendientes
+            };
+            var total = await pendientes.CountAsync(ct);
+            var elementos = await pendientes
+                .Include(restaurante => restaurante.GustosQueSirve)
+                .OrderByDescending(restaurante => !string.IsNullOrWhiteSpace(restaurante.MenuError))
                 .ThenBy(restaurante => restaurante.MenuProcesado == true)
                 .ThenByDescending(restaurante => !restaurante.GustosQueSirve.Any())
                 .ThenBy(restaurante => restaurante.Nombre)
-                .Take(cantidadMaxima)
+                .ThenBy(restaurante => restaurante.Id)
+                .Skip(consulta.Desplazamiento)
+                .Take(consulta.TamanoPagina)
                 .ToListAsync(ct);
+            return new PaginaRestaurantesPendientes(elementos, total, consulta.Pagina, consulta.TamanoPagina);
         }
 
         public async Task<Restaurante?> GetRestauranteByIdAsync(Guid id, CancellationToken ct = default)
             => await _db.Restaurantes.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
+
+        public async Task<List<Restaurante>> ObtenerPorIdsAsync(
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken ct = default)
+        {
+            if (ids.Count == 0)
+                return new List<Restaurante>();
+
+            return await _db.Restaurantes
+                .AsNoTracking()
+                .Include(restaurante => restaurante.GustosQueSirve)
+                    .ThenInclude(gusto => gusto.Tags)
+                .Include(restaurante => restaurante.RestriccionesQueRespeta)
+                .Where(restaurante => ids.Contains(restaurante.Id))
+                .ToListAsync(ct);
+        }
 
         public async Task<Restaurante?> GetRestauranteConImagenesAsync(Guid id, CancellationToken ct = default)
             => await _db.Restaurantes.Include(r => r.Imagenes).FirstOrDefaultAsync(r => r.Id == id, ct);
@@ -82,15 +103,52 @@ namespace GustosApp.Infraestructure.Repositories
         public async Task SaveChangesAsync(CancellationToken ct = default)
         {
             try { await _db.SaveChangesAsync(ct); }
-            catch (DbUpdateConcurrencyException)
+            catch (DbUpdateConcurrencyException ex)
             {
-                throw new InvalidOperationException("Los datos cambiaron durante la operación. Volvé a consultar la solicitud.");
+                throw new InvalidOperationException(
+                    "Los datos cambiaron durante la operación. Volvé a consultar la solicitud.",
+                    ex);
             }
         }
         public Task UpdateAsync(Restaurante restaurante, CancellationToken ct)
         {
             _db.Restaurantes.Update(restaurante);
             return Task.CompletedTask;
+        }
+
+        public Task<List<LocalCercano>> BuscarLocalesEnVentanaAsync(
+            double latitud, double longitud, double amplitudLatitud, double amplitudLongitud, CancellationToken ct)
+        {
+            var minLatitud = Math.Max(-90, latitud - amplitudLatitud);
+            var maxLatitud = Math.Min(90, latitud + amplitudLatitud);
+            var minLongitud = longitud - amplitudLongitud;
+            var maxLongitud = longitud + amplitudLongitud;
+            // La detección de fichas duplicadas también debe ver las desactivadas.
+            var query = _db.Restaurantes.AsNoTracking()
+                .Where(r => r.Latitud >= minLatitud && r.Latitud <= maxLatitud
+                    && r.Longitud >= -180 && r.Longitud <= 180 && (r.Latitud != 0 || r.Longitud != 0));
+
+            if (amplitudLongitud < 180)
+            {
+                if (minLongitud < -180)
+                    query = query.Where(r => r.Longitud <= maxLongitud || r.Longitud >= minLongitud + 360);
+                else if (maxLongitud > 180)
+                    query = query.Where(r => r.Longitud >= minLongitud || r.Longitud <= maxLongitud - 360);
+                else
+                    query = query.Where(r => r.Longitud >= minLongitud && r.Longitud <= maxLongitud);
+            }
+
+            var escalaLongitud = Math.Cos(latitud * Math.PI / 180);
+            return query
+                .Select(r => new { Local = r, DeltaLongitud = Math.Abs(r.Longitud - longitud) })
+                .OrderBy(r => Math.Abs(r.Local.Latitud - latitud) +
+                    (r.DeltaLongitud > 180 ? 360 - r.DeltaLongitud : r.DeltaLongitud) * escalaLongitud)
+                .ThenBy(r => r.Local.Id)
+                .Take(400)
+                .Select(r => new LocalCercano(r.Local.Id, r.Local.Nombre, r.Local.Direccion,
+                    r.Local.Latitud, r.Local.Longitud,
+                    r.Local.DuenoId != null || (r.Local.PropietarioUid != null && r.Local.PropietarioUid.Trim() != "")))
+                .ToListAsync(ct);
         }
 
         public async Task<List<Restaurante>> GetNearbyAsync(
@@ -101,7 +159,7 @@ namespace GustosApp.Infraestructure.Repositories
     CancellationToken ct = default)
         {
             // Traer todos los restaurantes con gustos y restricciones
-            var restaurantes = await _db.Restaurantes
+            var restaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .AsNoTracking()
                 .Include(r => r.GustosQueSirve)
                 .Include(r => r.RestriccionesQueRespeta)
@@ -137,7 +195,7 @@ namespace GustosApp.Infraestructure.Repositories
 
         public async Task<List<Restaurante>> GetAllAsync(CancellationToken ct= default)
         {
-            return await _db.Restaurantes 
+            return await _db.Restaurantes.Where(r => !r.Desactivado)
                            .Include(r => r.GustosQueSirve)
                            .ToListAsync(ct);
         }
@@ -152,7 +210,7 @@ namespace GustosApp.Infraestructure.Repositories
 
             // 1. CARGA COMPLETA Y MATERIALIZACIÓN TEMPRANA (¡Aquí forzamos el ToList!)
             // Esto trae TODOS los restaurantes y sus colecciones a la memoria del servidor.
-            var todosLosRestaurantes = await _db.Restaurantes
+            var todosLosRestaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .Include(r => r.Reviews)
                 .Include(r => r.RestriccionesQueRespeta)
                 .Include(r => r.Platos)
@@ -183,12 +241,12 @@ namespace GustosApp.Infraestructure.Repositories
             return query.ToList();
         }
 
-        public async Task ActualizarValoracionAsync(Guid restauranteId, double promedio, CancellationToken cancellationToken)
+        public async Task ActualizarValoracionAsync(Guid restauranteId, double? promedio, CancellationToken cancellationToken)
         {
             var restaurante = await _db.Restaurantes.FindAsync(new object[] { restauranteId }, cancellationToken);
             if (restaurante != null)
             {
-                restaurante.Valoracion = (decimal)promedio;
+                restaurante.Valoracion = promedio.HasValue ? (decimal)promedio.Value : null;
                 await _db.SaveChangesAsync(cancellationToken);
             }
 
@@ -203,7 +261,7 @@ namespace GustosApp.Infraestructure.Repositories
             }
 
             // Obtener restaurantes que sirvan al menos uno de los gustos del grupo
-            var restaurantes = await _db.Restaurantes
+            var restaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .Include(r => r.GustosQueSirve)
                 .Include(r => r.RestriccionesQueRespeta)
                 .Include(r => r.Reviews)
@@ -218,7 +276,7 @@ namespace GustosApp.Infraestructure.Repositories
         {
             texto = texto.ToLower();
 
-            var restaurantes = await _db.Restaurantes
+            var restaurantes = await _db.Restaurantes.Where(r => !r.Desactivado)
                 .AsNoTracking()
                 .Where(r =>
                     r.Nombre.ToLower().Contains(texto) ||
@@ -268,26 +326,11 @@ namespace GustosApp.Infraestructure.Repositories
 
             prefijo = prefijo.ToLower();
 
-            if(_index.TryGetValue(prefijo, out var lista))
-                return Task.FromResult(lista);
-              
-           return Task.FromResult(new List<Restaurante>());
+            // Consultar el estado vigente en lugar de un índice desconectado construido al abrir el scope.
+            return _db.Restaurantes.AsNoTracking().Where(r => !r.Desactivado && r.Nombre.ToLower().StartsWith(prefijo))
+                .OrderBy(r => r.Nombre).ThenBy(r => r.Id).ToListAsync(ct);
         }
 
-        private void Indexar(Restaurante r)
-        {
-            var nombre = r.Nombre.ToLower();
-
-            for (int i = 1; i <= nombre.Length; i++)
-            {
-                var prefijo = nombre.Substring(0, i);
-
-                if (!_index.ContainsKey(prefijo))
-                    _index[prefijo] = new List<Restaurante>();
-
-                _index[prefijo].Add(r);
-            }
-        }
 
       
         /* public async Task<Restaurante?> GetByIdAsync(Guid id, CancellationToken ct)

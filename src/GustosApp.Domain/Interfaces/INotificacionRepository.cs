@@ -10,6 +10,7 @@ namespace GustosApp.Domain.Interfaces
     public interface INotificacionRepository
     {
         Task crearAsync(Notificacion notificacion,CancellationToken cancellationToken);
+        Task<Notificacion> CrearSiNoExisteAsync(Notificacion notificacion, CancellationToken cancellationToken);
         Task EliminarAsync(Guid notificacionId, CancellationToken ct);
         Task MarcarComoLeidaAsync(Guid notificacionId, CancellationToken ct);
 
@@ -17,5 +18,6 @@ namespace GustosApp.Domain.Interfaces
 
         Task<Notificacion> GetByIdAsync(Guid notificacionId, CancellationToken ct);
         Task<List<Notificacion>> ObtenerNotificacionPorUsuarioAsync(Guid usuarioId, CancellationToken cancellationToken);
+        Task<Notificacion?> ObtenerPorClaveUnicaAsync(string claveUnica, CancellationToken cancellationToken);
     }
 }

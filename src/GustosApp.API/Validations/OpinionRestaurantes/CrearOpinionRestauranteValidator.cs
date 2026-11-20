@@ -52,4 +52,27 @@ namespace GustosApp.API.Validations.OpinionRestaurantes
         }
     }
 
+    public class ActualizarOpinionRestauranteValidator : AbstractValidator<ActualizarOpinionRestauranteRequest>
+    {
+        private const long MaxSize = 2 * 1024 * 1024;
+        private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp" };
+
+        public ActualizarOpinionRestauranteValidator()
+        {
+            RuleFor(x => x.Valoracion).InclusiveBetween(1.0, 5.0)
+                .WithMessage("La valoración debe estar entre 1 y 5.");
+            RuleFor(x => x.Opinion).NotEmpty().MinimumLength(5).MaximumLength(2000);
+            RuleFor(x => x.Titulo).NotEmpty().MinimumLength(3).MaximumLength(100);
+            RuleFor(x => x.FechaVisita).NotNull().LessThanOrEqualTo(DateTime.UtcNow)
+                .WithMessage("La fecha de visita no puede ser futura.");
+            RuleFor(x => x.MotivoVisita).NotEmpty().MinimumLength(3);
+            RuleFor(x => x.Imagenes).Must(x => x == null || x.Count <= 3)
+                .WithMessage("Puede agregar hasta 3 imágenes.");
+            RuleForEach(x => x.Imagenes)
+                .Must(f => f != null && f.Length <= MaxSize).WithMessage("Una imagen supera los 2MB.")
+                .Must(f => f != null && AllowedExtensions.Contains(Path.GetExtension(f.FileName).ToLower()))
+                .WithMessage("Formato de imagen inválido (solo jpg, jpeg, png o webp).");
+        }
+    }
+
 }

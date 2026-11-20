@@ -19,8 +19,8 @@ namespace GustosApp.Application.Tests
         private readonly Mock<IUsuarioRepository> _usuarioRepoMock = new();
         private readonly Mock<IInvitacionGrupoRepository> _invitacionRepoMock = new();
         private readonly Mock<IMiembroGrupoRepository> _miembroGrupoRepoMock = new();
+        private readonly Mock<ISolicitudAmistadRealtimeService> _solicitudesRealtimeMock = new();
         private readonly Mock<INotificacionRepository> _notificacionRepoMock = new();
-        private readonly Mock<INotificacionRealtimeService> _notificacionRealtimeMock = new();
 
         private InvitarUsuarioGrupoUseCase CreateSut()
         {
@@ -29,8 +29,7 @@ namespace GustosApp.Application.Tests
                 _usuarioRepoMock.Object,
                 _invitacionRepoMock.Object,
                 _miembroGrupoRepoMock.Object,
-                _notificacionRepoMock.Object,
-                _notificacionRealtimeMock.Object
+                _solicitudesRealtimeMock.Object
             );
         }
 
@@ -65,7 +64,7 @@ namespace GustosApp.Application.Tests
 
       
         [Fact]
-        public async Task HandleAsync_Deberia_CrearInvitacionYNotificacion_CuandoTodoEsValido()
+        public async Task HandleAsync_Deberia_CrearInvitacionComoSolicitud_CuandoTodoEsValido()
         {
             // Arrange
             var sut = CreateSut();
@@ -89,9 +88,9 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.UsuarioEsAdministradorAsync(grupoId, usuarioInvitador.Id, ct))
                 .ReturnsAsync(true);
 
-            // Lo encuentra por UsuarioId
+            // Quien ya conoce el correo puede invitar sin que el servidor lo liste en respuestas.
             _usuarioRepoMock
-                .Setup(r => r.GetByIdAsync(usuarioInvitado.Id, ct))
+                .Setup(r => r.GetByEmailAsync(usuarioInvitado.Email, ct))
                 .ReturnsAsync(usuarioInvitado);
 
             // No es miembro activo
@@ -104,22 +103,12 @@ namespace GustosApp.Application.Tests
                 .Setup(r => r.ObtenerUltimaInvitacionAsync(grupoId, usuarioInvitado.Id, ct))
                 .ReturnsAsync((InvitacionGrupo?)null);
 
-            Notificacion? notificacionCreada = null;
-            _notificacionRepoMock
-                .Setup(r => r.crearAsync(It.IsAny<Notificacion>(), ct))
-                .Callback<Notificacion, CancellationToken>((n, _) => notificacionCreada = n)
-                .Returns(Task.CompletedTask);
-
             InvitacionGrupo? invitacionCreada = null;
             _invitacionRepoMock
                 .Setup(r => r.CreateAsync(It.IsAny<InvitacionGrupo>(), ct))
                 .Callback<InvitacionGrupo, CancellationToken>((i, _) => invitacionCreada = i)
                  .ReturnsAsync((InvitacionGrupo?)null);
 
-
-            _notificacionRepoMock
-                .Setup(r => r.UpdateAsync(It.IsAny<Notificacion>(), ct))
-                .Returns(Task.CompletedTask);
 
             // GetByIdAsync devuelve la invitación creada
             _invitacionRepoMock
@@ -130,8 +119,8 @@ namespace GustosApp.Application.Tests
             var resultado = await sut.HandleAsync(
                 firebaseInvitador,
                 grupoId,
-                EmailUsuario: null,
-                UsuarioId: usuarioInvitado.Id,
+                EmailUsuario: usuarioInvitado.Email,
+                UsuarioId: null,
                 UsuarioUsername: null,
                 MensajePersonalizado: "Te invito al grupo",
                 ct: ct);
@@ -140,12 +129,6 @@ namespace GustosApp.Application.Tests
             resultado.Should().NotBeNull();
             resultado.Should().BeSameAs(invitacionCreada);
 
-            // Notificación creada correctamente
-            notificacionCreada.Should().NotBeNull();
-            notificacionCreada!.UsuarioDestinoId.Should().Be(usuarioInvitado.Id);
-            notificacionCreada.Titulo.Should().Be("Invitación a grupo");
-            notificacionCreada.Tipo.Should().Be(TipoNotificacion.InvitacionGrupo);
-
             // Invitación creada correctamente
             invitacionCreada.Should().NotBeNull();
             invitacionCreada!.GrupoId.Should().Be(grupoId);
@@ -153,21 +136,10 @@ namespace GustosApp.Application.Tests
             invitacionCreada.UsuarioInvitadorId.Should().Be(usuarioInvitador.Id);
             invitacionCreada.MensajePersonalizado.Should().Be("Te invito al grupo");
 
-            // Notificación actualizada con InvitacionId
-            _notificacionRepoMock.Verify(
-                r => r.UpdateAsync(It.Is<Notificacion>(n =>
-                    n.InvitacionId == invitacionCreada.Id), ct),
-                Times.Once);
-
-            // Notificación realtime enviada
-            _notificacionRealtimeMock.Verify(r => r.EnviarNotificacionAsync(
+            _solicitudesRealtimeMock.Verify(r => r.EnviarInvitacionGrupoAsync(
                 usuarioInvitado.FirebaseUid,
-                notificacionCreada.Titulo,
-                notificacionCreada.Mensaje,
-                notificacionCreada.Tipo.ToString(),
-                ct,
-                notificacionCreada.Id,
-                invitacionCreada.Id
+                invitacionCreada,
+                ct
             ), Times.Once);
         }
 

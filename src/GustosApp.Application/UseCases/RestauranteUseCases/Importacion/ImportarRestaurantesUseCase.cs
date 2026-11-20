@@ -2,6 +2,7 @@ using System.Text.Json;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
+using GustosApp.Application.Interfaces;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.Importacion;
 
@@ -32,17 +33,19 @@ public sealed class ImportarRestaurantesUseCase
     private readonly IGustoRepository _gustoRepository;
     private readonly ClasificadorRestaurantesImportados _clasificador;
     private readonly TimeProvider _timeProvider;
+    private readonly IComprobanteFotoGoogle? _fotosGoogle;
 
     public ImportarRestaurantesUseCase(
         IRestauranteRepository restauranteRepository,
         IGustoRepository gustoRepository,
         ClasificadorRestaurantesImportados clasificador,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider, IComprobanteFotoGoogle? fotosGoogle = null)
     {
         _restauranteRepository = restauranteRepository;
         _gustoRepository = gustoRepository;
         _clasificador = clasificador;
         _timeProvider = timeProvider;
+        _fotosGoogle = fotosGoogle;
     }
 
     public async Task<ResultadoImportacionRestaurantes> HandleAsync(
@@ -73,6 +76,8 @@ public sealed class ImportarRestaurantesUseCase
             ValidarEntrada(entrada);
 
             var placeId = NormalizarPlaceId(entrada.PlaceId);
+            if (!string.IsNullOrWhiteSpace(entrada.ComprobanteFotoGoogle) && _fotosGoogle?.Validar(entrada.ComprobanteFotoGoogle, placeId) != true)
+                throw new ArgumentException("La consulta de fotos venció o no corresponde a esta ficha. Volvé a buscar antes de importar.");
             var clasificacion = _clasificador.Clasificar(entrada);
             var gustosEstimados = ResolverGustos(clasificacion, catalogoGustos);
             if (!procesados.Add(placeId))
@@ -283,7 +288,7 @@ public sealed class ImportarRestaurantesUseCase
                tipoNormalizado.EndsWith("_restaurant", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static Restaurante CrearRestaurante(
+    private Restaurante CrearRestaurante(
         RestauranteImportacionEntrada entrada,
         string placeId,
         DateTime fechaDatosUtc,
@@ -302,7 +307,7 @@ public sealed class ImportarRestaurantesUseCase
         return restaurante;
     }
 
-    private static void AplicarDatos(
+    private void AplicarDatos(
         Restaurante restaurante,
         RestauranteImportacionEntrada entrada,
         string placeId,
@@ -328,12 +333,23 @@ public sealed class ImportarRestaurantesUseCase
         restaurante.TypesJson = EsArregloJsonVacio(entrada.TypesJson) && !EsArregloJsonVacio(restaurante.TypesJson)
             ? restaurante.TypesJson
             : entrada.TypesJson;
-        restaurante.ImagenUrl = LimpiarOpcional(entrada.ImagenUrl) ?? restaurante.ImagenUrl;
+        if ((restaurante.OrigenImagen == OrigenImagenRestaurante.Google ||
+            (string.IsNullOrWhiteSpace(restaurante.ImagenUrl) && restaurante.OrigenImagen == OrigenImagenRestaurante.Desconocida)) &&
+            _fotosGoogle?.Validar(entrada.ComprobanteFotoGoogle, placeId) == true)
+        {
+            restaurante.ImagenUrl = ImagenRestaurantePublica.GoogleActual;
+            restaurante.OrigenImagen = OrigenImagenRestaurante.Google;
+        }
+        else if (string.IsNullOrWhiteSpace(restaurante.ImagenUrl) && !string.IsNullOrWhiteSpace(entrada.ImagenUrl))
+        {
+            restaurante.ImagenUrl = entrada.ImagenUrl.Trim();
+            restaurante.OrigenImagen = OrigenImagenRestaurante.Administracion;
+        }
         restaurante.ActualizadoUtc = fechaDatosUtc;
         restaurante.UltimaActualizacion = fechaDatosUtc;
     }
 
-    private static bool TieneCambios(
+    private bool TieneCambios(
         Restaurante restaurante,
         RestauranteImportacionEntrada entrada,
         string placeId,
@@ -356,6 +372,7 @@ public sealed class ImportarRestaurantesUseCase
             PrimaryType = restaurante.PrimaryType,
             TypesJson = restaurante.TypesJson,
             ImagenUrl = restaurante.ImagenUrl,
+            OrigenImagen = restaurante.OrigenImagen,
             ActualizadoUtc = restaurante.ActualizadoUtc,
             UltimaActualizacion = restaurante.UltimaActualizacion
         };
@@ -376,6 +393,7 @@ public sealed class ImportarRestaurantesUseCase
                restaurante.PrimaryType != copia.PrimaryType ||
                restaurante.TypesJson != copia.TypesJson ||
                restaurante.ImagenUrl != copia.ImagenUrl ||
+               restaurante.OrigenImagen != copia.OrigenImagen ||
                NormalizarFechaUtc(restaurante.UltimaActualizacion) != copia.UltimaActualizacion;
     }
 

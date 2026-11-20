@@ -26,40 +26,25 @@ namespace GustosApp.API.DTO
     public class BeneficiosPremiumDto
     {
         public List<string> Beneficios { get; set; } = new List<string>();
-        public decimal Precio { get; set; }
+        public decimal? Precio { get; set; }
         public string Moneda { get; set; } = "ARS";
 
         public BeneficiosPremiumDto()
         {
             Beneficios = new List<string>
             {
-                "Grupos ilimitados",
-                "Recomendaciones mejoradas con IA",
-                "Análisis avanzado de preferencias grupales",
-                "Soporte prioritario",
-                "Funciones exclusivas para administradores"
+                "Grupos sin límite",
+                "Restaurantes favoritos sin límite"
             };
         }
     }
 
-    public class CrearPagoRequest
-    {
-        public string FirebaseUid { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string NombreCompleto { get; set; } = string.Empty;
-    }
-
     public class CrearPagoResponse
     {
-        public string InitPoint { get; set; } = string.Empty;
+        public Guid CompraId { get; set; }
+        public string? InitPoint { get; set; }
         public string Status { get; set; } = string.Empty;
-    }
-
-    public class CrearPagoTestRequest
-    {
-        public string? UsuarioId { get; set; }
-        public string? Email { get; set; }
-        public string? NombreCompleto { get; set; }
+        public bool Reutilizada { get; set; }
     }
 
     public class WebhookPagoRequest

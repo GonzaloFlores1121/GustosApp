@@ -2,6 +2,7 @@ using GustosApp.Application.Interfaces;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using GustosApp.Domain.Model.@enum;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases.SolicitudRestauranteUseCases;
 
@@ -16,20 +17,17 @@ public sealed class ReclamarRestauranteUseCase(
         var tipoComprobante = datos.Validar();
         var usuario = await usuarios.GetByFirebaseUidAsync(firebaseUid, ct)
             ?? throw new KeyNotFoundException("Usuario no encontrado.");
-        var pendiente = await solicitudes.BuscarReclamoPendienteAsync(usuario.Id, restauranteId, ct);
-        if (pendiente != null)
-        {
-            return pendiente.Id;
-        }
         if (usuario.Rol != RolUsuario.Usuario)
             throw new InvalidOperationException("Ya sos dueño de un restaurante.");
-        if (await solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct) != null)
+        var pendiente = await solicitudes.BuscarReclamoPendienteAsync(usuario.Id, restauranteId, ct);
+        if (pendiente == null && await solicitudes.BuscarPendientePorUsuarioAsync(usuario.Id, ct) != null)
             throw new InvalidOperationException("Ya tenés una solicitud de restaurante pendiente.");
 
         var restaurante = await restaurantes.GetRestauranteByIdAsync(restauranteId, ct)
             ?? throw new KeyNotFoundException("Restaurante no encontrado.");
         if (restaurante.DuenoId.HasValue || !string.IsNullOrWhiteSpace(restaurante.PropietarioUid))
             throw new InvalidOperationException("El restaurante ya tiene propietario.");
+        if (pendiente != null) return pendiente.Id;
 
         var solicitud = new SolicitudRestaurante
         {
@@ -51,7 +49,16 @@ public sealed class ReclamarRestauranteUseCase(
             HorariosJson = restaurante.HorariosJson,
             Estado = EstadoSolicitudRestaurante.Pendiente
         };
-        await solicitudes.AddAsync(solicitud, ct);
+        try
+        {
+            await solicitudes.AddAsync(solicitud, ct);
+        }
+        catch (SolicitudRestauranteConcurrenteException)
+        {
+            var concurrente = await solicitudes.BuscarReclamoPendienteAsync(usuario.Id, restauranteId, ct);
+            if (concurrente == null) throw;
+            return concurrente.Id;
+        }
         return solicitud.Id;
     }
 }

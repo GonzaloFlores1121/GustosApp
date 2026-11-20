@@ -43,6 +43,14 @@ namespace GustosApp.Infraestructure.Configurations
             b.Property(r => r.WebUrl)
                 .HasMaxLength(2048);
 
+            b.Property(r => r.EstadoUltimaActualizacionExterna)
+                .HasConversion<string>()
+                .HasMaxLength(16)
+                .HasDefaultValue(GustosApp.Domain.Common.EstadoActualizacionExternaRestaurante.Nunca);
+
+            b.Property(r => r.ErrorUltimaActualizacionExterna)
+                .HasMaxLength(2000);
+
             b.Property(r => r.PrimaryType)
                 .HasMaxLength(80)
                 .IsRequired()
@@ -69,6 +77,11 @@ namespace GustosApp.Infraestructure.Configurations
                 .HasMaxLength(24)
                 .HasDefaultValue(GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante.Estimado)
                 .HasSentinel((GustosApp.Domain.Common.EstadoDatosCompatibilidadRestaurante)(-1));
+
+            b.Property(r => r.VigenciaGustosJson).HasColumnType("nvarchar(max)");
+            b.Property(r => r.VigenciaRestriccionesJson).HasColumnType("nvarchar(max)");
+            b.Property(r => r.VersionOferta).IsConcurrencyToken();
+            b.Property(r => r.VersionRestricciones).IsConcurrencyToken();
 
             b.HasIndex(r => r.NombreNormalizado)
                 .HasDatabaseName("IX_Restaurantes_NombreNormalizado")

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using GustosApp.Domain.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace GustosApp.Application.UseCases.RestauranteUseCases
 {
@@ -10,18 +11,23 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
     {
         private readonly IRestauranteEstadisticasRepository _estadisticasRepository;
 
+        private readonly ILogger? _logger;
+
         public RegistrarTop3GrupoRestaurantesUseCase(
-            IRestauranteEstadisticasRepository estadisticasRepository)
+            IRestauranteEstadisticasRepository estadisticasRepository, ILogger<RegistrarTop3GrupoRestaurantesUseCase>? logger = null)
         {
             _estadisticasRepository = estadisticasRepository;
+            _logger = logger;
         }
 
-        public Task HandleAsync(IEnumerable<Guid> restauranteIds, CancellationToken ct = default)
+        public async Task HandleAsync(IEnumerable<Guid> restauranteIds, CancellationToken ct = default)
         {
             if (restauranteIds == null)
                 throw new ArgumentNullException(nameof(restauranteIds));
 
-            return _estadisticasRepository.IncrementarTop3GrupoAsync(restauranteIds, ct);
+            try { await _estadisticasRepository.IncrementarTop3GrupoAsync(restauranteIds, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException && !ct.IsCancellationRequested)
+            { _logger?.LogWarning(ex, "No se pudo registrar una aparición en recomendaciones."); }
         }
     }
 }

@@ -65,6 +65,8 @@ namespace GustosApp.Application.UseCases.NotificacionUseCases
                 );
 
 
+                if (recomendaciones.Count == 0) continue;
+
                 await _email.EnviarEmailAsync(
                     usuario.Email,
                     "Recomendación personalizada",

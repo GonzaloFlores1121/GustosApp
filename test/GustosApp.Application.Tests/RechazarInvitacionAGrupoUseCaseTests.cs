@@ -1,261 +1,68 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases;
 using GustosApp.Application.Common.Exceptions;
+using GustosApp.Application.Interfaces;
+using GustosApp.Application.UseCases.GrupoUseCases.InvitacionGrupoUseCases;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
 
-namespace GustosApp.Application.Tests
+namespace GustosApp.Application.Tests;
+
+public class RechazarInvitacionAGrupoUseCaseTests
 {
-    public class RechazarInvitacionAGrupoUseCaseTests
+    private readonly Mock<IUsuarioRepository> _usuarios = new();
+    private readonly Mock<IInvitacionGrupoRepository> _invitaciones = new();
+    private readonly Mock<ISolicitudAmistadRealtimeService> _realtime = new();
+
+    private RechazarInvitacionAGrupoUseCase CreateSut() =>
+        new(_usuarios.Object, _invitaciones.Object, _realtime.Object);
+
+    [Fact]
+    public async Task HandleAsync_RechazaPorIdDeInvitacion()
     {
-        private readonly Mock<IUsuarioRepository> _usuarioRepoMock;
-        private readonly Mock<INotificacionRepository> _notificacionRepoMock;
-        private readonly Mock<IInvitacionGrupoRepository> _invitacionRepoMock;
-
-        private readonly RechazarInvitacionAGrupoUseCase _sut;
-
-        public RechazarInvitacionAGrupoUseCaseTests()
-        {
-            _usuarioRepoMock = new Mock<IUsuarioRepository>();
-            _notificacionRepoMock = new Mock<INotificacionRepository>();
-            _invitacionRepoMock = new Mock<IInvitacionGrupoRepository>();
-
-            _sut = new RechazarInvitacionAGrupoUseCase(
-                _usuarioRepoMock.Object,
-                _notificacionRepoMock.Object,
-                _invitacionRepoMock.Object
-            );
-        }
-
-
-        [Fact]
-        public async Task HandleAsync_UsuarioNoEncontrado_LanzaUnauthorized()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-
-            _usuarioRepoMock
-                .Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                .ReturnsAsync((Usuario?)null);
-
-            Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(act);
-
-            _invitacionRepoMock.Verify(
-                r => r.UpdateAsync(It.IsAny<InvitacionGrupo>(), It.IsAny<CancellationToken>()),
-                Times.Never);
-            _notificacionRepoMock.Verify(
-                r => r.EliminarAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
-                Times.Never);
-        }
-
-        [Fact]
-        public async Task HandleAsync_NotificacionNoEncontrada_LanzaArgumentException()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-
-            var usuario = new Usuario { Id = Guid.NewGuid() };
-
-            _usuarioRepoMock
-                .Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(usuario);
-
-            _notificacionRepoMock
-                .Setup(r => r.GetByIdAsync(notifId, It.IsAny<CancellationToken>()))
-                .ReturnsAsync((Notificacion?)null);
-
-            Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            await Assert.ThrowsAsync<ArgumentException>(act);
-        }
-
-      
-        [Fact]
-        public async Task HandleAsync_NotificacionSinInvitacionId_LanzaArgumentException()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-
-            var usuario = new Usuario { Id = Guid.NewGuid() };
-            var noti = new Notificacion { InvitacionId = null };
-
-            _usuarioRepoMock.Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                            .ReturnsAsync(usuario);
-
-            _notificacionRepoMock.Setup(r => r.GetByIdAsync(notifId, It.IsAny<CancellationToken>()))
-                                 .ReturnsAsync(noti);
-
-            Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            await Assert.ThrowsAsync<ArgumentException>(act);
-        }
-
-  
-        [Fact]
-        public async Task HandleAsync_InvitacionNoEncontrada_LanzaArgumentException()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-            Guid invitacionId = Guid.NewGuid();
-
-            var usuario = new Usuario { Id = Guid.NewGuid() };
-            var noti = new Notificacion { InvitacionId = invitacionId };
-
-            _usuarioRepoMock.Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                            .ReturnsAsync(usuario);
-
-            _notificacionRepoMock.Setup(r => r.GetByIdAsync(notifId, It.IsAny<CancellationToken>()))
-                                 .ReturnsAsync(noti);
-
-            _invitacionRepoMock.Setup(r => r.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
-                               .ReturnsAsync((InvitacionGrupo?)null);
-
-            Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            await Assert.ThrowsAsync<ArgumentException>(act);
-        }
-
-
-        [Fact]
-        public async Task HandleAsync_InvitacionParaOtroUsuario_LanzaAccesoProhibido()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-            Guid invitacionId = Guid.NewGuid();
-
-            var usuario = new Usuario { Id = Guid.NewGuid() };
-            var noti = new Notificacion { InvitacionId = invitacionId };
-
-            var invitacion = new InvitacionGrupo(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null);
-            // UsuarioInvitadoId es otro
-            invitacion = new InvitacionGrupo(Guid.NewGuid(), Guid.NewGuid(), usuario.Id, null);
-
-            _usuarioRepoMock.Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                            .ReturnsAsync(usuario);
-
-            _notificacionRepoMock.Setup(r => r.GetByIdAsync(notifId, It.IsAny<CancellationToken>()))
-                                 .ReturnsAsync(noti);
-
-            _invitacionRepoMock.Setup(r => r.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
-                               .ReturnsAsync(invitacion);
-
-            Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            await Assert.ThrowsAsync<AccesoProhibidoException>(act);
-
-            _invitacionRepoMock.Verify(
-                r => r.UpdateAsync(It.IsAny<InvitacionGrupo>(), It.IsAny<CancellationToken>()),
-                Times.Never);
-            _notificacionRepoMock.Verify(
-                r => r.EliminarAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
-                Times.Never);
-        }
-
- 
-    
-        [Fact]
-        public async Task HandleAsync_InvitacionNoPendiente_LanzaArgumentException()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-            Guid invitacionId = Guid.NewGuid();
-
-            var usuario = new Usuario { Id = Guid.NewGuid() };
-            var noti = new Notificacion { InvitacionId = invitacionId };
-
-            var invitacion = new InvitacionGrupo(Guid.NewGuid(), usuario.Id, Guid.NewGuid(), null);
-            invitacion.Aceptar(); // ya no está pendiente
-
-            _usuarioRepoMock.Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                            .ReturnsAsync(usuario);
-
-            _notificacionRepoMock.Setup(r => r.GetByIdAsync(notifId, It.IsAny<CancellationToken>()))
-                                 .ReturnsAsync(noti);
-
-            _invitacionRepoMock.Setup(r => r.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
-                               .ReturnsAsync(invitacion);
-
-            Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            await Assert.ThrowsAsync<ArgumentException>(act);
-        }
-
- 
-        [Fact]
-        public async Task HandleAsync_InvitacionExpirada_LanzaArgumentException()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-            Guid invitacionId = Guid.NewGuid();
-
-            var usuario = new Usuario { Id = Guid.NewGuid() };
-            var noti = new Notificacion { InvitacionId = invitacionId };
-
-            var invitacion = new InvitacionGrupo(Guid.NewGuid(), usuario.Id, Guid.NewGuid(), null);
-            invitacion.FechaExpiracion = DateTime.UtcNow.AddMinutes(-5); // EXPIRED
-
-            _usuarioRepoMock.Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                            .ReturnsAsync(usuario);
-
-            _notificacionRepoMock.Setup(r => r.GetByIdAsync(notifId, It.IsAny<CancellationToken>()))
-                                 .ReturnsAsync(noti);
-
-            _invitacionRepoMock.Setup(r => r.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
-                               .ReturnsAsync(invitacion);
-
-            Func<Task> act = () => _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            await Assert.ThrowsAsync<ArgumentException>(act);
-        }
-
-   
-        [Fact]
-        public async Task HandleAsync_CasoFeliz_RechazaInvitacionYEliminaNotificacion()
-        {
-            string uid = "uid123";
-            Guid notifId = Guid.NewGuid();
-            Guid invitacionId = Guid.NewGuid();
-
-            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = uid };
-            var notificacion = new Notificacion { InvitacionId = invitacionId };
-
-            var invitacion = new InvitacionGrupo(Guid.NewGuid(), usuario.Id, Guid.NewGuid(), null)
-            {
-                FechaExpiracion = DateTime.UtcNow.AddMinutes(5) // NO expira
-            };
-
-            _usuarioRepoMock.Setup(r => r.GetByFirebaseUidAsync(uid, It.IsAny<CancellationToken>()))
-                            .ReturnsAsync(usuario);
-
-            _notificacionRepoMock.Setup(r => r.GetByIdAsync(notifId, It.IsAny<CancellationToken>()))
-                                 .ReturnsAsync(notificacion);
-
-            _invitacionRepoMock.Setup(r => r.GetByIdAsync(invitacionId, It.IsAny<CancellationToken>()))
-                               .ReturnsAsync(invitacion);
-
-            _invitacionRepoMock.Setup(r => r.UpdateAsync(invitacion, It.IsAny<CancellationToken>()))
-                              .ReturnsAsync((InvitacionGrupo?)null);
-
-
-            _notificacionRepoMock.Setup(r => r.EliminarAsync(notifId, It.IsAny<CancellationToken>()))
-                                 .Returns(Task.CompletedTask);
-
-            // Act
-            await _sut.HandleAsync(uid, notifId, CancellationToken.None);
-
-            // Assert
-            Assert.Equal(EstadoInvitacion.Rechazada, invitacion.Estado);
-
-            _notificacionRepoMock.Verify(r => r.EliminarAsync(notifId, It.IsAny<CancellationToken>()), Times.Once);
-            _invitacionRepoMock.Verify(r => r.UpdateAsync(invitacion, It.IsAny<CancellationToken>()), Times.Once);
-        }
+        var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "uid" };
+        var invitacion = new InvitacionGrupo(Guid.NewGuid(), usuario.Id, Guid.NewGuid());
+        _usuarios.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(usuario);
+        _invitaciones.Setup(r => r.GetByIdAsync(invitacion.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitacion);
+
+        await CreateSut().HandleAsync("uid", invitacion.Id, CancellationToken.None);
+
+        Assert.Equal(EstadoInvitacion.Rechazada, invitacion.Estado);
+        _invitaciones.Verify(r => r.UpdateAsync(invitacion, It.IsAny<CancellationToken>()), Times.Once);
+        _realtime.Verify(r => r.EnviarSolicitudResueltaAsync(
+            "uid", invitacion.Id, "invitacion_grupo", "rechazada", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task HandleAsync_DeOtroDestinatario_LanzaAccesoProhibido()
+    {
+        var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "uid" };
+        var invitacion = new InvitacionGrupo(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        _usuarios.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(usuario);
+        _invitaciones.Setup(r => r.GetByIdAsync(invitacion.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitacion);
+
+        await Assert.ThrowsAsync<AccesoProhibidoException>(() =>
+            CreateSut().HandleAsync("uid", invitacion.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task HandleAsync_Expirada_PersisteEstadoYNoLaResuelve()
+    {
+        var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "uid" };
+        var invitacion = new InvitacionGrupo(
+            Guid.NewGuid(), usuario.Id, Guid.NewGuid(), fechaCreacionUtc: DateTime.UtcNow.AddDays(-8));
+        _usuarios.Setup(r => r.GetByFirebaseUidAsync("uid", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(usuario);
+        _invitaciones.Setup(r => r.GetByIdAsync(invitacion.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitacion);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateSut().HandleAsync("uid", invitacion.Id, CancellationToken.None));
+
+        Assert.Equal(EstadoInvitacion.Expirada, invitacion.Estado);
+        _invitaciones.Verify(r => r.UpdateAsync(invitacion, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

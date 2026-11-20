@@ -100,7 +100,7 @@ namespace GustosApp.Infraestructure.Repositories
 
             if (miembro == null)
             {
-                throw new UnauthorizedAccessException("El usuario no está activo en el grupo o no existe");
+                throw new UnauthorizedAccessException("El usuario no estï¿½ activo en el grupo o no existe");
             }
 
             miembro.ParticipaEnRecomendacion = false;
@@ -117,7 +117,7 @@ namespace GustosApp.Infraestructure.Repositories
 
             if (miembro == null)
             {
-                throw new UnauthorizedAccessException("El usuario no está activo en el grupo o no existe");
+                throw new UnauthorizedAccessException("El usuario no estï¿½ activo en el grupo o no existe");
             }
 
             miembro.ParticipaEnRecomendacion = true;
@@ -133,9 +133,12 @@ namespace GustosApp.Infraestructure.Repositories
             var miembros = await _context.MiembrosGrupos
                 .Include(m => m.Usuario)
                     .ThenInclude(u => u.Restricciones)
+                        .ThenInclude(r => r.TagsProhibidos)
                 .Include(m => m.Usuario)
                     .ThenInclude(u => u.CondicionesMedicas)
+                        .ThenInclude(c => c.TagsCriticos)
                         .Where(m => m.GrupoId == grupoId && m.ParticipaEnRecomendacion && m.Activo)
+                .AsNoTracking()
                 .ToListAsync();
 
             var todasLasPreferencias = miembros
@@ -150,7 +153,21 @@ namespace GustosApp.Infraestructure.Repositories
                 .Distinct()
                 .ToList();
 
-            return new UsuarioPreferencias() {Restricciones=todasLasPreferencias,CondicionesMedicas = todasLasCondiciones };
+            var reglas = miembros.SelectMany(m => m.Usuario.Restricciones
+                    .Select(r => new ReglaCompatibilidadPreferencia(r.Id, true,
+                        r.TagsProhibidos.Select(t => t.NombreNormalizado).ToArray()))
+                    .Concat(m.Usuario.CondicionesMedicas.Select(c =>
+                        new ReglaCompatibilidadPreferencia(c.Id, false,
+                            c.TagsCriticos.Select(t => t.NombreNormalizado).ToArray()))))
+                .DistinctBy(regla => (regla.Id, regla.EsRestriccion))
+                .ToList();
+
+            return new UsuarioPreferencias
+            {
+                Restricciones = todasLasPreferencias,
+                CondicionesMedicas = todasLasCondiciones,
+                ReglasCompatibilidad = reglas
+            };
 
 
         }

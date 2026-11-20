@@ -7,6 +7,8 @@ using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model.@enum;
 using GustosApp.Domain.Model;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
+using GustosApp.Application.Common.Exceptions;
 
 namespace GustosApp.Infraestructure.Repositories
 {
@@ -58,21 +60,27 @@ namespace GustosApp.Infraestructure.Repositories
             {
                 throw new InvalidOperationException("El usuario o la solicitud cambiaron durante la operación. Volvé a consultar su estado.");
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 } sql
+                && sql.Message.Contains("'IX_SolicitudesRestaurantes_UsuarioId'", StringComparison.Ordinal))
             {
-                throw new InvalidOperationException("Ya existe una solicitud de restaurante pendiente para este usuario.");
+                _db.SolicitudesRestaurantes.Remove(solicitud);
+                throw new SolicitudRestauranteConcurrenteException(ex);
             }
         }
 
         public async Task UpdateAsync(SolicitudRestaurante solicitud, CancellationToken ct)
         {
-            _db.SolicitudesRestaurantes.Update(solicitud);
+            if (_db.Entry(solicitud).State == EntityState.Detached)
+                _db.SolicitudesRestaurantes.Update(solicitud);
             try { await _db.SaveChangesAsync(ct); }
             catch (DbUpdateConcurrencyException)
             {
                 throw new InvalidOperationException("La solicitud cambió durante la operación. Volvé a consultar su estado.");
             }
         }
+
+        public Task RecargarAsync(SolicitudRestaurante solicitud, CancellationToken ct) =>
+            _db.Entry(solicitud).ReloadAsync(ct);
 
         public async Task<IEnumerable<SolicitudRestaurante>> GetAllAsync(CancellationToken ct)
         {

@@ -1,0 +1,170 @@
+[
+  {
+    "nombre": "noche a las 23",
+    "instante": "2026-11-17T02:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"02:00\"},{\"dia\":\"Martes\",\"cerrado\":true}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "día previo continúa a la 01 aunque hoy cierre",
+    "instante": "2026-11-17T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"02:00\"},{\"dia\":\"Martes\",\"cerrado\":true}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "apertura inclusiva",
+    "instante": "2026-11-16T23:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"02:00\"},{\"dia\":\"Martes\",\"cerrado\":true}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "antes de abrir",
+    "instante": "2026-11-16T22:59:59Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"02:00\"},{\"dia\":\"Martes\",\"cerrado\":true}]",
+    "esperado": "Cerrado"
+  },
+  {
+    "nombre": "cierre exclusivo",
+    "instante": "2026-11-17T05:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"02:00\"},{\"dia\":\"Martes\",\"cerrado\":true}]",
+    "esperado": "Cerrado"
+  },
+  {
+    "nombre": "domingo cruza al lunes",
+    "instante": "2026-11-16T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"desde\":\"20:00\",\"hasta\":\"02:00\"},{\"dia\":\"Lunes\",\"cerrado\":true}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "zona argentina aunque UTC esté en lunes",
+    "instante": "2026-11-16T00:30:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"desde\":\"20:00\",\"hasta\":\"02:00\"},{\"dia\":\"Lunes\",\"cerrado\":true}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "primer turno",
+    "instante": "2026-11-16T17:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"12:00\",\"hasta\":\"15:00\"},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"23:00\"}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "entre turnos",
+    "instante": "2026-11-16T19:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"12:00\",\"hasta\":\"15:00\"},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"23:00\"}]",
+    "esperado": "Cerrado"
+  },
+  {
+    "nombre": "segundo turno",
+    "instante": "2026-11-17T00:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"12:00\",\"hasta\":\"15:00\"},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"23:00\"}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "fin de segundo turno",
+    "instante": "2026-11-17T02:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"12:00\",\"hasta\":\"15:00\"},{\"dia\":\"Lunes\",\"desde\":\"20:00\",\"hasta\":\"23:00\"}]",
+    "esperado": "Cerrado"
+  },
+  {
+    "nombre": "cerrado explícitamente ambos días",
+    "instante": "2026-11-16T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"cerrado\":true}]",
+    "esperado": "Cerrado"
+  },
+  {
+    "nombre": "hoy ausente",
+    "instante": "2026-11-16T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "ayer ausente no prueba cierre",
+    "instante": "2026-11-16T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"cerrado\":true}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "hoy abierto basta como evidencia",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"desde\":\"09:00\",\"hasta\":\"18:00\"}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "24 horas explícitas",
+    "instante": "2026-11-16T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"todoElDia\":true}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "24 horas como 00 a 24",
+    "instante": "2026-11-16T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"desde\":\"00:00\",\"hasta\":\"24:00\"}]",
+    "esperado": "Abierto"
+  },
+  {
+    "nombre": "00 a 00 es ambiguo",
+    "instante": "2026-11-16T04:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"desde\":\"00:00\",\"hasta\":\"00:00\"}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "hora fuera de rango",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"25:00\",\"hasta\":\"30:00\"}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "minutos fuera de rango",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[{\"dia\":\"Domingo\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"09:70\",\"hasta\":\"18:00\"}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "intervalo incompleto",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"desde\":\"09:00\"}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "sin horas no supone 24 horas",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"cerrado\":false}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "bandera inválida",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"cerrado\":\"false\",\"desde\":\"09:00\",\"hasta\":\"18:00\"}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "información contradictoria",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[{\"dia\":\"Lunes\",\"cerrado\":true},{\"dia\":\"Lunes\",\"desde\":\"09:00\",\"hasta\":\"18:00\"}]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "fila nula",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[null]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "datos vacíos",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "[]",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "objeto sin contrato semanal",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": "{}",
+    "esperado": "Desconocido"
+  },
+  {
+    "nombre": "sin horarios",
+    "instante": "2026-11-16T15:00:00Z",
+    "horariosJson": null,
+    "esperado": "Desconocido"
+  }
+]

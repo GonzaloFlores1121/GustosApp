@@ -59,7 +59,6 @@ namespace GustosApp.Application.UseCases.RestauranteUseCases
                 if (usuario != null)
                 {
                     usuarioId = usuario.Id;
-                    await _visitas.IncrementarVisitaPerfilAsync(restaurante.Id, ct);
                     esFavorito = await _favoritos.ExistsAsync(usuario.Id, restaurante.Id, ct);
                 }
             }

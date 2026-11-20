@@ -41,6 +41,8 @@ namespace GustosApp.API.Controllers
         private readonly ConfirmarAmistadEntreUsuarios _confirmarAmistadEntreUsuarios;
         private readonly IMapper _mapper;
         private readonly ICacheService _cache;
+        private readonly IFirebaseAuthService _firebaseAuth;
+        private readonly IUsuarioRepository _usuarios;
 
 
 
@@ -48,7 +50,7 @@ namespace GustosApp.API.Controllers
             ObtenerGustosFiltradosUseCase getGustos, GuardarGustosUseCase saveGustos, ObtenerResumenRegistroUseCase resumen, FinalizarRegistroUseCase finalizar,
             IMapper mapper, IUsuarioRepository usuarioRepository,
             ObtenerUsuarioUseCase obtenerUsuario, ConfirmarAmistadEntreUsuarios confirmarAmistadEntreUsuarios,
-            ICacheService cache)
+            ICacheService cache, IFirebaseAuthService firebaseAuth)
         {
 
             _registrar = context;
@@ -62,6 +64,8 @@ namespace GustosApp.API.Controllers
             _obtenerUsuario = obtenerUsuario;
             _confirmarAmistadEntreUsuarios = confirmarAmistadEntreUsuarios;
             _cache = cache;
+            _firebaseAuth = firebaseAuth;
+            _usuarios = usuarioRepository;
         }
 
         [Authorize]
@@ -77,16 +81,34 @@ namespace GustosApp.API.Controllers
 
             var firebaseUid = GetFirebaseUid();
 
+            var identidad = await _firebaseAuth.GetUserByUidAsync(firebaseUid);
+            if (identidad?.Uid != firebaseUid || string.IsNullOrWhiteSpace(identidad.Email))
+                return Unauthorized(new { code = "INVALID_IDENTITY", message = "No pudimos verificar tu cuenta." });
+            if (!string.Equals(identidad.Email, request.Email?.Trim(), StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { code = "EMAIL_MISMATCH", message = "El correo no coincide con tu cuenta." });
+
             //automapper para mapear request a usuario para el caso de uso
             var user = _mapper.Map<Usuario>(request);
 
-            var usuarioGuardado = await _registrar.HandleAsync(firebaseUid, user, ct);
+            user.Email = identidad.Email;
+            ResultadoRegistroUsuario resultado;
+            try
+            {
+                resultado = await _registrar.HandleConEstadoAsync(firebaseUid, user, ct);
+            }
+            catch (ConflictoRegistroUsuarioException ex)
+            {
+                return Conflict(new { code = ex.Codigo, message = ex.Codigo == "EMAIL_TAKEN"
+                    ? "Este correo está asociado a otra cuenta." : "Este nombre de usuario ya está en uso." });
+            }
 
             var response = new RegistrarUsuarioResponse
             {
                 Message = "Usuario registrado exitosamente.",
                 //mapeo el usuario que devuelve el usecase a un DTO para el front
-                Usuario = _mapper.Map<UsuarioResponse>(usuarioGuardado)
+                Usuario = _mapper.Map<UsuarioResponse>(resultado.Usuario),
+                IsNewUser = resultado.EsNuevo,
+                Rol = resultado.Usuario.Rol.ToString()
 
             };
             return Ok(response);
@@ -313,6 +335,17 @@ namespace GustosApp.API.Controllers
 
 
         [Authorize]
+        [HttpGet("rol")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> ObtenerRolActual(CancellationToken ct)
+        {
+            var usuario = await _obtenerUsuario.HandleAsync(FirebaseUid: GetFirebaseUid(), ct: ct);
+            return Ok(new { rol = usuario.Rol.ToString() });
+        }
+
+
+        [Authorize]
         [HttpGet("me")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -323,9 +356,9 @@ namespace GustosApp.API.Controllers
             if (string.IsNullOrWhiteSpace(uid))
                 return Unauthorized(new { error = "UID inválido" });
 
-            var usuario = await _obtenerUsuario.HandleAsync(FirebaseUid: uid, ct: ct);
+            var usuario = await _usuarios.GetByFirebaseUidAsync(uid, ct);
             if (usuario == null)
-                return Unauthorized(new { error = "Usuario no encontrado" });
+                return NotFound(new { code = "REGISTRATION_PENDING", message = "Terminá el registro para continuar." });
 
             var response = new
             {

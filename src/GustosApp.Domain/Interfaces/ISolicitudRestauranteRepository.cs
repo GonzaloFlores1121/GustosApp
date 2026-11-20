@@ -17,6 +17,7 @@ namespace GustosApp.Domain.Interfaces
         Task<List<SolicitudRestaurante>> GetPendientesAsync(CancellationToken ct);
         Task AddAsync(SolicitudRestaurante solicitud, CancellationToken ct);
         Task UpdateAsync(SolicitudRestaurante solicitud, CancellationToken ct);
+        Task RecargarAsync(SolicitudRestaurante solicitud, CancellationToken ct);
         Task<IEnumerable<SolicitudRestaurante>> GetAllAsync(CancellationToken ct);
         Task<IEnumerable<SolicitudRestaurante>> GetByEstadoAsync(
             EstadoSolicitudRestaurante estado,

@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Mail;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Common.Exceptions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -19,19 +20,19 @@ namespace GustosApp.Infraestructure.Services
 
         public async Task EnviarEmailAsync(string destinatario, string asunto, string cuerpoHtml, CancellationToken ct = default)
         {
+            ct.ThrowIfCancellationRequested();
             var smtpHost = _config["Email:SmtpHost"];
-            var smtpPort = int.Parse(_config["Email:SmtpPort"]);
-            var smtpUser = _config["Email:SmtpUser"];
-            var smtpPass = _config["Email:SmtpPass"];
-            var remitente = _config["Email:From"];
+            if (string.IsNullOrWhiteSpace(smtpHost) || !int.TryParse(_config["Email:SmtpPort"], out var puerto)
+                || puerto is < 1 or > 65535 || !MailAddress.TryCreate(_config["Email:From"], out var remitente)
+                || !MailAddress.TryCreate(destinatario, out var destino))
+                throw new CorreoNoIniciadoException();
 
-            using var client = new SmtpClient(smtpHost, smtpPort)
+            using var client = new SmtpClient(smtpHost, puerto)
             {
                 EnableSsl = true,
-                Credentials = new NetworkCredential(smtpUser, smtpPass)
+                Credentials = new NetworkCredential(_config["Email:SmtpUser"], _config["Email:SmtpPass"])
             };
-
-            var mail = new MailMessage(remitente, destinatario)
+            using var mail = new MailMessage(remitente, destino)
             {
                 Subject = asunto,
                 Body = cuerpoHtml,
@@ -44,7 +45,8 @@ namespace GustosApp.Infraestructure.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error enviando email a {destinatario}", destinatario);
+                _logger.LogWarning("Resultado SMTP sin confirmar. Tipo: {Tipo}.", ex.GetType().Name);
+                throw new ResultadoCorreoInciertoException();
             }
         }
     }

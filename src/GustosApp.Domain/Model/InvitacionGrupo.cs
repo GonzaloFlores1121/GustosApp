@@ -21,6 +21,7 @@ namespace GustosApp.Domain.Model
         public EstadoInvitacion Estado { get; set; } = EstadoInvitacion.Pendiente;
         public string? MensajePersonalizado { get; set; }
         public DateTime FechaExpiracion { get; set; }
+        public byte[] Version { get; private set; } = Array.Empty<byte>();
 
         // Navegación
         public Grupo Grupo { get; set; }
@@ -31,51 +32,61 @@ namespace GustosApp.Domain.Model
 
         private InvitacionGrupo() { } // Para EF Core
 
-        public InvitacionGrupo(Guid grupoId, Guid usuarioInvitadoId, Guid usuarioInvitadorId, string? mensajePersonalizado = null)
+        public InvitacionGrupo(
+            Guid grupoId,
+            Guid usuarioInvitadoId,
+            Guid usuarioInvitadorId,
+            string? mensajePersonalizado = null,
+            DateTime? fechaCreacionUtc = null)
         {
+            var ahora = fechaCreacionUtc ?? DateTime.UtcNow;
             GrupoId = grupoId;
             UsuarioInvitadoId = usuarioInvitadoId;
             UsuarioInvitadorId = usuarioInvitadorId;
             MensajePersonalizado = mensajePersonalizado;
-            FechaExpiracion = DateTime.UtcNow.AddDays(7); // Invitación válida por 7 días
+            FechaInvitacion = ahora;
+            FechaExpiracion = ahora.AddDays(7);
         }
 
-        public void Aceptar()
+        public void Aceptar(DateTime? ahoraUtc = null)
         {
+            var ahora = ahoraUtc ?? DateTime.UtcNow;
             if (Estado != EstadoInvitacion.Pendiente)
                 throw new InvalidOperationException("Solo se pueden aceptar invitaciones pendientes");
 
-            if (FechaExpiracion < DateTime.UtcNow)
-            {
-                Estado = EstadoInvitacion.Expirada;
+            if (EstaExpirada(ahora))
                 throw new InvalidOperationException("La invitación ha expirado");
-            }
 
             Estado = EstadoInvitacion.Aceptada;
-            FechaRespuesta = DateTime.UtcNow;
+            FechaRespuesta = ahora;
         }
 
-        public void Rechazar()
+        public void Rechazar(DateTime? ahoraUtc = null)
         {
+            var ahora = ahoraUtc ?? DateTime.UtcNow;
             if (Estado != EstadoInvitacion.Pendiente)
                 throw new InvalidOperationException("Solo se pueden rechazar invitaciones pendientes");
 
+            if (EstaExpirada(ahora))
+                throw new InvalidOperationException("La invitación ha expirado");
+
             Estado = EstadoInvitacion.Rechazada;
-            FechaRespuesta = DateTime.UtcNow;
+            FechaRespuesta = ahora;
         }
 
-        public void MarcarComoExpirada()
+        public void MarcarComoExpirada(DateTime? ahoraUtc = null)
         {
+            var ahora = ahoraUtc ?? DateTime.UtcNow;
             if (Estado == EstadoInvitacion.Pendiente)
             {
                 Estado = EstadoInvitacion.Expirada;
-                FechaRespuesta = DateTime.UtcNow;
+                FechaRespuesta = ahora;
             }
         }
 
-        public bool EstaExpirada()
+        public bool EstaExpirada(DateTime? ahoraUtc = null)
         {
-            return FechaExpiracion < DateTime.UtcNow && Estado == EstadoInvitacion.Pendiente;
+            return FechaExpiracion <= (ahoraUtc ?? DateTime.UtcNow) && Estado == EstadoInvitacion.Pendiente;
         }
     }
 }

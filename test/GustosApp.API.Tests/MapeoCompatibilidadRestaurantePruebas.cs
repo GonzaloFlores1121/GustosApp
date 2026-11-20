@@ -12,7 +12,7 @@ namespace GustosApp.API.Tests
     {
         [Theory]
         [InlineData(NivelCompatibilidadRestaurante.Desconocida, "No hay datos suficientes")]
-        [InlineData(NivelCompatibilidadRestaurante.Estimada, "todavía no fueron verificados")]
+        [InlineData(NivelCompatibilidadRestaurante.Estimada, "orientativa")]
         public void Mapear_IncluyeNivelYAdvertenciaDeCompatibilidad(
             NivelCompatibilidadRestaurante nivel,
             string fragmentoAdvertencia)
@@ -50,12 +50,11 @@ namespace GustosApp.API.Tests
 
             resultado.OrigenDatosCompatibilidad.Should().Be("Restaurante");
             resultado.EstadoDatosCompatibilidad.Should().Be("Verificado");
-            resultado.FechaUltimaVerificacionDatosCompatibilidadUtc.Should().Be(fecha);
             resultado.AdvertenciaCompatibilidad.Should().Contain("orientativa");
         }
 
         [Fact]
-        public void Mapear_DatosVerificadosHaceMasDeSeisMeses_LosInformaComoDesactualizados()
+        public void Mapear_OfertaRevisadaHaceCuatroMeses_NoGeneraAdvertenciaTemporal()
         {
             var configuracion = CrearConfiguracion();
             var mapper = configuracion.CreateMapper();
@@ -63,14 +62,11 @@ namespace GustosApp.API.Tests
             {
                 NivelCompatibilidad = NivelCompatibilidadRestaurante.Estimada
             };
-            restaurante.RegistrarVerificacionDatosCompatibilidad(
-                OrigenDatosCompatibilidadRestaurante.Restaurante,
-                DateTime.UtcNow.AddDays(-181));
+            restaurante.ConfirmarOfertaVigente(0, DateTime.UtcNow.AddMonths(-4).AddDays(-1));
 
             var resultado = mapper.Map<RestauranteDTO>(restaurante);
 
-            resultado.EstadoDatosCompatibilidad.Should().Be("Desactualizado");
-            resultado.AdvertenciaCompatibilidad.Should().Contain("desactualizados");
+            resultado.AdvertenciaCompatibilidad.Should().NotContain("recientemente").And.NotContain("fecha").And.NotContain("pendientes");
         }
 
         private static MapperConfiguration CrearConfiguracion()

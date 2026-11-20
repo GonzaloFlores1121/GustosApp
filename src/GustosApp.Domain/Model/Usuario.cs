@@ -31,6 +31,8 @@ namespace GustosApp.Domain.Model
 
         public RolUsuario Rol { get; set; }
         public PlanUsuario Plan { get; set; } = PlanUsuario.Free;
+        // Accesos Plus anteriores al modelo de compras se preservan sin inventar pagos aprobados.
+        public bool AccesoPlusLegado { get; set; }
 
 
         public ICollection<Gusto> Gustos { get; set; } = new List<Gusto>();

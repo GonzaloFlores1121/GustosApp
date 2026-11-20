@@ -6,17 +6,21 @@ using GustosApp.API.Hubs.GustosApp.API.Hubs;
 using GustosApp.API.Middleware;
 using GustosApp.API.Validations.OpinionRestaurantes;
 using GustosApp.Application.Interfaces;
+using GustosApp.Application.Configuration;
 using GustosApp.Application.Services;
 using GustosApp.Application.Validations.Restaurantes;
 using GustosApp.Infraestructure;
 using GustosApp.Infraestructure.ML;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
 using System.Globalization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.Configure<EnlacesAplicacionOptions>(
+    builder.Configuration.GetSection(EnlacesAplicacionOptions.Seccion));
 
 
 // =====================
@@ -40,7 +44,7 @@ builder.Services.AgregarRedisCache(builder.Configuration);
 // =====================
 //      Automapper
 // =====================
-builder.Services.AddAutoMapper(cfg => {}, AppDomain.CurrentDomain.GetAssemblies());
+builder.Services.AddAutoMapper(_ => { }, typeof(Program).Assembly);
 
 // ===========================
 //    Autorización explícita
@@ -50,6 +54,21 @@ builder.Services.AgregarAutorizacion();
 builder.Services.AddRateLimiter(opciones =>
 {
     opciones.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    var gemini = builder.Configuration.GetSection("GeminiSettings").Get<GeminiSettings>() ?? new();
+    opciones.AddPolicy("ExplicacionRestaurante", contexto =>
+        LimitarIA(contexto, gemini.RecomendacionesPorMinuto));
+    opciones.AddPolicy("AnalisisMenu", contexto =>
+        LimitarIA(contexto, gemini.AnalisisPorMinuto));
+    opciones.OnRejected = async (rechazo, ct) =>
+    {
+        var contexto = rechazo.HttpContext;
+        var politica = contexto.GetEndpoint()?.Metadata.GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()?.PolicyName;
+        if (politica is "ExplicacionRestaurante" or "AnalisisMenu")
+            await contexto.Response.WriteAsJsonAsync(new { error = "Se alcanzó el límite de solicitudes. Probá de nuevo en un minuto." }, ct);
+    };
+    opciones.AddPolicy("FotosGoogle", contexto => RateLimitPartition.GetFixedWindowLimiter(
+        ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
+        { PermitLimit = 12, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
     opciones.AddPolicy("ReclamosRestaurante", contexto => RateLimitPartition.GetFixedWindowLimiter(
         ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
         {
@@ -129,7 +148,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<CrearOpinionRestauranteVali
 // =====================
 //    Controllers / JSON
 // =====================
-builder.Services.AddControllers()
+builder.Services.AddControllers(options => options.Filters.Add<GustosApp.API.Middleware.FotosGooglePublicasFilter>())
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
@@ -143,7 +162,9 @@ builder.Services.AddControllers()
 // =====================
 builder.Services.AddDbContext<GustosDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
-            sqlOptions => sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+            sqlOptions => sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
+        // Los fallos de persistencia se registran sin detalles de datos en la frontera de la API.
+        .ConfigureWarnings(warnings => warnings.Ignore(CoreEventId.SaveChangesFailed, RelationalEventId.CommandError)));
 
 
 
@@ -241,5 +262,16 @@ static string ObtenerClaveCliente(HttpContext contexto) =>
     ?? contexto.User.FindFirst("sub")?.Value
     ?? contexto.Connection.RemoteIpAddress?.ToString()
     ?? "anonimo";
+
+static RateLimitPartition<string> LimitarIA(HttpContext contexto, int solicitudes) =>
+    contexto.User.Identity?.IsAuthenticated != true
+        ? RateLimitPartition.GetNoLimiter("anonimo")
+        : RateLimitPartition.GetFixedWindowLimiter(ObtenerClaveCliente(contexto), _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Max(1, solicitudes),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
 
 public partial class Program;

@@ -111,7 +111,7 @@ namespace GustosApp.Application.Tests
             var result = await _useCase.HandleAsync(id, "uid123", CancellationToken.None);
 
             _visitas.Verify(v => v.IncrementarVisitaPerfilAsync(id, It.IsAny<CancellationToken>()),
-                Times.Once);
+                Times.Never);
 
             result.EsFavorito.Should().BeFalse();
         }

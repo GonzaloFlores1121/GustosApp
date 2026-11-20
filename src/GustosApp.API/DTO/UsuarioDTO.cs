@@ -29,10 +29,9 @@ namespace GustosApp.API.DTO
     public class UsuarioSimpleResponse
     {
         public Guid Id { get; set; }
-        public string Nombre { get; set; }
-        public string Email { get; set; }
+        public string Nombre { get; set; } = string.Empty;
         public string? FotoPerfilUrl { get; set; }
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
     }
 
     public class RegistrarUsuarioResponse
@@ -40,6 +39,8 @@ namespace GustosApp.API.DTO
 
         public string Message { get; set; }
         public UsuarioResponse Usuario { get; set; }
+        public bool IsNewUser { get; set; }
+        public string Rol { get; set; } = string.Empty;
     }
 
 
@@ -89,11 +90,13 @@ namespace GustosApp.API.DTO
 
     public class VisitadoDto
     {
+        public bool Desactivado { get; set; }
 
         public string IdRestaurante { get; set; } = string.Empty;
         public string Nombre { get; set; } = string.Empty;
         public string Direccion { get; set; }
         public DateTime FechaVisita { get; set; }
+        public bool EsDeLaApp { get; set; }
 
     }
 
@@ -105,7 +108,6 @@ namespace GustosApp.API.DTO
 
         [Required(ErrorMessage = "El email es obligatorio.")]
         [EmailAddress(ErrorMessage = "El formato del email no es válido.")] public string Email { get; set; }
-        public string? FotoPerfilUrl { get; set; }
         [Required(ErrorMessage = "El nombre de usuario es obligatorio.")] public string Username { get; set; }
 
 
@@ -113,13 +115,12 @@ namespace GustosApp.API.DTO
 
     public class EditarDatosUsuarioDTO
     {
-        public string? Email { get; set; }
         public string? Nombre { get; set; }
         public string? Apellido { get; set; }
 
         public IFormFile? FotoPerfil { get; set; }
 
-        public bool EsPrivado { get; set; }
+        public bool? EsPrivado { get; set; }
     }
 
 

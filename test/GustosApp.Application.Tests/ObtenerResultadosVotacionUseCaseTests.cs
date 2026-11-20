@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using GustosApp.Application.Common.Exceptions;
 using GustosApp.Application.Interfaces;
 using GustosApp.Application.UseCases.VotacionUseCases;
+using GustosApp.Application.Services;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
@@ -32,7 +33,8 @@ namespace GustosApp.Application.Tests
                 _mockVotacionRepository.Object,
                 _mockUsuarioRepository.Object,
                 _mockGrupoRepository.Object,
-                _mockNotificaciones.Object
+                _mockNotificaciones.Object,
+                new EvaluadorCompatibilidadRestaurante()
             );
         }
 
@@ -170,6 +172,78 @@ namespace GustosApp.Application.Tests
             Assert.False(result.HayEmpate);
             Assert.Null(result.GanadorId);
             Assert.Empty(result.RestaurantesVotados);
+        }
+
+        [Theory]
+        [InlineData(null, false)]
+        [InlineData(0, false)]
+        [InlineData(-6, false)]
+        [InlineData(-120, false)]
+        [InlineData(null, true)]
+        [InlineData(0, true)]
+        [InlineData(-6, true)]
+        [InlineData(-120, true)]
+        public async Task HandleAsync_ReevaluaCandidatosParaParticipantesCongeladosSinRevelarCondiciones(int? meses, bool declarada)
+        {
+            var usuario = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "uid" };
+            var participante = new Usuario { Id = Guid.NewGuid(), FirebaseUid = "otro" };
+            var condicion = new CondicionMedica
+            {
+                Id = Guid.NewGuid(), Nombre = "Preferencia privada",
+                TagsCriticos = [new Tag { Nombre = "Carne roja" }]
+            };
+            var restriccion = new Restriccion {
+                Id = condicion.Id, Nombre = "Preferencia privada", TagsProhibidos = condicion.TagsCriticos
+            };
+            if (declarada) participante.Restricciones.Add(restriccion);
+            else participante.CondicionesMedicas.Add(condicion);
+            var grupoId = Guid.NewGuid();
+            var grupo = new Grupo("Grupo", usuario.Id) { Id = grupoId };
+            grupo.Miembros.Add(new MiembroGrupo(grupoId, usuario.Id));
+            var votacion = new VotacionGrupo(grupoId) { Grupo = grupo };
+            foreach (var persona in new[] { usuario, participante })
+            {
+                var registro = new VotacionParticipante(votacion.Id, persona.Id);
+                typeof(VotacionParticipante).GetProperty(nameof(VotacionParticipante.Usuario))!
+                    .SetValue(registro, persona);
+                votacion.Participantes.Add(registro);
+            }
+            var restaurante = new Restaurante
+            {
+                Id = Guid.NewGuid(), Nombre = "Oferta mixta",
+                GustosQueSirve =
+                [
+                    new Gusto { Id = Guid.NewGuid(), Nombre = "Carne", Tags = [new Tag { Nombre = "Carne roja" }] },
+                    new Gusto { Id = Guid.NewGuid(), Nombre = "Vegetales", Tags = [] }
+                ]
+            };
+            if (declarada) restaurante.RestriccionesQueRespeta.Add(restriccion);
+            if (meses.HasValue)
+            {
+                restaurante.ConfirmarOfertaVigente(0, DateTime.UtcNow.AddMonths(meses.Value));
+                restaurante.ConfirmarRestriccionesDeclaradas(0, DateTime.UtcNow.AddMonths(meses.Value));
+            }
+            var candidato = new VotacionRestaurante(votacion.Id, restaurante.Id);
+            typeof(VotacionRestaurante).GetProperty(nameof(VotacionRestaurante.Restaurante))!
+                .SetValue(candidato, restaurante);
+            votacion.RestaurantesCandidatos.Add(candidato);
+            _mockUsuarioRepository.Setup(r => r.GetByFirebaseUidAsync("uid", default))
+                .ReturnsAsync(usuario);
+            _mockVotacionRepository.Setup(r => r.ObtenerPorIdConCandidatosAsync(votacion.Id, default))
+                .ReturnsAsync(votacion);
+            _mockGrupoRepository.Setup(r => r.UsuarioEsMiembroAsync(grupoId, "uid", default))
+                .ReturnsAsync(true);
+
+            var resultado = await _useCase.HandleAsync("uid", votacion.Id);
+
+            var evaluacion = Assert.Single(resultado.RestaurantesCandidatos);
+            Assert.Equal(declarada ? GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Estimada
+                    : GustosApp.Domain.Common.NivelCompatibilidadRestaurante.Desconocida,
+                evaluacion.NivelCompatibilidad);
+            Assert.Contains("participantes seleccionados", evaluacion.AdvertenciaCompatibilidad);
+            Assert.DoesNotContain("Preferencia privada", evaluacion.AdvertenciaCompatibilidad);
+            Assert.DoesNotContain("fecha", evaluacion.AdvertenciaCompatibilidad);
+            Assert.DoesNotContain("recientemente", evaluacion.AdvertenciaCompatibilidad);
         }
 
 

@@ -10,7 +10,7 @@ namespace GustosApp.Domain.Interfaces
     public interface IEnviarMensajeGrupoUseCase
     {
         Task<ChatMensaje> HandleAsync(string firebaseUid, Guid grupoId, string mensaje
-            , CancellationToken cancellationToken = default);
+            , CancellationToken cancellationToken = default, Guid? operacionId = null);
 
         
 

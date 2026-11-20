@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <None Update="Datos/horarios.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

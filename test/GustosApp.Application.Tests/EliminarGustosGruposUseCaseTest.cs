@@ -1,4 +1,5 @@
 ﻿using GustosApp.Application.UseCases.GrupoUseCases;
+using GustosApp.Application.Common.Exceptions;
 using GustosApp.Domain.Interfaces;
 using GustosApp.Domain.Model;
 using Moq;
@@ -93,7 +94,7 @@ namespace GustosApp.Application.Tests
         }
 
         [Fact]
-        public async Task Handle_GustosNoExisten_ThrowsKeyNotFound()
+        public async Task Handle_GustosNoExisten_NoLosConsultaPorqueElPerfilEsLaFuente()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockGustoRepo = new Mock<IGustoRepository>();
@@ -123,12 +124,16 @@ namespace GustosApp.Application.Tests
             mockGustoRepo.Setup(r => r.obtenerGustosPorNombre(It.IsAny<List<string>>()))
                          .ReturnsAsync(new List<Gusto>()); // vacío
 
-            await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            await Assert.ThrowsAsync<PreferenciasGrupoDesdePerfilException>(() =>
                 useCase.Handle(new List<string> { "Fideos" }, Guid.NewGuid(), "uid"));
+
+            mockGustoRepo.Verify(r => r.obtenerGustosPorNombre(It.IsAny<List<string>>()), Times.Never);
+            mockGustosGrupoRepo.Verify(r => r.EliminarGustosAlGrupo(
+                It.IsAny<Guid>(), It.IsAny<List<Gusto>>(), It.IsAny<Guid>()), Times.Never);
         }
 
         [Fact]
-        public async Task Handle_TodoValido_EliminaYReturnTrue()
+        public async Task Handle_TodoValido_IndicaEditarElPerfil_YNoEscribeSnapshot()
         {
             var mockGrupoRepo = new Mock<IGrupoRepository>();
             var mockGustoRepo = new Mock<IGustoRepository>();
@@ -163,13 +168,12 @@ namespace GustosApp.Application.Tests
                 r.EliminarGustosAlGrupo(It.IsAny<Guid>(), gustos, usuario.Id))
                 .ReturnsAsync(true);
 
-            var result = await useCase.Handle(new List<string> { "Tacos" }, Guid.NewGuid(), "uid");
-
-            Assert.True(result);
+            await Assert.ThrowsAsync<PreferenciasGrupoDesdePerfilException>(() =>
+                useCase.Handle(new List<string> { "Tacos" }, Guid.NewGuid(), "uid"));
 
             mockGustosGrupoRepo.Verify(r =>
                 r.EliminarGustosAlGrupo(It.IsAny<Guid>(), gustos, usuario.Id),
-                Times.Once);
+                Times.Never);
         }
     }
 }

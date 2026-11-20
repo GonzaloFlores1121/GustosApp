@@ -1,334 +1,112 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
-using GustosApp.Domain.Interfaces;
-using GustosApp.API.DTO;
 using System.Security.Claims;
-using GustosApp.Domain.Model.@enum;
 using GustosApp.API.DTO;
+using GustosApp.Application.Common.Exceptions;
+using GustosApp.Domain.Interfaces;
+using GustosApp.Domain.Model.@enum;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
-namespace GustosApp.API.Controllers
+namespace GustosApp.API.Controllers;
+
+[Authorize]
+[Route("api/[controller]")]
+[ApiController]
+public sealed class PagoController : ControllerBase
 {
-    [Authorize]
-    [Route("api/[controller]")]
-    [ApiController]
-    public class PagoController : ControllerBase
+    private readonly IPagoService _pagos;
+    private readonly IUsuarioRepository _usuarios;
+    private readonly ILogger<PagoController> _logger;
+
+    public PagoController(IPagoService pagos, IUsuarioRepository usuarios, ILogger<PagoController> logger)
     {
-        private readonly IPagoService _pagoService;
-        private readonly IUsuarioRepository _usuarioRepository;
+        _pagos = pagos;
+        _usuarios = usuarios;
+        _logger = logger;
+    }
 
-        public PagoController(IPagoService pagoService, IUsuarioRepository usuarioRepository)
+    [HttpGet("beneficios")]
+    [AllowAnonymous]
+    public IActionResult ObtenerBeneficiosPremium() => Ok(_pagos.ObtenerCatalogo());
+
+    [HttpPost("crear")]
+    public async Task<IActionResult> CrearPago(CancellationToken ct)
+    {
+        try
         {
-            _pagoService = pagoService;
-            _usuarioRepository = usuarioRepository;
-        }
-
-        [HttpPost("crear")]
-        [ProducesResponseType(typeof(CrearPagoResponse), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> CrearPago([FromBody] CrearPagoRequest request, CancellationToken ct)
-        {
-            try
+            var compra = await _pagos.IniciarCompraAsync(GetFirebaseUid(), ct);
+            return Ok(new CrearPagoResponse
             {
-                var firebaseUid = GetFirebaseUid();
-                
-                // Verificar que el usuario existe
-                var usuario = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid, ct);
-                if (usuario == null)
-                    return Unauthorized(new { message = "Usuario no encontrado" });
-
-                // Verificar que el usuario no es ya premium
-                if (usuario.EsPremium())
-                    return BadRequest(new { message = "El usuario ya tiene plan Premium" });
-
-                var initPoint = await _pagoService.CrearPreferenciaPagoAsync(
-                    firebaseUid, 
-                    request.Email, 
-                    request.NombreCompleto
-                );
-
-                var response = new CrearPagoResponse
-                {
-                    InitPoint = initPoint,
-                    Status = "created"
-                };
-
-                return Ok(response);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error interno del servidor", details = ex.Message });
-            }
-        }
-
-        [HttpPost("webhook")]
-        [AllowAnonymous]
-        public async Task<IActionResult> WebhookPago([FromBody] WebhookPagoRequest request)
-        {
-            try
-            {
-                Console.WriteLine($"🔔 [WebhookController] Notificación recibida");
-                Console.WriteLine($"🔔 [WebhookController] Type: {request.Type}");
-                Console.WriteLine($"🔔 [WebhookController] Data.Id: {request.Data?.Id}");
-                
-                // Verificar que es una notificación de pago
-                if (request.Type == "payment")
-                {
-                    Console.WriteLine($"🔔 [WebhookController] Es notificación de pago, procesando...");
-                    
-                    var procesado = await _pagoService.ProcesarNotificacionPagoAsync(request.Data.Id);
-                    
-                    if (procesado)
-                    {
-                        Console.WriteLine($"✅ [WebhookController] Pago procesado correctamente");
-                        return Ok(new { message = "Pago procesado correctamente" });
-                    }
-                    else
-                    {
-                        Console.WriteLine($"⚠️ [WebhookController] Pago no procesado (posiblemente no aprobado o ya procesado)");
-                    }
-                }
-                else
-                {
-                    Console.WriteLine($"ℹ️ [WebhookController] Tipo de notificación no es payment: {request.Type}");
-                }
-
-                return Ok(new { message = "Notificación recibida" });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ [WebhookController] Error en webhook: {ex.Message}");
-                Console.WriteLine($"❌ [WebhookController] StackTrace: {ex.StackTrace}");
-                return Ok(); // Siempre devolver 200 para evitar que MercadoPago reenvíe
-            }
-        }
-
-        [HttpGet("verificar/{pagoId}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> VerificarPago(string pagoId)
-        {
-            try
-            {
-                var aprobado = await _pagoService.VerificarEstadoPagoAsync(pagoId);
-                return Ok(new { aprobado });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al verificar pago", details = ex.Message });
-            }
-        }
-
-        [HttpGet("beneficios")]
-        [AllowAnonymous]
-        public IActionResult ObtenerBeneficiosPremium()
-        {
-            var beneficios = new BeneficiosPremiumDto { Precio = 50.00m };
-            return Ok(beneficios);
-        }
-
-        [HttpGet("diagnostico")]
-        [AllowAnonymous]
-        public IActionResult Diagnostico([FromServices] Microsoft.Extensions.Configuration.IConfiguration config)
-        {
-            var accessToken = config["MercadoPago:AccessToken"];
-            var publicKey = config["MercadoPago:PublicKey"];
-            
-            return Ok(new
-            {
-                hasAccessToken = !string.IsNullOrEmpty(accessToken),
-                accessTokenPrefix = accessToken?.Substring(0, Math.Min(15, accessToken.Length)),
-                hasPublicKey = !string.IsNullOrEmpty(publicKey),
-                publicKeyPrefix = publicKey?.Substring(0, Math.Min(15, publicKey.Length)),
-                isProduction = accessToken?.StartsWith("APP_USR") ?? false
+                CompraId = compra.CompraId,
+                InitPoint = compra.UrlCheckout,
+                Status = compra.Estado,
+                Reutilizada = compra.Reutilizada
             });
         }
-
-        [HttpGet("config")]
-        [AllowAnonymous]
-        public IActionResult GetConfig([FromServices] Microsoft.Extensions.Configuration.IConfiguration config)
+        catch (InvalidOperationException)
         {
-            var publicKey = config["MercadoPago:PublicKey"];
-            
-            if (string.IsNullOrEmpty(publicKey))
-            {
-                return BadRequest(new { message = "MercadoPago no configurado" });
-            }
-            
-            return Ok(new
-            {
-                publicKey = publicKey,
-                isTestMode = publicKey.StartsWith("TEST-") || publicKey.StartsWith("APP_USR")
-            });
+            return Conflict(new ProblemDetails { Title = "No se pudo iniciar el pago", Detail = "El pago no está disponible para esta cuenta en este momento.", Status = 409 });
         }
-
-        [HttpPost("crear-test")]
-        [AllowAnonymous] // Temporal para pruebas sin autenticación
-        public async Task<IActionResult> CrearPagoTest([FromBody] CrearPagoTestRequest request)
+        catch (PagoTemporalmenteNoDisponibleException)
         {
-            try
-            {
-                var initPoint = await _pagoService.CrearPreferenciaPagoAsync(
-                    request.UsuarioId ?? "test-user", 
-                    request.Email ?? "test@example.com", 
-                    request.NombreCompleto ?? "Usuario de Prueba"
-                );
-
-                var response = new CrearPagoResponse
-                {
-                    InitPoint = initPoint,
-                    Status = "created"
-                };
-
-                return Ok(new { success = true, data = response });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { success = false, message = ex.Message });
-            }
-        }
-
-        [HttpGet("verificar-reciente")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> VerificarPagoReciente()
-        {
-            try
-            {
-                var firebaseUid = GetFirebaseUid();
-                var usuario = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid);
-
-                if (usuario == null)
-                {
-                    return NotFound(new { aprobado = false, message = "Usuario no encontrado" });
-                }
-
-                // Verificar si el usuario ya es Premium
-                if (usuario.Plan == PlanUsuario.Plus)
-                {
-                    return Ok(new { aprobado = true, message = "Usuario ya es Premium" });
-                }
-
-                // Si no es Premium, devolver false
-                return Ok(new { aprobado = false, message = "Usuario aún no es Premium" });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { aprobado = false, message = ex.Message });
-            }
-        }
-
-        [HttpGet("verificar-estado-premium")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> VerificarEstadoPremium(CancellationToken ct)
-        {
-            try
-            {
-                Console.WriteLine("🔍 [VerificarEstadoPremium] Verificando estado del usuario...");
-                
-                var firebaseUid = GetFirebaseUid();
-                Console.WriteLine($"🔍 [VerificarEstadoPremium] FirebaseUid: {firebaseUid}");
-                
-                var usuario = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid, ct);
-
-                if (usuario == null)
-                {
-                    Console.WriteLine($"❌ [VerificarEstadoPremium] Usuario no encontrado");
-                    return NotFound(new { success = false, isPremium = false, message = "Usuario no encontrado" });
-                }
-
-                // Si el usuario aún no es Premium, intentar verificar pagos pendientes
-                if (usuario.Plan != PlanUsuario.Plus)
-                {
-                    Console.WriteLine($"🔍 [VerificarEstadoPremium] Usuario no es Premium, verificando pagos pendientes...");
-                    var pagoAprobado = await _pagoService.VerificarYProcesarPagosPendientesAsync(firebaseUid);
-                    
-                    if (pagoAprobado)
-                    {
-                        Console.WriteLine($"✅ [VerificarEstadoPremium] Pago aprobado encontrado, recargando usuario...");
-                        // Recargar el usuario para obtener el estado actualizado
-                        usuario = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid, ct);
-                    }
-                }
-
-                var isPremium = usuario.Plan == PlanUsuario.Plus;
-                Console.WriteLine($"✅ [VerificarEstadoPremium] Usuario: {usuario.Email}, Plan: {usuario.Plan}, IsPremium: {isPremium}");
-
-                return Ok(new 
-                { 
-                    success = true,
-                    isPremium = isPremium,
-                    plan = usuario.Plan.ToString(),
-                    message = isPremium ? "Usuario es Premium" : "Usuario es Free"
-                });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ [VerificarEstadoPremium] Error: {ex.Message}");
-                return StatusCode(500, new { success = false, isPremium = false, message = ex.Message });
-            }
-        }
-
-        [HttpPost("forzar-premium-dev")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> ForzarPremiumDev(CancellationToken ct)
-        {
-            try
-            {
-                Console.WriteLine("🔧 [ForzarPremiumDev] SOLO PARA DESARROLLO - Forzando Premium...");
-                
-                var firebaseUid = GetFirebaseUid();
-                Console.WriteLine($"🔧 [ForzarPremiumDev] FirebaseUid: {firebaseUid}");
-                
-                var usuario = await _usuarioRepository.GetByFirebaseUidAsync(firebaseUid, ct);
-
-                if (usuario == null)
-                {
-                    Console.WriteLine($"❌ [ForzarPremiumDev] Usuario no encontrado");
-                    return NotFound(new { success = false, message = "Usuario no encontrado" });
-                }
-
-                if (usuario.Plan == PlanUsuario.Plus)
-                {
-                    Console.WriteLine($"ℹ️ [ForzarPremiumDev] Usuario ya es Premium");
-                    return Ok(new { success = true, message = "Usuario ya es Premium", plan = "Plus" });
-                }
-
-                Console.WriteLine($"🔄 [ForzarPremiumDev] Actualizando usuario a Premium...");
-                await _usuarioRepository.UpdatePlanAsync(firebaseUid, PlanUsuario.Plus, ct);
-                Console.WriteLine($"✅ [ForzarPremiumDev] Usuario actualizado a Premium");
-
-                return Ok(new 
-                { 
-                    success = true,
-                    isPremium = true,
-                    message = "Usuario actualizado a Premium (DEV MODE)",
-                    plan = "Plus"
-                });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ [ForzarPremiumDev] Error: {ex.Message}");
-                return StatusCode(500, new { success = false, message = ex.Message });
-            }
-        }
-
-        private string GetFirebaseUid()
-        {
-            var firebaseUid = User.FindFirst("user_id")?.Value
-                            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                            ?? User.FindFirst("sub")?.Value;
-
-            if (string.IsNullOrWhiteSpace(firebaseUid))
-                throw new UnauthorizedAccessException("No se encontró el UID de Firebase en el token.");
-
-            return firebaseUid;
+            return StatusCode(503, new ProblemDetails { Title = "No pudimos confirmar el pago", Detail = "La operación quedó guardada para volver a intentarlo sin duplicarla.", Status = 503 });
         }
     }
+
+    [HttpGet("compras/{compraId:guid}")]
+    public async Task<IActionResult> ObtenerCompra(Guid compraId, [FromQuery] bool reconciliar = true, CancellationToken ct = default)
+    {
+        try { return Ok(await _pagos.ObtenerEstadoCompraAsync(GetFirebaseUid(), compraId, reconciliar, ct)); }
+        catch (KeyNotFoundException)
+        {
+            // La misma respuesta evita revelar si el identificador pertenece a otra cuenta.
+            return NotFound(new ProblemDetails { Title = "Compra no encontrada", Status = 404 });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or PagoTemporalmenteNoDisponibleException)
+        {
+            _logger.LogWarning("No se pudo reconciliar la compra {CompraId}. Tipo {Tipo}", compraId, ex.GetType().Name);
+            return StatusCode(503, new ProblemDetails { Title = "Verificación temporalmente no disponible", Status = 503 });
+        }
+    }
+
+    [HttpPost("webhook")]
+    [AllowAnonymous]
+    public async Task<IActionResult> WebhookPago([FromBody] WebhookPagoRequest request, CancellationToken ct)
+    {
+        var ids = Request.Query["data.id"];
+        var dataId = ids.Count == 1 ? ids.ToString() : string.Empty;
+        var requestId = Request.Headers["x-request-id"].ToString();
+        var signature = Request.Headers["x-signature"].ToString();
+        if (!_pagos.ValidarFirmaWebhook(dataId, requestId, signature)) return Unauthorized();
+        if (request.Type is not ("order" or "orders_v2")) return Ok(new { estado = "ignorado" });
+        if (!string.Equals(dataId, request.Data?.Id, StringComparison.OrdinalIgnoreCase)) return BadRequest();
+
+        var resultado = await _pagos.ProcesarNotificacionOrdenAsync(dataId, ct);
+        return resultado switch
+        {
+            ResultadoWebhookPago.FalloTransitorio => StatusCode(503, new { estado = "reintentar" }),
+            ResultadoWebhookPago.Procesado => Ok(new { estado = "procesado" }),
+            _ => Ok(new { estado = "ignorado" })
+        };
+    }
+
+    [HttpGet("verificar-estado-premium")]
+    public async Task<IActionResult> VerificarEstadoPremium(CancellationToken ct)
+    {
+        var uid = GetFirebaseUid();
+        try { await _pagos.VerificarYProcesarPagosPendientesAsync(uid, ct); }
+        catch (Exception ex) when (ex is HttpRequestException or PagoTemporalmenteNoDisponibleException)
+        { _logger.LogWarning("Reconciliación Premium no disponible. Tipo {Tipo}", ex.GetType().Name); }
+        var usuario = await _usuarios.GetByFirebaseUidAsync(uid, ct);
+        if (usuario == null) return NotFound();
+        return Ok(new { success = true, isPremium = usuario.Plan == PlanUsuario.Plus, plan = usuario.Plan.ToString() });
+    }
+
+    [HttpGet("admin/cobros-duplicados")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> ObtenerCobrosDuplicados(CancellationToken ct) =>
+        Ok(await _pagos.ObtenerCobrosDuplicadosAsync(ct));
+
+    private string GetFirebaseUid() =>
+        User.FindFirst("user_id")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value
+        ?? throw new UnauthorizedAccessException("No se pudo identificar al usuario.");
 }

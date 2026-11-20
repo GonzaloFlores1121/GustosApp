@@ -19,7 +19,9 @@ appsettings.*.local.json
 appsettings.Development.json
 
 # Configuración privada de Docker Compose
-.env
+.env*
+!.env.example
+!.env.pagos.example
 
 # Archivos locales generados para revisar importaciones
 /local-data/
@@ -28,3 +30,6 @@ appsettings.Development.json
 .agents/
 .codex/
 AGENTS.md
+
+# Licencia local de Six Labors
+/sixlabors.lic

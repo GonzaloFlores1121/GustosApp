@@ -7,6 +7,7 @@ using GustosApp.Application.UseCases.AmistadUseCases;
 using GustosApp.Application.UseCases.UsuarioUseCases.GustoUseCases;
 using GustosApp.Domain.Common;
 using GustosApp.Domain.Interfaces;
+using GustosApp.Application.Services;
 
 namespace GustosApp.Application.UseCases.UsuarioUseCases
 {
@@ -44,7 +45,8 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 {
                     Gustos = usuario.Gustos?.Select(g => g.Nombre).ToList() ?? new List<string>(),
                     Restricciones = usuario.Restricciones?.Select(r => r.Nombre).ToList() ?? new List<string>(),
-                    CondicionesMedicas = usuario.CondicionesMedicas?.Select(c => c.Nombre).ToList() ?? new List<string>()
+                    CondicionesMedicas = usuario.CondicionesMedicas?.Select(c => c.Nombre).ToList() ?? new List<string>(),
+                    ReglasCompatibilidad = ReglasCompatibilidadPreferencias.DesdeUsuario(usuario)
                 };
             }
             //Selecciona filtro
@@ -53,7 +55,8 @@ namespace GustosApp.Application.UseCases.UsuarioUseCases
                 //validar q los gustos del filtro  existan en db PROXIMAMENTE
                 Gustos = gustosDelFiltro,
                 Restricciones = usuario.Restricciones?.Select(r => r.Nombre).ToList() ?? new List<string>(),
-                CondicionesMedicas = usuario.CondicionesMedicas?.Select(c => c.Nombre).ToList() ?? new List<string>()
+                CondicionesMedicas = usuario.CondicionesMedicas?.Select(c => c.Nombre).ToList() ?? new List<string>(),
+                ReglasCompatibilidad = ReglasCompatibilidadPreferencias.DesdeUsuario(usuario)
             };
         }
         }

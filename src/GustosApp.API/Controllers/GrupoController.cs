@@ -30,19 +30,18 @@ namespace GustosApp.API.Controllers
         private readonly ObtenerGruposUsuarioUseCase _obtenerGruposUseCase;
         private readonly ObtenerInvitacionesUsuarioUseCase _obtenerInvitacionesUseCase;
         private readonly AceptarInvitacionGrupoUseCase _aceptarInvitacionUseCase;
+        private readonly RechazarInvitacionAGrupoUseCase _rechazarInvitacionUseCase;
         private readonly EliminarGrupoUseCase _eliminarGrupoUseCase;
         private readonly ObtenerChatGrupoUseCase _obtenerChatGrupoUseCase;
         private readonly ObtenerGrupoDetalleUseCase _obtenerGrupoDetalleUseCase;
         private readonly RemoverMiembroGrupoUseCase _removerMiembroUseCase;
-        private readonly IServicioRestaurantes _servicio;
         private readonly ObtenerPreferenciasGruposUseCase _obtenerPreferenciasGrupos;
-        private readonly SugerirGustosSobreUnRadioUseCase _sugerirGustos;
+        private readonly IBuscadorRestaurantesGrupo _buscadorRestaurantesGrupo;
         private readonly VerificarSiMiembroEstaEnGrupoUseCase _verificacionMiembroGrupo;
         private readonly IServicioPreferenciasGrupos _servicioPreferenciasGrupos;
         private readonly EnviarMensajeGrupoUseCase _enviarMensajeGrupoUseCase;
         private readonly IMapper _mapper;
         private readonly ObtenerRestaurantesAleatoriosGrupoUseCase _obtenerRestaurantesAleatorios;
-        private readonly ConstruirPreferenciasGrupoUseCase _grupoPreferencias;
         private readonly ActualizarNombreGrupoUseCase _actualizarNombreGrupoUseCase;
         private readonly RegistrarTop3GrupoRestaurantesUseCase _registrarTop3GrupoRestaurantesUseCase;
 
@@ -55,27 +54,25 @@ namespace GustosApp.API.Controllers
             ObtenerGruposUsuarioUseCase obtenerGruposUseCase,
             ObtenerInvitacionesUsuarioUseCase obtenerInvitacionesUseCase,
             AceptarInvitacionGrupoUseCase aceptarInvitacionUseCase,
+            RechazarInvitacionAGrupoUseCase rechazarInvitacionUseCase,
             EliminarGrupoUseCase eliminarGrupoUseCase,
             ObtenerGrupoDetalleUseCase obtenerGrupoDetalleUseCase,
             RemoverMiembroGrupoUseCase removerMiembroUseCase,
             ObtenerChatGrupoUseCase obtenerChatGrupoUseCase,
             EnviarMensajeGrupoUseCase enviarMensajeGrupoUseCase,
-            IServicioRestaurantes servicio,
-            SugerirGustosSobreUnRadioUseCase sugerirGustos,
+            IBuscadorRestaurantesGrupo buscadorRestaurantesGrupo,
             ObtenerPreferenciasGruposUseCase obtenerGustos,
             IServicioPreferenciasGrupos servicioPreferenciasGrupos,
             VerificarSiMiembroEstaEnGrupoUseCase verificacionMiembroGrupo,
             ActualizarGustosAGrupoUseCase actualizarGustosAGrupoUseCase,
             IMapper mapper,
             ObtenerRestaurantesAleatoriosGrupoUseCase obtenerRestaurantesAleatorios,
-           ConstruirPreferenciasGrupoUseCase grupoPreferencias,
             ActualizarNombreGrupoUseCase actualizarNombreGrupoUseCase,
             RegistrarTop3GrupoRestaurantesUseCase registrarTop3GrupoRestaurantesUseCase
 
 
             )
         {
-            _servicio = servicio;
             _crearGrupoUseCase = crearGrupoUseCase;
             _invitarUsuarioUseCase = invitarUsuarioUseCase;
             _unirseGrupoUseCase = unirseGrupoUseCase;
@@ -83,17 +80,17 @@ namespace GustosApp.API.Controllers
             _obtenerGruposUseCase = obtenerGruposUseCase;
             _obtenerInvitacionesUseCase = obtenerInvitacionesUseCase;
             _aceptarInvitacionUseCase = aceptarInvitacionUseCase;
+            _rechazarInvitacionUseCase = rechazarInvitacionUseCase;
             _eliminarGrupoUseCase = eliminarGrupoUseCase;
             _obtenerGrupoDetalleUseCase = obtenerGrupoDetalleUseCase;
             _removerMiembroUseCase = removerMiembroUseCase;
             _obtenerChatGrupoUseCase = obtenerChatGrupoUseCase;
             _enviarMensajeGrupoUseCase = enviarMensajeGrupoUseCase;
             _obtenerPreferenciasGrupos = obtenerGustos;
-            _sugerirGustos = sugerirGustos;
+            _buscadorRestaurantesGrupo = buscadorRestaurantesGrupo;
             _verificacionMiembroGrupo = verificacionMiembroGrupo;
             _mapper = mapper;
             _obtenerRestaurantesAleatorios = obtenerRestaurantesAleatorios;
-            _grupoPreferencias = grupoPreferencias;
             _servicioPreferenciasGrupos = servicioPreferenciasGrupos;
             _actualizarNombreGrupoUseCase = actualizarNombreGrupoUseCase;
             _registrarTop3GrupoRestaurantesUseCase = registrarTop3GrupoRestaurantesUseCase;
@@ -155,7 +152,7 @@ namespace GustosApp.API.Controllers
             if (string.IsNullOrEmpty(request.CodigoInvitacion))
                 throw new ArgumentException("El código de invitación es obligatorio");
 
-            if (request.CodigoInvitacion.Length == 8)
+            if (request.CodigoInvitacion.Length != 8)
             {
                 throw new ArgumentException("El código debe tener exactamente 8 caracteres");
             }
@@ -286,9 +283,12 @@ namespace GustosApp.API.Controllers
             var firebaseUid = GetFirebaseUid();
             if (!Guid.TryParse(grupoId, out var gid)) return BadRequest("El id de grupo no es un GUID válido");
 
-            var msgs = await _obtenerChatGrupoUseCase.HandleAsync(firebaseUid, gid, ct);
+            var pagina = await _obtenerChatGrupoUseCase.HandleAsync(
+                firebaseUid,
+                gid,
+                cancellationToken: ct);
 
-            var response = _mapper.Map<IEnumerable<ChatMensajeResponse>>(msgs);
+            var response = _mapper.Map<IEnumerable<ChatMensajeResponse>>(pagina.Mensajes);
 
             return Ok(response);
         }
@@ -341,6 +341,16 @@ namespace GustosApp.API.Controllers
             return Ok(response);
 
 
+        }
+
+        [HttpPost("invitaciones/{invitacionId}/rechazar")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> RechazarInvitacion(Guid invitacionId, CancellationToken ct)
+        {
+            await _rechazarInvitacionUseCase.HandleAsync(GetFirebaseUid(), invitacionId, ct);
+            return NoContent();
         }
         [Authorize]
         [HttpPut("actualizarGustos")]
@@ -434,21 +444,17 @@ namespace GustosApp.API.Controllers
         {
             var firebaseUid = GetFirebaseUid();
 
-            // Buscar restaurantes desde la infraestructura
-            var restaurantes = await _servicio.BuscarAsync(0, "", "", lat, lng, radius);
-
-
-            // Obtener preferencias del grupo
-            var preferencias = await _grupoPreferencias.HandleAsync(
-            firebaseUid, grupoId,
-             ct);
-
-
-            // Obtener recomendaciones
-            var recomendados = await _sugerirGustos.Handle(preferencias, restaurantes, top, ct);
+            var resultado = await _buscadorRestaurantesGrupo.BuscarAsync(
+                firebaseUid,
+                grupoId,
+                lat,
+                lng,
+                radius,
+                top,
+                ct);
 
             // Mapear al DTO
-            var response = _mapper.Map<List<RestauranteDTO>>(recomendados);
+            var response = _mapper.Map<List<RestauranteDTO>>(resultado.Restaurantes);
 
             // registrar Top 3 grupal
             var top3Ids = response
@@ -461,7 +467,11 @@ namespace GustosApp.API.Controllers
                 await _registrarTop3GrupoRestaurantesUseCase.HandleAsync(top3Ids, ct);
             }
 
-            return Ok(response);
+            return Ok(new
+            {
+                estado = resultado.Estado.ToString(),
+                recomendaciones = response
+            });
         }
 
 
@@ -510,7 +520,11 @@ namespace GustosApp.API.Controllers
                     RadioMetros = request.RadioMetros
                 };
 
-                var restaurantes = await _obtenerRestaurantesAleatorios.HandleAsync(grupoId, requestModel, ct);
+                var restaurantes = await _obtenerRestaurantesAleatorios.HandleAsync(
+                    firebaseUid,
+                    grupoId,
+                    requestModel,
+                    ct);
                 return Ok(restaurantes);
             }
             catch (ArgumentException ex)

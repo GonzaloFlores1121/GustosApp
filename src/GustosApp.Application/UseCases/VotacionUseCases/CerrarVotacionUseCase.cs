@@ -55,6 +55,9 @@ namespace GustosApp.Application.UseCases.VotacionUseCases
             if (ganadores.Count != 1)
                 throw new InvalidOperationException("La votación está empatada y debe resolverse mediante la ruleta");
 
+            if (votacion.RestaurantesCandidatos.Any(c => ganadores.Contains(c.RestauranteId) && c.Restaurante?.Desactivado == true))
+                throw new InvalidOperationException("Un restaurante del resultado ya no está disponible. El administrador puede cancelar esta votación e iniciar otra; los votos se conservan.");
+
             var ganadorCalculado = ganadores.Single();
 
             // Si se informa un ganador, debe coincidir con el resultado de los votos.
