@@ -66,6 +66,13 @@ public class FabricaApiGustosApp : WebApplicationFactory<Program>
             servicios.RemoveAll<ICacheService>();
             servicios.AddSingleton(Mock.Of<ICacheService>());
 
+            // Construir los controladores de prueba sin credenciales de proveedores.
+            // Las pruebas que usan OCR o almacenamiento deben configurar sus respuestas.
+            servicios.RemoveAll<IOcrService>();
+            servicios.AddSingleton(new Mock<IOcrService>(MockBehavior.Strict).Object);
+            servicios.RemoveAll<IFileStorageService>();
+            servicios.AddSingleton(new Mock<IFileStorageService>(MockBehavior.Strict).Object);
+
             servicios.RemoveAll<IUsuarioRepository>();
             servicios.AddSingleton(Mock.Of<IUsuarioRepository>());
         });
