@@ -109,13 +109,14 @@ namespace GustosApp.API.Controllers
             [FromQuery(Name = "near.lat")] double? lat,
             [FromQuery(Name = "near.lng")] double? lng,
             [FromQuery(Name = "radiusMeters")] int? radius = 3000,
-            [FromQuery] int top = 10
+            [FromQuery] int top = 10,
+            [FromQuery] bool abiertoAhora = false
   )
         {
             var firebaseUid = GetFirebaseUid();
 
             var recommendations = await _buscarRestauranteRecomendado.HandleAsync(
-                firebaseUid,gustos,amigoUsername,lat, lng,radius,top,rating,ct);
+                firebaseUid,gustos,amigoUsername,lat, lng,radius,top,rating,ct,abiertoAhora);
 
             // DTO
             var response = _mapper.Map<List<RestauranteDTO>>(recommendations);

@@ -13,7 +13,8 @@ namespace GustosApp.API.Mapping
 
             try
             {
-                return JsonSerializer.Deserialize<List<HorarioSimpleDto>>(source)
+                return JsonSerializer.Deserialize<List<HorarioSimpleDto>>(source,
+                           new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                        ?? new List<HorarioSimpleDto>();
             }
             catch

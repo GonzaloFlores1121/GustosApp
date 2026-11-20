@@ -22,6 +22,7 @@ namespace GustosApp.Application.Services
         private readonly ICacheService _cache;
         private readonly RegistrarTop3IndividualRestaurantesUseCase _registrarTop3;
         private readonly IGustoRepository _gustosRepository;
+        private readonly TimeProvider _reloj;
 
         public BuscarRestaurantesRecomendadosOrquestador(
             ConstruirPreferenciasUsuarioIndividualUseCase preferenciasSolo,
@@ -30,7 +31,8 @@ namespace GustosApp.Application.Services
             SugerirGustosSobreUnRadioUseCase sugerir,
             ICacheService cache,
             RegistrarTop3IndividualRestaurantesUseCase registrarTop3,
-            IGustoRepository gustosRepository)
+            IGustoRepository gustosRepository,
+            TimeProvider? reloj = null)
         {
             _preferenciasSolo = preferenciasSolo;
             _preferenciasConAmigo = preferenciasConAmigo;
@@ -39,12 +41,13 @@ namespace GustosApp.Application.Services
             _cache = cache;
             _registrarTop3 = registrarTop3;
             _gustosRepository = gustosRepository;
+            _reloj = reloj ?? TimeProvider.System;
         }
 
 
         public async Task<List<Restaurante>> HandleAsync(string firebaseUid, List<string>? gustos,
             string? amigoUsername, double? lat, double? lng, int? radius, int top, double rating,
-            CancellationToken ct)
+            CancellationToken ct, bool abiertoAhora = false)
         {
             var gustosExplicitos = (gustos ?? new List<string>())
                 .Where(g => !string.IsNullOrWhiteSpace(g))
@@ -86,6 +89,14 @@ namespace GustosApp.Application.Services
 
             if (candidatos == null || !candidatos.Any())
                 return new List<Restaurante>();
+
+            if (abiertoAhora)
+            {
+                var ahora = _reloj.GetUtcNow();
+                candidatos = candidatos.Where(r =>
+                    HorariosRestaurante.Evaluar(r.HorariosJson, ahora) == EstadoAperturaRestaurante.Abierto).ToList();
+                if (candidatos.Count == 0) return new List<Restaurante>();
+            }
 
             if (gustosExplicitos.Count > 0)
             {

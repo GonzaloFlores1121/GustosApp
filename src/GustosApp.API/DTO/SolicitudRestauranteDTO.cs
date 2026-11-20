@@ -94,6 +94,7 @@ namespace GustosApp.API.DTO
     {
         public string Dia { get; set; } = default!;
         public bool Cerrado { get; set; }
+        public bool TodoElDia { get; set; }
         public string? Desde { get; set; } // "12:00"
         public string? Hasta { get; set; } // "22:00"
     }

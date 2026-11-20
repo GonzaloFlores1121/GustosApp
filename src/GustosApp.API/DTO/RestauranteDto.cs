@@ -27,6 +27,7 @@ namespace GustosApp.API.DTO
         public string PropietarioUid { get; set; } = string.Empty;
 
         public object? Horarios { get; set; }
+        public string HorariosJson { get; set; } = "{}";
         public DateTime CreadoUtc { get; set; }
         public DateTime ActualizadoUtc { get; set; }
         public bool EsDeLaApp { get; set; }
@@ -411,6 +412,7 @@ namespace GustosApp.API.DTO
 
     public class RestauranteFavoritoDto
     {
+        public string HorariosJson { get; set; } = "{}";
         public Guid RestauranteId { get; set; }
         public string Nombre { get; set; } = "";
         public string LogoUrl { get; set; } = "";
